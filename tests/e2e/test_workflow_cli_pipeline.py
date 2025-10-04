@@ -69,6 +69,18 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
     captured_cli_results: list = []
     recorded_static_fields: list[dict] = []
 
+    import src.utils.telemetry as telemetry_module
+    import src.utils.telemetry_helpers as telemetry_helpers_module
+
+    original_attach_static_fields = telemetry_module.attach_static_fields
+
+    def tracking_attach_static_fields(publishers, static_fields):
+        recorded_static_fields.append(dict(static_fields))
+        return original_attach_static_fields(publishers, static_fields)
+
+    monkeypatch.setattr(telemetry_module, "attach_static_fields", tracking_attach_static_fields)
+    monkeypatch.setattr(telemetry_helpers_module, "attach_static_fields", tracking_attach_static_fields)
+
     dummy_issue_details = {
         301: {
             "title": "Discovery item 301",
@@ -429,13 +441,20 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
             pipeline_events.append(("find_issues_only", {"filters": filters.copy()}))
             issues = []
             if include_details:
-                issue_stub = SimpleNamespace(
-                    number=301,
-                    title="Stub Issue",
-                    labels=[SimpleNamespace(name="site-monitor")],
-                    assignee=None,
-                )
-                issues = [issue_stub, SimpleNamespace(number=302, title="Stub Issue 2", labels=[], assignee=None)]
+                issues = []
+                for issue_number in [301, 302]:
+                    details = dummy_issue_details.get(issue_number, {
+                        "title": f"Stub Issue {issue_number}",
+                        "labels": ["site-monitor"],
+                    })
+                    issues.append(
+                        SimpleNamespace(
+                            number=issue_number,
+                            title=details.get("title", f"Issue {issue_number}"),
+                            labels=[SimpleNamespace(name=label) for label in details.get("labels", [])],
+                            assignee=None,
+                        )
+                    )
             return SiteMonitorIssueDiscovery(
                 issue_numbers=[301, 302],
                 filters=filters.copy(),
@@ -453,15 +472,10 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
 
         return original_safe_execute(wrapped_func)
 
-    original_attach_static_fields = cli_main.attach_static_fields
-
-    def tracking_attach_static_fields(publishers, static_fields):
-        recorded_static_fields.append(static_fields.copy())
-        return original_attach_static_fields(publishers, static_fields)
-
-    monkeypatch.setattr(cli_main, "attach_static_fields", tracking_attach_static_fields)
     monkeypatch.setattr(cli_main, "safe_execute_cli_command", capturing_safe_execute)
     monkeypatch.setattr(cli_main, "create_monitor_service_from_config", lambda *args, **kwargs: DummyMonitorService())
+    monkeypatch.setattr("src.utils.cli_monitors.get_monitor_service", lambda *args, **kwargs: DummyMonitorService())
+    monkeypatch.setattr(cli_main, "get_monitor_service", lambda *args, **kwargs: DummyMonitorService())
     monkeypatch.setattr(cli_main, "AIWorkflowAssignmentAgent", DummyAssignmentAgent)
     monkeypatch.setattr(cli_main, "WorkflowAssignmentAgent", DummyFallbackAgent)
     monkeypatch.setattr(cli_main, "GitHubIntegratedIssueProcessor", DummyProcessor)
@@ -582,7 +596,7 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
     assert len(monitor_cli_events) == 1
     monitor_event = monitor_cli_events[0]
     assert monitor_event.get("success") is True
-    assert monitor_event.get("new_results_found") == 2
+    assert monitor_event.get("data", {}).get("new_results_found") == 2
 
     process_telemetry_file = telemetry_dir / "process-issues.jsonl"
     assert process_telemetry_file.exists()
