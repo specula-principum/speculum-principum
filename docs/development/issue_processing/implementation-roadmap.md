@@ -4,6 +4,8 @@
 
 Transform Speculum Principum from template-based processing to AI-powered content extraction and specialist analysis system for intelligence documentation.
 
+> **Update — 2025-09-30:** The roadmap now targets the unified `process-issues` command; the historical `process-copilot-issues` CLI has been retired.
+
 ## Implementation Phases
 
 ### Phase 1: Foundation (Weeks 1-2)
@@ -23,19 +25,19 @@ Transform Speculum Principum from template-based processing to AI-powered conten
    - Update `_should_process_issue()` logic
 
 2. Update `src/core/batch_processor.py`
-   - Add `process_copilot_assigned_issues()` method
-   - Add filtering by specialist type
-   - Update batch discovery logic
+   - (Historical) Added `process_copilot_assigned_issues()` helper for dedicated Copilot batching
+   - Ensure unified `process_issues` path handles state-driven filtering
+   - Update batch discovery logic to respect workflow states
 
-3. Create CLI command in `main.py`
-   - Add `setup_process_copilot_issues_parser()`
-   - Add `handle_process_copilot_issues_command()`
-   - Add command routing
+3. Create CLI wiring in `main.py`
+   - (Historical) Introduced `process-copilot-issues` parser/handler
+   - Extend `process-issues` options to cover Copilot handoff (current approach)
+   - Maintain routing tests for the unified command
 
 **Acceptance Criteria**:
 - [ ] System can identify Copilot-assigned issues
-- [ ] CLI command `process-copilot-issues` works
-- [ ] Batch processing supports Copilot filtering
+- [ ] `process-issues` handles Copilot flow end-to-end (legacy command retired)
+- [ ] Batch processing supports Copilot filtering via state/label helpers
 - [ ] Unit tests for new functionality
 
 **Dependencies**: None

@@ -15,7 +15,7 @@ import json
 import logging
 import time
 import os
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from enum import Enum
@@ -29,6 +29,13 @@ from ..workflow.workflow_matcher import WorkflowMatcher, WorkflowInfo, WorkflowM
 from ..clients.github_issue_creator import GitHubIssueCreator
 from ..utils.config_manager import ConfigManager
 from ..utils.logging_config import get_logger, log_exception
+from ..utils.markdown_sections import upsert_section
+from ..workflow.workflow_state_manager import WorkflowState, plan_state_transition
+from ..utils.telemetry import (
+    TelemetryPublisher,
+    normalize_publishers,
+    publish_telemetry_event,
+)
 
 
 @dataclass
@@ -270,7 +277,8 @@ class AIWorkflowAssignmentAgent:
                  repo_name: str,
                  config_path: str = "config.yaml",
                  workflow_directory: str = "docs/workflow/deliverables",
-                 enable_ai: bool = True):
+                 enable_ai: bool = True,
+                 telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None):
         """
         Initialize AI-enhanced workflow assignment agent.
         
@@ -280,11 +288,13 @@ class AIWorkflowAssignmentAgent:
             config_path: Path to configuration file
             workflow_directory: Directory containing workflow definitions
             enable_ai: Whether to use GitHub Models AI (can disable for testing)
+            telemetry_publishers: Optional iterable of telemetry publishers for emitting assignment events
         """
         self.logger = get_logger(__name__)
         self.github = GitHubIssueCreator(github_token, repo_name)
         self.repo_name = repo_name
         self.enable_ai = enable_ai
+        self.telemetry_publishers = normalize_publishers(telemetry_publishers)
         
         # Load configuration
         try:
@@ -319,6 +329,46 @@ class AIWorkflowAssignmentAgent:
             f"model={ai_model if self.enable_ai else 'none'})"
         )
     
+    def add_telemetry_publisher(self, publisher: TelemetryPublisher) -> None:
+        """Register an additional telemetry publisher at runtime."""
+
+        self.telemetry_publishers.append(publisher)
+
+    def _publish_telemetry(self, event_type: str, payload: Dict[str, Any]) -> None:
+        """Emit a telemetry event if publishers are configured."""
+
+        publish_telemetry_event(self.telemetry_publishers, event_type, payload, logger=self.logger)
+
+    def _emit_issue_result_telemetry(self, result: Dict[str, Any], duration_seconds: float) -> None:
+        """Emit telemetry for a single issue assignment result."""
+
+        analysis = result.get('ai_analysis') or {}
+        summary = analysis.get('summary')
+        if summary:
+            summary = summary.strip()
+            if len(summary) > 240:
+                summary = f"{summary[:237]}..."
+
+        suggested = (analysis.get('suggested_workflows') or [])[:3]
+        confidence_scores = analysis.get('confidence_scores') or {}
+
+        payload = {
+            'issue_number': result.get('issue_number'),
+            'action_taken': result.get('action_taken'),
+            'assigned_workflow': result.get('assigned_workflow'),
+            'labels_added': list(result.get('labels_added') or []),
+            'dry_run': result.get('dry_run'),
+            'duration_seconds': duration_seconds,
+            'note': result.get('message'),
+            'ai_summary': summary,
+            'suggested_workflows': suggested,
+            'confidence_scores': {name: confidence_scores.get(name) for name in suggested},
+            'error': result.get('message') if result.get('action_taken') == 'error' else None,
+            'assignment_mode': 'ai',
+        }
+
+        self._publish_telemetry("workflow_assignment.issue_result", payload)
+
     def get_unassigned_site_monitor_issues(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Get unassigned issues with 'site-monitor' label that need workflow assignment.
@@ -335,7 +385,7 @@ class AIWorkflowAssignmentAgent:
             
             candidate_issues = []
             for issue in issues:
-                issue_labels = {label.name for label in issue.labels}
+                issue_labels = set(self._extract_label_names(issue.labels))
                 
                 # Skip if already assigned
                 if issue.assignee is not None:
@@ -530,6 +580,177 @@ class AIWorkflowAssignmentAgent:
         """
         # Placeholder - would load from GitHub storage
         return {}
+
+    @staticmethod
+    def _slugify_label(value: str) -> str:
+        """Convert arbitrary workflow names into label-friendly slugs."""
+
+        slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        return slug or "workflow"
+
+    @staticmethod
+    def _determine_specialist_label(workflow: WorkflowInfo) -> Optional[str]:
+        """Extract the specialist label from workflow metadata if available."""
+
+        sources = []
+        if isinstance(workflow.processing, dict):
+            sources.extend(
+                workflow.processing.get(key)
+                for key in ("specialist_type", "specialist")
+            )
+        # Some workflows embed specialist under config-style keys
+        config = getattr(workflow, "config", None)
+        if isinstance(config, dict):
+            sources.append(config.get("specialist_type"))
+
+        for specialist in sources:
+            if isinstance(specialist, str) and specialist.strip():
+                return specialist.strip().lower()
+        return None
+
+    @staticmethod
+    def _extract_label_names(labels: Iterable[Any]) -> List[str]:
+        """Normalise heterogeneous label representations into plain strings."""
+
+        normalised: List[str] = []
+        for label in labels:
+            candidate: Optional[str] = None
+
+            if isinstance(label, str):
+                candidate = label
+            else:
+                name_attr = getattr(label, "name", None)
+                if isinstance(name_attr, str):
+                    candidate = name_attr
+                else:
+                    mock_name = getattr(label, "_mock_name", None)
+                    if isinstance(mock_name, str) and mock_name:
+                        candidate = mock_name
+                    elif name_attr is not None and hasattr(name_attr, "_mock_name"):
+                        nested_mock_name = getattr(name_attr, "_mock_name", None)
+                        if isinstance(nested_mock_name, str) and nested_mock_name:
+                            candidate = nested_mock_name
+
+            if candidate:
+                stripped = candidate.strip()
+                if stripped:
+                    normalised.append(stripped)
+
+        return normalised
+
+    @staticmethod
+    def _apply_transition_plan(
+        current_labels: List[str],
+        plan,
+        *,
+        extra_labels: Optional[List[str]] = None,
+    ) -> Tuple[List[str], List[str]]:
+        """Apply the transition plan to the label set and return updates."""
+
+        label_lookup: Dict[str, str] = {label.lower(): label for label in current_labels}
+        initial_keys = set(label_lookup.keys())
+
+        # Remove labels scheduled for removal
+        for label in getattr(plan, "labels_to_remove", []):
+            label_lookup.pop(label, None)
+
+        # Add labels from the plan (already normalised)
+        for label in getattr(plan, "labels_to_add", []):
+            label_lookup[label] = label
+
+        # Include additional workflow trigger labels for compatibility
+        if extra_labels:
+            for label in extra_labels:
+                if not isinstance(label, str):
+                    continue
+                normalised = label.lower()
+                if normalised not in label_lookup:
+                    label_lookup[normalised] = label
+
+        final_labels = sorted(label_lookup.values(), key=str.lower)
+        added_labels = [label_lookup[key] for key in set(label_lookup.keys()) - initial_keys]
+        return final_labels, added_labels
+
+    @staticmethod
+    def _build_workflow_rationale(
+        analysis: ContentAnalysis,
+    ) -> str:
+        """Create a short rationale string using the AI analysis signals."""
+
+        rationale_parts: List[str] = []
+
+        if analysis.key_topics:
+            topics = ", ".join(topic for topic in analysis.key_topics[:2] if topic)
+            if topics:
+                rationale_parts.append(f"topics {topics}")
+
+        if analysis.technical_indicators:
+            indicators = ", ".join(indicator for indicator in analysis.technical_indicators[:2] if indicator)
+            if indicators:
+                rationale_parts.append(f"indicators {indicators}")
+
+        if analysis.content_type and analysis.content_type.strip():
+            rationale_parts.append(f"content type {analysis.content_type.strip().lower()}")
+
+        if analysis.urgency_level and analysis.urgency_level.strip():
+            rationale_parts.append(f"urgency {analysis.urgency_level.strip().lower()}")
+
+        if not rationale_parts:
+            return "Aligned with the discovery summary and AI assessment signals."
+
+        rationale = "; ".join(rationale_parts)
+        return f"Matches {rationale}."
+
+    @staticmethod
+    def _render_ai_assessment_section(
+        analysis: ContentAnalysis,
+        assigned_workflow: Optional[str] = None,
+    ) -> str:
+        """Build the Markdown content for the AI Assessment section."""
+
+        lines: List[str] = []
+        summary = analysis.summary.strip() if analysis.summary else "No summary available."
+        lines.append("**Summary**")
+        lines.append(f"- {summary}")
+        lines.append("")
+
+        lines.append("**Recommended Workflows**")
+        if analysis.suggested_workflows:
+            for workflow_name in analysis.suggested_workflows[:5]:
+                confidence = analysis.confidence_scores.get(workflow_name)
+                confidence_text = (
+                    f" — Confidence: {confidence:.0%}"
+                    if confidence is not None
+                    else ""
+                )
+                suffix = " (assigned)" if assigned_workflow and workflow_name == assigned_workflow else ""
+                rationale = AIWorkflowAssignmentAgent._build_workflow_rationale(analysis)
+                lines.append(
+                    f"- {workflow_name}{confidence_text} — Rationale: {rationale}{suffix}"
+                )
+        else:
+            lines.append("- No clear matches identified.")
+        lines.append("")
+
+        if analysis.key_topics:
+            lines.append("**Key Topics**")
+            for topic in analysis.key_topics[:10]:
+                lines.append(f"- {topic}")
+            lines.append("")
+
+        if analysis.technical_indicators:
+            lines.append("**Indicators**")
+            for indicator in analysis.technical_indicators[:10]:
+                lines.append(f"- {indicator}")
+            lines.append("")
+
+        lines.append("**Classification**")
+        urgency = analysis.urgency_level.title() if analysis.urgency_level else "Unknown"
+        content_type = analysis.content_type.title() if analysis.content_type else "Unknown"
+        lines.append(f"- Urgency: {urgency}")
+        lines.append(f"- Content Type: {content_type}")
+
+        return "\n".join(lines).strip()
     
     def process_issue_with_ai(self,
                              issue_data: Dict[str, Any],
@@ -592,20 +813,40 @@ class AIWorkflowAssignmentAgent:
                                         analysis: ContentAnalysis,
                                         dry_run: bool = False) -> List[str]:
         """Assign workflow with AI analysis context in comment"""
-        
-        labels_added = []
-        
+
+        issue = self.github.repo.get_issue(issue_number)
+        current_labels = self._extract_label_names(issue.labels)
+
+        workflow_slug = self._slugify_label(workflow.name)
+        specialist_label = self._determine_specialist_label(workflow)
+        specialist_labels = [specialist_label] if specialist_label else None
+
+        transition_plan = plan_state_transition(
+            current_labels,
+            WorkflowState.ASSIGNED,
+            ensure_labels=[workflow_slug],
+            specialist_labels=specialist_labels,
+            clear_temporary=True,
+        )
+
+        final_labels, labels_added = self._apply_transition_plan(
+            current_labels,
+            transition_plan,
+            extra_labels=list(workflow.trigger_labels),
+        )
+
+        assessment_section = self._render_ai_assessment_section(
+            analysis,
+            assigned_workflow=workflow.name,
+        )
+
         if not dry_run:
-            issue = self.github.repo.get_issue(issue_number)
-            current_labels = {label.name for label in issue.labels}
-            
-            # Add workflow labels that aren't already present
-            for label in workflow.trigger_labels:
-                if label not in current_labels:
-                    issue.add_to_labels(label)
-                    labels_added.append(label)
-            
-            # Add AI analysis as comment
+            updated_body = upsert_section(issue.body or "", "AI Assessment", assessment_section)
+            edit_kwargs: Dict[str, Any] = {"labels": final_labels}
+            if updated_body != (issue.body or ""):
+                edit_kwargs["body"] = updated_body
+            issue.edit(**edit_kwargs)
+
             confidence = analysis.confidence_scores.get(workflow.name, 0)
             comment = f"""🤖 **AI Workflow Assignment**
 
@@ -613,9 +854,9 @@ class AIWorkflowAssignmentAgent:
 **Confidence:** {confidence:.0%}
 **Content Type:** {analysis.content_type}
 **Urgency:** {analysis.urgency_level}
+**Labels Applied:** {', '.join(sorted(labels_added)) if labels_added else 'None (labels already present)'}
 
-**AI Analysis Summary:**
-{analysis.summary}
+AI assessment details have been recorded in the issue body under `## AI Assessment`.
 
 **Key Topics Identified:**
 {', '.join(analysis.key_topics) if analysis.key_topics else 'None identified'}
@@ -627,12 +868,7 @@ class AIWorkflowAssignmentAgent:
 *This assignment was made using GitHub Models AI analysis combined with label matching.*
 """
             issue.create_comment(comment)
-        else:
-            # In dry run, just return what labels would be added
-            current_issue = self.github.repo.get_issue(issue_number)
-            current_labels = {label.name for label in current_issue.labels}
-            labels_added = [label for label in workflow.trigger_labels if label not in current_labels]
-        
+
         return labels_added
     
     def _request_review_with_ai_context(self,
@@ -641,22 +877,27 @@ class AIWorkflowAssignmentAgent:
                                        dry_run: bool = False) -> List[str]:
         """Request human review with AI suggestions"""
         
-        labels_added = []
-        
+        labels_added: List[str] = []
+        issue = self.github.repo.get_issue(issue_number)
+        current_labels = set(self._extract_label_names(issue.labels))
+
+        needs_review_label = 'needs-review'
+        if needs_review_label not in current_labels:
+            if not dry_run:
+                issue.add_to_labels(needs_review_label)
+            labels_added.append(needs_review_label)
+
         if not dry_run:
-            issue = self.github.repo.get_issue(issue_number)
-            current_labels = {label.name for label in issue.labels}
-            
-            if 'needs-review' not in current_labels:
-                issue.add_to_labels('needs-review')
-                labels_added.append('needs-review')
-            
-            # Build suggestion list with confidence scores
+            assessment_section = self._render_ai_assessment_section(analysis)
+            updated_body = upsert_section(issue.body or "", "AI Assessment", assessment_section)
+            if updated_body != (issue.body or ""):
+                issue.edit(body=updated_body)
+
             suggestions = []
             for workflow_name in analysis.suggested_workflows[:3]:  # Top 3
                 confidence = analysis.confidence_scores.get(workflow_name, 0)
                 suggestions.append(f"- **{workflow_name}** (confidence: {confidence:.0%})")
-            
+
             comment = f"""🤖 **Human Review Requested**
 
 The AI analysis suggests these workflows but confidence is moderate:
@@ -668,6 +909,8 @@ The AI analysis suggests these workflows but confidence is moderate:
 **Content Type:** {analysis.content_type}
 **Urgency:** {analysis.urgency_level}
 
+The AI assessment details have been recorded in the issue body under `## AI Assessment`.
+
 Please review and either:
 1. Confirm one of the suggested workflows by adding its trigger labels
 2. Select a different workflow by adding appropriate labels
@@ -677,13 +920,7 @@ Please review and either:
 *Analysis powered by GitHub Models AI*
 """
             issue.create_comment(comment)
-        else:
-            # In dry run, check what labels would be added
-            current_issue = self.github.repo.get_issue(issue_number)
-            current_labels = {label.name for label in current_issue.labels}
-            if 'needs-review' not in current_labels:
-                labels_added.append('needs-review')
-        
+
         return labels_added
     
     def _request_clarification_with_ai_context(self,
@@ -692,16 +929,22 @@ Please review and either:
                                               dry_run: bool = False) -> List[str]:
         """Request clarification with AI insights"""
         
-        labels_added = []
-        
+        labels_added: List[str] = []
+        issue = self.github.repo.get_issue(issue_number)
+        current_labels = set(self._extract_label_names(issue.labels))
+
+        clarification_label = 'needs clarification'
+        if clarification_label not in current_labels:
+            if not dry_run:
+                issue.add_to_labels(clarification_label)
+            labels_added.append(clarification_label)
+
         if not dry_run:
-            issue = self.github.repo.get_issue(issue_number)
-            current_labels = {label.name for label in issue.labels}
-            
-            if 'needs clarification' not in current_labels:
-                issue.add_to_labels('needs clarification')
-                labels_added.append('needs clarification')
-            
+            assessment_section = self._render_ai_assessment_section(analysis)
+            updated_body = upsert_section(issue.body or "", "AI Assessment", assessment_section)
+            if updated_body != (issue.body or ""):
+                issue.edit(body=updated_body)
+
             comment = f"""🤖 **Additional Information Needed**
 
 The AI couldn't confidently match this issue to a workflow.
@@ -711,7 +954,7 @@ The AI couldn't confidently match this issue to a workflow.
 
 **Topics identified:** {', '.join(analysis.key_topics) if analysis.key_topics else 'None'}
 
-**To help me assign the right workflow, please:**
+To help with assignment, please:
 1. Add more descriptive labels
 2. Clarify the issue's purpose in the description
 3. Specify the type of deliverable needed
@@ -722,17 +965,13 @@ Available workflow types:
 - `security` - For security analysis
 - `documentation` - For documentation tasks
 
+The AI assessment details have been recorded under `## AI Assessment` for reference.
+
 ---
 *Analysis powered by GitHub Models AI*
 """
             issue.create_comment(comment)
-        else:
-            # In dry run, check what labels would be added
-            current_issue = self.github.repo.get_issue(issue_number)
-            current_labels = {label.name for label in current_issue.labels}
-            if 'needs clarification' not in current_labels:
-                labels_added.append('needs clarification')
-        
+
         return labels_added
     
     def process_issues_batch(self, 
@@ -749,99 +988,169 @@ Available workflow types:
             Dictionary with processing statistics and results
         """
         start_time = time.time()
-        self.logger.info(f"Starting AI workflow assignment batch processing (limit: {limit}, dry_run: {dry_run})")
-        
+        self.logger.info(
+            f"Starting AI workflow assignment batch processing (limit: {limit}, dry_run: {dry_run})"
+        )
+
         try:
-            # Get candidate issues
             issues = self.get_unassigned_site_monitor_issues(limit)
-            
+            candidate_count = len(issues)
+
+            self._publish_telemetry(
+                "workflow_assignment.batch_start",
+                {
+                    'limit': limit,
+                    'dry_run': dry_run,
+                    'candidate_count': candidate_count,
+                    'ai_enabled': self.enable_ai,
+                    'assignment_mode': 'ai',
+                },
+            )
+
             if not issues:
                 self.logger.info("No issues found for AI workflow assignment")
+                duration = time.time() - start_time
+                statistics = {
+                    'auto_assigned': 0,
+                    'review_requested': 0,
+                    'clarification_requested': 0,
+                    'errors': 0,
+                }
+                self._publish_telemetry(
+                    "workflow_assignment.batch_summary",
+                    {
+                        'total_issues': candidate_count,
+                        'processed': 0,
+                        'statistics': statistics,
+                        'duration_seconds': duration,
+                        'dry_run': dry_run,
+                        'status': 'empty',
+                        'issue_numbers': [],
+                        'error_count': 0,
+                        'assignment_mode': 'ai',
+                    },
+                )
                 return {
-                    'total_issues': 0,
+                    'total_issues': candidate_count,
                     'processed': 0,
                     'results': [],
-                    'statistics': {
-                        'auto_assigned': 0,
-                        'review_requested': 0,
-                        'clarification_requested': 0,
-                        'errors': 0
-                    },
-                    'duration_seconds': time.time() - start_time
+                    'statistics': statistics,
+                    'duration_seconds': duration,
                 }
-            
-            # Process each issue
-            results = []
-            statistics = {
+
+            results: List[Dict[str, Any]] = []
+            statistics: Dict[str, int] = {
                 'auto_assigned': 0,
                 'review_requested': 0,
                 'clarification_requested': 0,
-                'errors': 0
+                'errors': 0,
             }
-            
+
             for issue_data in issues:
+                issue_start = time.time()
                 try:
                     result = self.process_issue_with_ai(issue_data, dry_run)
                     results.append(result)
-                    
+
                     action = result.get('action_taken', 'error')
                     if action in statistics:
                         statistics[action] += 1
                     else:
                         statistics['errors'] += 1
-                    
-                    # Add small delay between issues to be respectful to APIs
-                    time.sleep(0.5)  # Slightly longer delay for AI calls
-                    
-                except Exception as e:
+
+                    self._emit_issue_result_telemetry(result, time.time() - issue_start)
+
+                except Exception as e:  # noqa: BLE001
+                    issue_number = issue_data.get('number')
+                    error_message = f"Processing error: {e}"
                     error_result = {
-                        'issue_number': issue_data['number'],
+                        'issue_number': issue_number,
                         'action_taken': 'error',
-                        'message': f"Processing error: {e}",
+                        'message': error_message,
                         'ai_analysis': {},
                         'assigned_workflow': None,
                         'labels_added': [],
-                        'dry_run': dry_run
+                        'dry_run': dry_run,
                     }
                     results.append(error_result)
                     statistics['errors'] += 1
-                    
-                    log_exception(self.logger, f"Failed to process issue #{issue_data['number']}", e)
-            
+                    self._emit_issue_result_telemetry(error_result, time.time() - issue_start)
+                    context_issue = f"#{issue_number}" if issue_number is not None else "(unknown)"
+                    log_exception(self.logger, f"Failed to process issue {context_issue}", e)
+                finally:
+                    time.sleep(0.5)
+
             duration = time.time() - start_time
-            
-            # Log summary
             processed_count = len([r for r in results if r.get('action_taken') != 'error'])
-            
-            self.logger.info(f"AI batch processing completed: {processed_count}/{len(issues)} issues processed "
-                           f"in {duration:.1f}s")
-            
+
+            self.logger.info(
+                f"AI batch processing completed: {processed_count}/{len(issues)} issues processed "
+                f"in {duration:.1f}s"
+            )
+
             for action, count in statistics.items():
                 if count > 0:
                     self.logger.info(f"  {action}: {count}")
-            
+
+            status = 'success'
+            if statistics['errors'] and processed_count == 0:
+                status = 'error'
+            elif statistics['errors']:
+                status = 'partial'
+
+            self._publish_telemetry(
+                "workflow_assignment.batch_summary",
+                {
+                    'total_issues': len(issues),
+                    'processed': processed_count,
+                    'statistics': statistics,
+                    'duration_seconds': duration,
+                    'dry_run': dry_run,
+                    'status': status,
+                    'issue_numbers': [r.get('issue_number') for r in results],
+                    'error_count': statistics.get('errors', 0),
+                    'assignment_mode': 'ai',
+                },
+            )
+
             return {
                 'total_issues': len(issues),
                 'processed': processed_count,
                 'results': results,
                 'statistics': statistics,
-                'duration_seconds': duration
+                'duration_seconds': duration,
             }
-            
-        except Exception as e:
+
+        except Exception as e:  # noqa: BLE001
+            duration = time.time() - start_time
+            error_stats = {
+                'auto_assigned': 0,
+                'review_requested': 0,
+                'clarification_requested': 0,
+                'errors': 1,
+            }
+            self._publish_telemetry(
+                "workflow_assignment.batch_summary",
+                {
+                    'total_issues': 0,
+                    'processed': 0,
+                    'statistics': error_stats,
+                    'duration_seconds': duration,
+                    'dry_run': dry_run,
+                    'status': 'error',
+                    'issue_numbers': [],
+                    'error_message': str(e),
+                    'error_count': 1,
+                },
+            )
             log_exception(self.logger, "AI batch processing failed", e)
             return {
                 'total_issues': 0,
                 'processed': 0,
                 'results': [],
-                'statistics': {
-                    'auto_assigned': 0,
-                    'review_requested': 0,
-                    'clarification_requested': 0,
-                    'errors': 1
-                },
-                'duration_seconds': time.time() - start_time,
-                'error': str(e)
+                'statistics': error_stats,
+                'duration_seconds': duration,
+                'error': str(e),
             }
     
     def get_assignment_statistics(self) -> Dict[str, Any]:
@@ -868,7 +1177,7 @@ Available workflow types:
             }
             
             for issue in all_issues:
-                issue_labels = {label.name for label in issue.labels}
+                issue_labels = set(self._extract_label_names(issue.labels))
                 
                 # Count by assignment status
                 if issue.assignee:

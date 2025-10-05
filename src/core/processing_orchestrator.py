@@ -5,8 +5,9 @@ This module provides high-level orchestration functions that coordinate
 between IssueProcessor and BatchProcessor without creating circular dependencies.
 """
 
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Iterable
 from .batch_processor import BatchProcessor, BatchConfig, BatchProgressReporter
+from ..utils.telemetry import TelemetryPublisher, normalize_publishers
 
 
 class ProcessingOrchestrator:
@@ -17,7 +18,11 @@ class ProcessingOrchestrator:
     eliminating circular dependencies while providing convenient high-level APIs.
     """
     
-    def __init__(self, issue_processor):
+    def __init__(
+        self,
+        issue_processor,
+        telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None,
+    ):
         """
         Initialize processing orchestrator.
         
@@ -25,6 +30,7 @@ class ProcessingOrchestrator:
             issue_processor: GitHub-integrated issue processor instance
         """
         self.issue_processor = issue_processor
+        self.telemetry_publishers = normalize_publishers(telemetry_publishers)
     
     def process_batch(self, 
                      issue_numbers: List[int],
@@ -58,7 +64,8 @@ class ProcessingOrchestrator:
             issue_processor=self.issue_processor,
             github_client=self.issue_processor.github,
             config=batch_config,
-            progress_reporter=progress_reporter
+            progress_reporter=progress_reporter,
+            telemetry_publishers=self.telemetry_publishers,
         )
         
         # Process the batch
@@ -103,7 +110,8 @@ class ProcessingOrchestrator:
             issue_processor=self.issue_processor,
             github_client=self.issue_processor.github,
             config=batch_config,
-            progress_reporter=progress_reporter
+            progress_reporter=progress_reporter,
+            telemetry_publishers=self.telemetry_publishers,
         )
         
         # Process all site-monitor issues

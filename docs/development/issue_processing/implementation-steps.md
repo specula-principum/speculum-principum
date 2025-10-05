@@ -4,6 +4,8 @@
 
 This document provides detailed implementation steps for transforming the issue processor to utilize AI-powered content extraction and specialist workflows.
 
+> **Update — 2025-09-30:** Steps referring to the standalone `process-copilot-issues` CLI are now historical. The unified `process-issues` command owns Copilot handoff and specialist assignment.
+
 ## Phase 1: Foundation Enhancement
 
 ### Step 1.1: Copilot Assignment Detection
@@ -76,79 +78,12 @@ def _should_process_copilot_issue(self, issue) -> bool:
 #### 1.1.2: Update Batch Processor
 **File**: `src/core/batch_processor.py`
 
-**Add new method**:
-```python
-def process_copilot_assigned_issues(self,
-                                   specialist_filter: Optional[str] = None,
-                                   dry_run: bool = False) -> Tuple[BatchMetrics, List[ProcessingResult]]:
-    """
-    Process all Copilot-assigned issues with AI content extraction.
-    
-    Args:
-        specialist_filter: Filter by specialist type (intelligence-analyst, osint-researcher, etc.)
-        dry_run: If True, only analyze what would be processed
-        
-    Returns:
-        Tuple of (batch metrics, list of processing results)
-    """
-    # Get Copilot-assigned issues from the processor
-    if hasattr(self.issue_processor, 'get_copilot_assigned_issues'):
-        issues = self.issue_processor.get_copilot_assigned_issues()
-    else:
-        self.logger.error("Issue processor does not support Copilot assignment detection")
-        return BatchMetrics(), []
-    
-    # Filter by specialist type if specified
-    if specialist_filter:
-        issues = self._filter_by_specialist_requirements(issues, specialist_filter)
-    
-    issue_numbers = [issue['number'] for issue in issues]
-    
-    if not issue_numbers:
-        self.logger.info("No Copilot-assigned issues found for processing")
-        return BatchMetrics(), []
-    
-    return self.process_issues(issue_numbers, dry_run=dry_run)
-```
+> **Historical note:** Earlier iterations introduced `process_copilot_assigned_issues()` to wrap Copilot-specific batching. As of 2025-09-30, this helper has been removed. Ensure `process_issues()` respects workflow state filters (`state::assigned`, `state::copilot`) so Copilot work queues route through the unified path.
 
 #### 1.1.3: Update CLI Handler
 **File**: `main.py`
 
-**Add new CLI command parser**:
-```python
-def setup_process_copilot_issues_parser(subparsers) -> None:
-    """Set up process-copilot-issues command parser."""
-    copilot_parser = subparsers.add_parser(
-        'process-copilot-issues',
-        help='Process issues assigned to GitHub Copilot with AI content extraction'
-    )
-    copilot_parser.add_argument(
-        '--config',
-        default='config.yaml',
-        help='Configuration file path'
-    )
-    copilot_parser.add_argument(
-        '--specialist',
-        choices=['intelligence-analyst', 'osint-researcher', 'target-profiler', 'threat-hunter'],
-        help='Filter by specialist workflow type'
-    )
-    copilot_parser.add_argument(
-        '--limit',
-        type=int,
-        default=10,
-        help='Maximum issues to process'
-    )
-    copilot_parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Show what would be processed without making changes'
-    )
-    copilot_parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Show detailed progress information'
-    )
-```
+> **Historical note:** The dedicated `process-copilot-issues` parser/handler has been retired. Extend `process-issues` CLI options (e.g., `--label-filter`, `--assignee-filter`, `--from-monitor`) to cover Copilot handoff scenarios and maintain dry-run safeguards.
 
 ### Step 1.2: AI Content Extraction Engine
 

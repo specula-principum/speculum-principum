@@ -1,0 +1,317 @@
+name: Operations · Issue Processing
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Specific issue number to process (optional)'
+        required: false
+        type: number
+      batch_size:
+        description: 'Maximum number of issues to process in batch mode'
+        required: false
+        type: number
+        default: 5
+      assignee_filter:
+        description: 'Only process issues assigned to this user (or "none" for unassigned)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Perform dry run without making changes'
+        required: false
+        type: boolean
+        default: true
+      verbose:
+        description: 'Show detailed progress information'
+        required: false
+        type: boolean
+        default: true
+  schedule:
+    - cron: '5 */4 * * *'
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: ops-issue-processing-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    name: Inventory Assigned Issues
+    runs-on: ubuntu-latest
+    outputs:
+      should_process: ${{ steps.check.outputs.should_process }}
+      assigned_count: ${{ steps.check.outputs.assigned_count }}
+      triage_stuck_count: ${{ steps.check.outputs.triage_stuck_count }}
+    steps:
+      - name: Evaluate processing prerequisites
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number }}
+        run: |
+          set -euo pipefail
+
+          SHOULD_PROCESS="false"
+
+          if [ "$EVENT_NAME" = "issues" ]; then
+            if [ "${LABEL_NAME:-}" != "state::assigned" ]; then
+              echo "Label '${LABEL_NAME:-}' is not state::assigned — skipping."
+              echo "should_process=false" >> "$GITHUB_OUTPUT"
+              echo "assigned_count=0" >> "$GITHUB_OUTPUT"
+              echo "triage_stuck_count=0" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "🔎 Counting open issues labeled state::assigned…"
+          ASSIGNED_JSON=$(gh issue list --state open --label "state::assigned" --json number,labels --limit 200 || echo "[]")
+          ASSIGNED_COUNT=$(python -c 'import json,sys; data=json.loads(sys.stdin.read() or "[]"); print(len(data))' <<< "$ASSIGNED_JSON")
+
+          echo "🔎 Checking for monitor::triage lingering on assigned issues…"
+          TRIAGE_STUCK=$(python -c 'import json,sys; data=json.loads(sys.stdin.read() or "[]"); print(sum(1 for issue in data if any(lbl.get("name")=="monitor::triage" for lbl in issue.get("labels", []))))' <<< "$ASSIGNED_JSON")
+
+          if [ "$ASSIGNED_COUNT" -gt 0 ]; then
+            SHOULD_PROCESS="true"
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "${ISSUE_NUMBER_INPUT}" ]; then
+            SHOULD_PROCESS="true"
+          fi
+
+          echo "should_process=${SHOULD_PROCESS}" >> "$GITHUB_OUTPUT"
+          echo "assigned_count=${ASSIGNED_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "triage_stuck_count=${TRIAGE_STUCK}" >> "$GITHUB_OUTPUT"
+
+          echo "Found ${ASSIGNED_COUNT} assigned issues (triage-stuck: ${TRIAGE_STUCK})."
+
+      - name: Record inventory summary
+        if: github.event_name != 'issues' || steps.check.outputs.should_process == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ASSIGNED_COUNT: ${{ steps.check.outputs.assigned_count }}
+          TRIAGE_STUCK: ${{ steps.check.outputs.triage_stuck_count }}
+        run: |
+          {
+            echo "## Assigned Issue Inventory";
+            echo "- **Trigger:** ${EVENT_NAME}";
+            echo "- **state::assigned issues:** ${ASSIGNED_COUNT}";
+            echo "- **monitor::triage drift:** ${TRIAGE_STUCK}";
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  process:
+    name: Process Assigned Issues
+    runs-on: ubuntu-latest
+    needs: inventory
+    if: needs.inventory.outputs.should_process == 'true' || github.event_name == 'workflow_dispatch'
+    env:
+      TELEMETRY_DIR: ${{ runner.temp }}/telemetry
+      SMOKE_LOG: ${{ runner.temp }}/process-smoke.log
+      PROCESS_LOG: ${{ runner.temp }}/process-live.log
+    steps:
+      - name: Verify monitor::triage cleared
+        if: needs.inventory.outputs.triage_stuck_count != '0' && github.event_name != 'workflow_dispatch'
+        run: |
+          echo "::error::Found ${{ needs.inventory.outputs.triage_stuck_count }} assigned issues still labeled monitor::triage. Abort processing to prevent state drift."
+          exit 1
+
+      - name: Warn about monitor::triage drift (manual run)
+        if: needs.inventory.outputs.triage_stuck_count != '0' && github.event_name == 'workflow_dispatch'
+        run: |
+          echo "::warning::monitor::triage still present on ${{ needs.inventory.outputs.triage_stuck_count }} assigned issues. Proceeding because this is a manual run."
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate required secrets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          missing=0
+
+          check_secret() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "::error::Missing required secret: ${name}"
+              missing=1
+            fi
+          }
+
+          check_secret "GITHUB_TOKEN" "$GITHUB_TOKEN"
+          check_secret "GOOGLE_API_KEY" "$GOOGLE_API_KEY"
+          check_secret "GOOGLE_SEARCH_ENGINE_ID" "$GOOGLE_SEARCH_ENGINE_ID"
+
+          if [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::At least one of OPENAI_API_KEY or ANTHROPIC_API_KEY must be configured."
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Secret validation failed."
+            exit 1
+          fi
+
+      - name: Configure runtime environment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cat > .env <<EOF
+          GITHUB_TOKEN=${GITHUB_TOKEN}
+          GOOGLE_API_KEY=${GOOGLE_API_KEY}
+          GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
+          OPENAI_API_KEY=${OPENAI_API_KEY}
+          ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+          EOF
+
+      - name: Smoke test (dry run)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_DIR }}/smoke
+          ASSIGNEE_FILTER_INPUT: ${{ github.event.inputs.assignee_filter }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${SPECULUM_CLI_TELEMETRY_DIR}"
+
+          ARGS=(
+            --config config.yaml
+            --batch-size 3
+            --dry-run
+            --continue-on-error
+            --label-filter state::assigned
+            --verbose
+          )
+
+          if [ -n "${ASSIGNEE_FILTER_INPUT}" ]; then
+            ARGS+=(--assignee-filter "${ASSIGNEE_FILTER_INPUT}")
+          fi
+
+          echo "🧪 Smoke testing: python main.py process-issues ${ARGS[*]}"
+          python main.py process-issues "${ARGS[@]}" | tee "$SMOKE_LOG"
+
+      - name: Process issues (execution)
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_DIR }}/live
+          ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number }}
+          BATCH_SIZE_INPUT: ${{ github.event.inputs.batch_size }}
+          ASSIGNEE_FILTER_INPUT: ${{ github.event.inputs.assignee_filter }}
+          VERBOSE_INPUT: ${{ github.event.inputs.verbose }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${SPECULUM_CLI_TELEMETRY_DIR}"
+
+          ARGS=(
+            --config config.yaml
+            --continue-on-error
+            --label-filter state::assigned
+          )
+
+          if [ -n "${ISSUE_NUMBER_INPUT}" ]; then
+            ARGS+=(--issue "${ISSUE_NUMBER_INPUT}")
+          else
+            BATCH_SIZE="${BATCH_SIZE_INPUT:-10}"
+            ARGS+=(--batch-size "${BATCH_SIZE}")
+          fi
+
+          if [ -n "${ASSIGNEE_FILTER_INPUT}" ]; then
+            ARGS+=(--assignee-filter "${ASSIGNEE_FILTER_INPUT}")
+          fi
+
+          if [ "${VERBOSE_INPUT:-true}" != "false" ]; then
+            ARGS+=(--verbose)
+          fi
+
+          echo "🚀 Executing: python main.py process-issues ${ARGS[*]}"
+          python main.py process-issues "${ARGS[@]}" 2>&1 | tee "$PROCESS_LOG"
+
+      - name: Capture metrics outputs
+        id: metrics
+        run: |
+          processed=0
+          success_rate=0
+          copilot_assignments=0
+
+          touch "$PROCESS_LOG"
+
+          if [ -s "$PROCESS_LOG" ]; then
+            processed=$(grep -o 'Processed [0-9]*/[0-9]*' "$PROCESS_LOG" 2>/dev/null | tail -1 | awk '{print $2}' | cut -d'/' -f1)
+            success_rate=$(grep -o 'Success rate: [0-9.]*' "$PROCESS_LOG" 2>/dev/null | tail -1 | awk '{print $3}')
+            copilot_assignments=$(grep -o '🤖 Copilot assignments: [0-9]*' "$PROCESS_LOG" 2>/dev/null | tail -1 | awk '{print $4}')
+          fi
+
+          echo "processed_count=${processed:-0}" >> "$GITHUB_OUTPUT"
+          echo "success_rate=${success_rate:-0}" >> "$GITHUB_OUTPUT"
+          echo "copilot_assignments=${copilot_assignments:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload telemetry artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: issue-processing-telemetry
+          path: |
+            ${{ env.TELEMETRY_DIR }}
+            ${{ env.SMOKE_LOG }}
+            ${{ env.PROCESS_LOG }}
+          retention-days: 7
+          if-no-files-found: ignore
+
+  summary:
+    name: Run Summary
+    needs: [inventory, process]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish summary
+        env:
+          SHOULD_PROCESS: ${{ needs.inventory.outputs.should_process }}
+          ASSIGNED_COUNT: ${{ needs.inventory.outputs.assigned_count }}
+          TRIAGE_STUCK: ${{ needs.inventory.outputs.triage_stuck_count }}
+          PROCESSED_COUNT: ${{ needs.process.outputs.processed_count || 0 }}
+          SUCCESS_RATE: ${{ needs.process.outputs.success_rate || 0 }}
+          COPILOT_ASSIGNMENTS: ${{ needs.process.outputs.copilot_assignments || 0 }}
+        run: |
+          {
+            echo "# 🧭 Issue Processing Summary";
+            echo "- **Triggered by:** ${{ github.event_name }}";
+            echo "- **Assigned issues detected:** ${ASSIGNED_COUNT}";
+            echo "- **monitor::triage drift:** ${TRIAGE_STUCK}";
+            echo "- **Processing attempted:** ${SHOULD_PROCESS}";
+            echo "";
+            echo "## Processing Metrics";
+            echo "- **Issues processed:** ${PROCESSED_COUNT}";
+            echo "- **Success rate:** ${SUCCESS_RATE}%";
+            echo "- **Copilot assignments:** ${COPILOT_ASSIGNMENTS}";
+          } >> "$GITHUB_STEP_SUMMARY"

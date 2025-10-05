@@ -1,0 +1,203 @@
+name: Operations · Daily Operations
+
+permissions:
+  contents: read
+  issues: read
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+    inputs:
+      assign_limit:
+        description: 'Maximum number of issues to inspect during workflow assignment dry run'
+        required: false
+        type: number
+        default: 5
+      process_batch_size:
+        description: 'Maximum number of issues to include in processing dry run'
+        required: false
+        type: number
+        default: 3
+      verbose:
+        description: 'Emit verbose CLI output for debugging'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: ops-daily-operations-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  daily-dry-run:
+    name: Daily Dry-Run Orchestration
+    runs-on: ubuntu-latest
+    env:
+      TELEMETRY_ROOT: ${{ runner.temp }}/telemetry/daily-ops
+      LOG_MONITOR: ${{ runner.temp }}/daily-monitor.log
+      LOG_ASSIGN: ${{ runner.temp }}/daily-assign.log
+      LOG_PROCESS: ${{ runner.temp }}/daily-process.log
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate required secrets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          missing=0
+
+          check_secret() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "::error::Missing required secret: ${name}"
+              missing=1
+            fi
+          }
+
+          check_secret "GITHUB_TOKEN" "$GITHUB_TOKEN"
+          check_secret "GOOGLE_API_KEY" "$GOOGLE_API_KEY"
+          check_secret "GOOGLE_SEARCH_ENGINE_ID" "$GOOGLE_SEARCH_ENGINE_ID"
+
+          if [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::At least one of OPENAI_API_KEY or ANTHROPIC_API_KEY must be configured."
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Secret validation failed."
+            exit 1
+          fi
+
+      - name: Configure environment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cat > .env <<EOF
+          GITHUB_TOKEN=${GITHUB_TOKEN}
+          GOOGLE_API_KEY=${GOOGLE_API_KEY}
+          GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
+          OPENAI_API_KEY=${OPENAI_API_KEY}
+          ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+          EOF
+
+      - name: Monitor (aggregate dry run)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_ROOT }}/monitor
+        run: |
+          set -euo pipefail
+          mkdir -p "${SPECULUM_CLI_TELEMETRY_DIR}"
+          mkdir -p "$(dirname "${LOG_MONITOR}")"
+          python main.py monitor --config config.yaml --no-individual-issues | tee "${LOG_MONITOR}"
+
+      - name: Assign workflows (dry run)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_ROOT }}/assign
+          VERBOSE_INPUT: ${{ github.event.inputs.verbose }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${SPECULUM_CLI_TELEMETRY_DIR}"
+
+          ASSIGN_LIMIT="${{ github.event.inputs.assign_limit }}"
+          if [ -z "${ASSIGN_LIMIT}" ]; then
+            ASSIGN_LIMIT="5"
+          fi
+
+          VERBOSE_FLAG=""
+          if [ "${VERBOSE_INPUT:-true}" != "false" ]; then
+            VERBOSE_FLAG="--verbose"
+          fi
+
+          mkdir -p "$(dirname "${LOG_ASSIGN}")"
+          python main.py assign-workflows \
+            --config config.yaml \
+            --limit "${ASSIGN_LIMIT}" \
+            --dry-run \
+            ${VERBOSE_FLAG} \
+            --statistics | tee "${LOG_ASSIGN}"
+
+      - name: Process issues (dry run)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_ROOT }}/process
+          VERBOSE_INPUT: ${{ github.event.inputs.verbose }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${SPECULUM_CLI_TELEMETRY_DIR}"
+
+          PROCESS_BATCH_SIZE="${{ github.event.inputs.process_batch_size }}"
+          if [ -z "${PROCESS_BATCH_SIZE}" ]; then
+            PROCESS_BATCH_SIZE="3"
+          fi
+
+          VERBOSE_FLAG=""
+          if [ "${VERBOSE_INPUT:-true}" != "false" ]; then
+            VERBOSE_FLAG="--verbose"
+          fi
+
+          mkdir -p "$(dirname "${LOG_PROCESS}")"
+          python main.py process-issues \
+            --config config.yaml \
+            --dry-run \
+            --batch-size "${PROCESS_BATCH_SIZE}" \
+            --continue-on-error \
+            --label-filter state::assigned \
+            ${VERBOSE_FLAG} | tee "${LOG_PROCESS}"
+
+      - name: Upload dry-run artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: daily-operations-dry-run
+          path: |
+            ${{ env.TELEMETRY_ROOT }}
+            ${{ env.LOG_MONITOR }}
+            ${{ env.LOG_ASSIGN }}
+            ${{ env.LOG_PROCESS }}
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "# 🧪 Daily Operations Dry Run";
+            echo "- **Trigger:** ${{ github.event_name }}";
+            echo "- **Assign limit:** ${{ github.event.inputs.assign_limit || 5 }}";
+            echo "- **Process batch size:** ${{ github.event.inputs.process_batch_size || 3 }}";
+            echo "- **Verbose:** ${{ github.event.inputs.verbose || 'true' }}";
+            echo "";
+            echo "Artifacts archived under \\"daily-operations-dry-run\\".";
+            echo "All commands executed in dry-run / aggregate mode using validated CLI sequence.";
+          } >> "$GITHUB_STEP_SUMMARY"

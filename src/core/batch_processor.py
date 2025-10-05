@@ -22,7 +22,7 @@ Key features:
 
 import logging
 import time
-from typing import Dict, List, Optional, Set, Tuple, Any, Callable
+from typing import Dict, List, Optional, Set, Tuple, Any, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -32,6 +32,11 @@ import json
 from .issue_processor import IssueProcessor, IssueProcessingStatus, ProcessingResult, IssueData
 from ..clients.github_issue_creator import GitHubIssueCreator
 from ..utils.config_manager import ConfigManager
+from ..utils.telemetry import (
+    TelemetryPublisher,
+    normalize_publishers,
+    publish_telemetry_event,
+)
 
 
 @dataclass
@@ -60,6 +65,10 @@ class BatchMetrics:
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     processing_times: List[float] = field(default_factory=list)
+    copilot_assignment_count: int = 0
+    copilot_assignees: Set[str] = field(default_factory=set)
+    copilot_due_dates: List[str] = field(default_factory=list)
+    preview_count: int = 0
     
     @property
     def duration_seconds(self) -> float:
@@ -81,6 +90,72 @@ class BatchMetrics:
         if self.processed_count > 0:
             return (self.success_count / self.processed_count) * 100
         return 0.0
+
+    @property
+    def next_copilot_due_at(self) -> Optional[str]:
+        """Return the soonest Copilot due date (ISO string) if available."""
+        if not self.copilot_due_dates:
+            return None
+
+        parsed_dates: List[Tuple[datetime, str]] = []
+        for due in self.copilot_due_dates:
+            try:
+                normalized = due.replace('Z', '+00:00')
+                parsed_dates.append((datetime.fromisoformat(normalized), due))
+            except ValueError:
+                # Leave unparsable dates as-is at the end of the list
+                parsed_dates.append((datetime.max.replace(tzinfo=timezone.utc), due))
+
+        if not parsed_dates:
+            return None
+
+        return sorted(parsed_dates, key=lambda item: item[0])[0][1]
+
+    def register_copilot_assignment(self, assignee: Optional[str], due_at: Optional[str]) -> None:
+        """Record Copilot assignment metadata for aggregated reporting."""
+        self.copilot_assignment_count += 1
+        if assignee:
+            self.copilot_assignees.add(assignee)
+        if due_at:
+            self.copilot_due_dates.append(due_at)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return a JSON-serializable representation of the metrics."""
+        return {
+            'total_issues': self.total_issues,
+            'processed_count': self.processed_count,
+            'success_count': self.success_count,
+            'error_count': self.error_count,
+            'skipped_count': self.skipped_count,
+            'clarification_count': self.clarification_count,
+            'duration_seconds': self.duration_seconds,
+            'average_processing_time': self.average_processing_time,
+            'success_rate': self.success_rate,
+            'start_time': self.start_time.isoformat() if self.start_time else None,
+            'end_time': self.end_time.isoformat() if self.end_time else None,
+            'copilot_assignments': {
+                'count': self.copilot_assignment_count,
+                'assignees': sorted(self.copilot_assignees),
+                'due_dates': sorted(self.copilot_due_dates),
+                'next_due_at': self.next_copilot_due_at,
+            },
+            'preview_count': self.preview_count,
+        }
+
+
+@dataclass
+class SiteMonitorIssueDiscovery:
+    """Structured response describing site-monitor issue discovery results."""
+
+    issue_numbers: List[int]
+    filters: Dict[str, Any]
+    total_found: int
+    issues: Optional[List[Any]] = None
+
+    @property
+    def count(self) -> int:
+        """Return the number of issues discovered."""
+        return len(self.issue_numbers)
 
 
 class BatchProgressReporter:
@@ -186,7 +261,8 @@ class BatchProcessor:
                  issue_processor: IssueProcessor,
                  github_client: GitHubIssueCreator,
                  config: Optional[BatchConfig] = None,
-                 progress_reporter: Optional[BatchProgressReporter] = None):
+                 progress_reporter: Optional[BatchProgressReporter] = None,
+                 telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None):
         """
         Initialize batch processor.
         
@@ -200,13 +276,14 @@ class BatchProcessor:
         self.github_client = github_client
         self.config = config or BatchConfig()
         self.progress_reporter = progress_reporter or BatchProgressReporter()
+        self.telemetry_publishers = normalize_publishers(telemetry_publishers)
         self.logger = logging.getLogger(__name__)
         
         # State tracking
         self._processing_state: Dict[str, Any] = {}
         self._cancelled = False
     
-    def process_site_monitor_issues(self, 
+    def process_site_monitor_issues(self,
                                    filters: Optional[Dict[str, Any]] = None,
                                    dry_run: bool = False) -> Tuple[BatchMetrics, List[ProcessingResult]]:
         """
@@ -220,66 +297,13 @@ class BatchProcessor:
             Tuple of (batch metrics, list of processing results)
         """
         # Find all site-monitor issues
-        issues = self._find_site_monitor_issues(filters or {})
-        
-        if not issues:
+        discovery = self.find_site_monitor_issues(filters, include_details=False)
+
+        if not discovery.issue_numbers:
             self.logger.info("No site-monitor issues found for processing")
             return BatchMetrics(), []
-        
-        return self.process_issues(issues, dry_run=dry_run)
-    
-    def process_copilot_assigned_issues(self,
-                                       specialist_filter: Optional[str] = None,
-                                       dry_run: bool = False) -> Tuple[BatchMetrics, List[ProcessingResult]]:
-        """
-        Process all Copilot-assigned issues with AI content extraction.
-        
-        Args:
-            specialist_filter: Filter by specialist type (intelligence-analyst, osint-researcher, etc.)
-            dry_run: If True, only analyze what would be processed
-            
-        Returns:
-            Tuple of (batch metrics, list of processing results)
-        """
-        # Get Copilot-assigned issues from the processor
-        if hasattr(self.issue_processor, 'get_copilot_assigned_issues'):
-            issues = self.issue_processor.get_copilot_assigned_issues()
-        else:
-            self.logger.error("Issue processor does not support Copilot assignment detection")
-            return BatchMetrics(), []
-        
-        if not issues:
-            self.logger.info("No Copilot-assigned issues found for processing")
-            return BatchMetrics(), []
-        
-        # Apply specialist filter if provided
-        if specialist_filter:
-            filtered_issues = []
-            for issue in issues:
-                labels = issue.get('labels', [])
-                specialist_labels = [
-                    'intelligence-analyst', 'osint-researcher', 'target-profiler',
-                    'threat-hunter', 'business-analyst'
-                ]
-                
-                # Check if issue has the requested specialist label
-                if specialist_filter in labels or any(
-                    label for label in labels 
-                    if specialist_filter.replace('-', '_') in label.replace('-', '_')
-                ):
-                    filtered_issues.append(issue)
-            
-            issues = filtered_issues
-            self.logger.info(f"Filtered to {len(issues)} issues for specialist: {specialist_filter}")
-        
-        if not issues:
-            self.logger.info(f"No Copilot-assigned issues found matching specialist filter: {specialist_filter}")
-            return BatchMetrics(), []
-        
-        # Extract issue numbers for batch processing
-        issue_numbers = [issue['number'] for issue in issues]
-        
-        return self.process_issues(issue_numbers, dry_run=dry_run)
+
+        return self.process_issues(discovery.issue_numbers, dry_run=dry_run)
     
     def process_issues(self, 
                       issue_numbers: List[int],
@@ -347,6 +371,21 @@ class BatchProcessor:
         finally:
             metrics.end_time = datetime.now(timezone.utc)
             self.progress_reporter.report_final_summary(metrics)
+            publish_telemetry_event(
+                self.telemetry_publishers,
+                'batch_processor.summary',
+                {
+                    'metrics': metrics.to_dict(),
+                    'copilot_assignment_count': metrics.copilot_assignment_count,
+                    'next_copilot_due_at': metrics.next_copilot_due_at,
+                    'context': {
+                        'total_requested': len(issue_numbers),
+                        'dry_run': dry_run,
+                        'batched': bool(issue_numbers),
+                    },
+                },
+                logger=self.logger,
+            )
         
         return metrics, all_results
     
@@ -355,75 +394,84 @@ class BatchProcessor:
         self._cancelled = True
         self.logger.info("Batch processing cancellation requested")
     
-    def _find_site_monitor_issues(self, filters: Dict[str, Any]) -> List[int]:
-        """
-        Find all issues with site-monitor label that match filters.
-        
+    def find_site_monitor_issues(
+        self,
+        filters: Optional[Dict[str, Any]] = None,
+        *,
+        include_details: bool = False,
+    ) -> "SiteMonitorIssueDiscovery":
+        """Return site-monitor issues that satisfy the provided filters.
+
         Args:
-            filters: Filter criteria for issue selection
-            
+            filters: Optional filter criteria (assignee, additional_labels).
+            include_details: When True, include the filtered issue objects in the
+                result for downstream consumers that need metadata (title, labels).
+
         Returns:
-            List of issue numbers matching criteria
+            SiteMonitorIssueDiscovery describing the issues that matched.
         """
+
+        normalized_filters = dict(filters or {})
+
         try:
-            # Query GitHub for site-monitor issues
-            query_parts = ['label:site-monitor', 'state:open']
-            
-            # Add assignee filter if specified
-            if filters.get('assignee'):
-                if filters['assignee'] == 'none':
-                    query_parts.append('no:assignee')
-                else:
-                    query_parts.append(f'assignee:{filters["assignee"]}')
-            elif not self.config.include_assigned:
-                # By default, skip assigned issues to avoid conflicts
-                query_parts.append('no:assignee')
-            
-            # Add additional label filters
-            if filters.get('additional_labels'):
-                for label in filters['additional_labels']:
-                    query_parts.append(f'label:{label}')
-            
-            # Execute search using get_issues_with_labels
             issues = self.github_client.get_issues_with_labels(['site-monitor'], state='open')
-            
-            # Filter based on assignee criteria
-            filtered_issues = []
-            for issue in issues:
-                # Check assignee filter
-                if filters.get('assignee'):
-                    if filters['assignee'] == 'none':
-                        if issue.assignee is not None:
-                            continue
-                    else:
-                        if not issue.assignee or issue.assignee.login != filters['assignee']:
-                            continue
-                elif not self.config.include_assigned:
-                    # By default, skip assigned issues to avoid conflicts
-                    if issue.assignee is not None:
-                        continue
-                
-                # Check additional label filters
-                if filters.get('additional_labels'):
-                    issue_labels = [label.name for label in issue.labels]
-                    if not any(label in issue_labels for label in filters['additional_labels']):
-                        continue
-                
-                filtered_issues.append(issue)
-            
-            # Extract issue numbers
-            issue_numbers = [issue.number for issue in filtered_issues]
-            
-            # Apply priority sorting if configured
-            if self.config.priority_labels:
-                issue_numbers = self._sort_by_priority(issue_numbers, filtered_issues)
-            
-            self.logger.info(f"Found {len(issue_numbers)} site-monitor issues for processing")
-            return issue_numbers
-        
-        except Exception as e:
-            self.logger.error(f"Failed to find site-monitor issues: {e}")
-            return []
+        except Exception as exc:
+            self.logger.error(f"Failed to find site-monitor issues: {exc}")
+            return SiteMonitorIssueDiscovery(
+                issue_numbers=[],
+                issues=[] if include_details else None,
+                filters=normalized_filters,
+                total_found=0,
+            )
+
+        filtered_issues: List[Any] = []
+        for issue in issues:
+            if self._should_skip_issue(issue, normalized_filters):
+                continue
+            filtered_issues.append(issue)
+
+        issue_numbers = [issue.number for issue in filtered_issues]
+
+        if self.config.priority_labels and issue_numbers:
+            issue_numbers = self._sort_by_priority(issue_numbers, filtered_issues)
+            if include_details:
+                issue_lookup = {issue.number: issue for issue in filtered_issues}
+                filtered_issues = [issue_lookup[number] for number in issue_numbers]
+        elif include_details:
+            # Preserve original ordering when no priority sorting occurs
+            filtered_issues = list(filtered_issues)
+
+        self.logger.info(f"Found {len(issue_numbers)} site-monitor issues for processing")
+
+        return SiteMonitorIssueDiscovery(
+            issue_numbers=issue_numbers,
+            issues=filtered_issues if include_details else None,
+            filters=normalized_filters,
+            total_found=len(issue_numbers),
+        )
+
+    def _should_skip_issue(self, issue: Any, filters: Dict[str, Any]) -> bool:
+        """Determine whether an issue should be skipped according to filters."""
+
+        # Assignee filtering
+        if filters.get('assignee'):
+            requested = filters['assignee']
+            if requested == 'none':
+                if issue.assignee is not None:
+                    return True
+            else:
+                if not issue.assignee or getattr(issue.assignee, 'login', None) != requested:
+                    return True
+        elif not self.config.include_assigned and issue.assignee is not None:
+            return True
+
+        # Additional label filtering
+        if filters.get('additional_labels'):
+            issue_labels = [label.name for label in getattr(issue, 'labels', [])]
+            if not any(label in issue_labels for label in filters['additional_labels']):
+                return True
+
+        return False
     
     def _sort_by_priority(self, issue_numbers: List[int], issues: List[Any]) -> List[int]:
         """Sort issues by priority labels."""
@@ -541,7 +589,8 @@ class BatchProcessor:
                         updated_at=datetime.now(timezone.utc),
                         url=issue_data_dict.get('url', '')
                     )
-                    # Return analysis result (similar to processing but without side effects)
+                    if hasattr(self.issue_processor, 'generate_preview_result'):
+                        return self.issue_processor.generate_preview_result(issue_data)  # type: ignore[union-attr]
                     return ProcessingResult(
                         issue_number=issue_number,
                         status=IssueProcessingStatus.PENDING,
@@ -595,6 +644,12 @@ class BatchProcessor:
             
             if result.status == IssueProcessingStatus.COMPLETED:
                 metrics.success_count += 1
+                if any([result.copilot_assignee, result.copilot_due_at, result.handoff_summary]):
+                    metrics.register_copilot_assignment(result.copilot_assignee, result.copilot_due_at)
+            elif result.status == IssueProcessingStatus.PREVIEW:
+                metrics.preview_count += 1
+                if any([result.copilot_assignee, result.copilot_due_at, result.handoff_summary]):
+                    metrics.register_copilot_assignment(result.copilot_assignee, result.copilot_due_at)
             elif result.status == IssueProcessingStatus.ERROR:
                 metrics.error_count += 1
             elif result.status == IssueProcessingStatus.NEEDS_CLARIFICATION:
@@ -608,25 +663,18 @@ class BatchProcessor:
     
     def save_batch_results(self, 
                           results: List[ProcessingResult], 
-                          output_path: str) -> None:
+                          output_path: str,
+                          metrics: Optional[BatchMetrics] = None) -> None:
         """Save batch processing results to file."""
         try:
             results_data = {
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'total_issues': len(results),
-                'results': [
-                    {
-                        'issue_number': r.issue_number,
-                        'status': r.status.value,
-                        'error_message': r.error_message,
-                        'clarification_needed': r.clarification_needed,
-                        'processing_time_seconds': r.processing_time_seconds,
-                        'created_files': r.created_files or [],
-                        'workflow_name': r.workflow_name
-                    }
-                    for r in results
-                ]
+                'results': [r.to_dict() for r in results],
             }
+
+            if metrics:
+                results_data['metrics'] = metrics.to_dict()
             
             output_file = Path(output_path)
             output_file.parent.mkdir(parents=True, exist_ok=True)

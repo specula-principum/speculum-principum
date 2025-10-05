@@ -12,7 +12,7 @@ The workflows are organized into two main categories:
 ### Operations Workflows
 
 #### Site Monitoring & Issue Processing
-- **`ops-site-monitoring.yml`** - Scheduled site monitoring operations
+- **`ops-site-monitoring.yml`** - On-demand site monitoring operations
 - **`ops-workflow-assignment.yml`** - Assign workflows to unassigned site-monitor issues
 - **`ops-issue-processing.yml`** - Automated issue processing with workflow-based deliverable generation
 
@@ -91,7 +91,6 @@ Performs scheduled monitoring of configured websites and creates issues for new 
 
 ### Triggers
 
-- **Scheduled**: Daily monitoring (configurable schedule)
 - **Manual Dispatch**: For on-demand monitoring with safety options
 
 ## Operations - Issue Processing (`ops-issue-processing.yml`)

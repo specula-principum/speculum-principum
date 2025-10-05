@@ -7,21 +7,45 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Any, Iterable
 from pathlib import Path
 
 from ..utils.config_manager import MonitorConfig, load_config_with_env_substitution
 from ..clients.search_client import GoogleCustomSearchClient, SearchResult, create_search_summary
 from .deduplication import DeduplicationManager, ProcessedEntry
 from ..clients.github_issue_creator import GitHubIssueCreator
+from ..utils.telemetry import (
+    TelemetryPublisher,
+    normalize_publishers,
+    publish_telemetry_event,
+)
 
 # Import issue processor only when needed to avoid circular dependencies
 try:
-    from .issue_processor import IssueProcessor
+    from .issue_processor import (
+        GitHubIntegratedIssueProcessor,
+        IssueProcessor,
+        IssueData,
+        ProcessingResult,
+        IssueProcessingStatus,
+    )
     ISSUE_PROCESSOR_AVAILABLE = True
 except ImportError:
     ISSUE_PROCESSOR_AVAILABLE = False
+
+try:
+    from .batch_processor import (
+        BatchMetrics,
+        BatchProcessor,
+        BatchConfig,
+        SiteMonitorIssueDiscovery,
+    )
+except ImportError:
+    BatchMetrics = None
+    BatchProcessor = None
+    BatchConfig = None
+    SiteMonitorIssueDiscovery = None
 
 
 # Configure logging
@@ -40,9 +64,19 @@ logger = logging.getLogger(__name__)
 class SiteMonitorService:
     """Main service for monitoring sites and creating GitHub issues"""
     
-    def __init__(self, config: MonitorConfig, github_token: str):
+    def __init__(
+        self,
+        config: MonitorConfig,
+        github_token: str,
+        config_path: str = "config.yaml",
+        telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None,
+    ):
         self.config = config
         self.github_token = github_token
+        self.config_path = config_path
+        setattr(self.config, 'config_path', config_path)
+        self.repository = config.github.repository
+        self.telemetry_publishers = normalize_publishers(telemetry_publishers)
         
         # Initialize components
         self.search_client = GoogleCustomSearchClient(config.search)
@@ -61,21 +95,126 @@ class SiteMonitorService:
             hasattr(config, 'agent') and 
             getattr(config.agent, 'enabled', False)):
             try:
-                self.issue_processor = IssueProcessor(
-                    config_path=getattr(config, 'config_path', 'config.yaml'),
-                    workflow_dir=getattr(config.agent, 'workflow_dir', None),
-                    output_base_dir=getattr(config.agent, 'output_dir', None),
-                    enable_git=getattr(config.agent, 'enable_git', True)
+                workflow_dir = getattr(config.agent, 'workflow_directory', getattr(config.agent, 'workflow_dir', None))
+                output_dir = getattr(config.agent, 'output_directory', getattr(config.agent, 'output_dir', None))
+                enable_git = getattr(config.agent, 'enable_git', True)
+
+                self.issue_processor = GitHubIntegratedIssueProcessor(
+                    github_token=github_token,
+                    repository=config.github.repository,
+                    config_path=config_path,
+                    workflow_dir=workflow_dir,
+                    output_base_dir=output_dir,
                 )
-                logger.info("Issue processor initialized and enabled")
+                if enable_git is False:
+                    self.issue_processor.enable_git = False
+                logger.info("GitHub-integrated issue processor initialized and enabled")
             except Exception as e:
                 logger.warning(f"Failed to initialize issue processor: {e}")
                 self.issue_processor = None
-        
+
+        self._base_batch_config = None
+
         # Set logging level
         logging.getLogger().setLevel(getattr(logging, config.log_level))
         logger.info(f"Initialized SiteMonitorService for repository: {config.github.repository}")
     
+    def add_telemetry_publisher(self, publisher: TelemetryPublisher) -> None:
+        """Register an additional telemetry publisher at runtime."""
+        self.telemetry_publishers.append(publisher)
+
+    def _publish_telemetry(self, event_type: str, payload: Dict[str, Any]) -> None:
+        """Emit telemetry event if publishers are configured."""
+        publish_telemetry_event(self.telemetry_publishers, event_type, payload, logger=logger)
+
+    @staticmethod
+    def _normalize_timestamp(value: Optional[datetime]) -> datetime:
+        """Normalize datetime values to timezone-aware UTC."""
+        if not value:
+            return datetime.now(timezone.utc)
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _get_batch_processor(self, include_assigned: bool):
+        """Instantiate a BatchProcessor aligned with site-monitor settings."""
+
+        if not BatchProcessor or not BatchConfig or not self.issue_processor:
+            return None
+
+        if self._base_batch_config is None:
+            self._base_batch_config = BatchConfig()
+            if hasattr(self.config, 'agent'):
+                batch_size = getattr(self.config.agent, 'batch_size', None)
+                if isinstance(batch_size, int) and batch_size > 0:
+                    self._base_batch_config.max_batch_size = batch_size
+                max_workers = getattr(self.config.agent, 'max_concurrent_workers', None)
+                if isinstance(max_workers, int) and max_workers > 0:
+                    self._base_batch_config.max_concurrent_workers = max_workers
+
+        batch_config = BatchConfig(
+            max_batch_size=self._base_batch_config.max_batch_size,
+            max_concurrent_workers=self._base_batch_config.max_concurrent_workers,
+            retry_count=self._base_batch_config.retry_count,
+            retry_delay_seconds=self._base_batch_config.retry_delay_seconds,
+            rate_limit_delay=self._base_batch_config.rate_limit_delay,
+            timeout_seconds=self._base_batch_config.timeout_seconds,
+            stop_on_first_error=self._base_batch_config.stop_on_first_error,
+            include_assigned=include_assigned,
+            priority_labels=list(self._base_batch_config.priority_labels),
+        )
+
+        return BatchProcessor(
+            issue_processor=self.issue_processor,
+            github_client=self.github_client,
+            config=batch_config,
+            telemetry_publishers=self.telemetry_publishers,
+        )
+
+    def _process_issue_with_agent(self, issue: Any) -> ProcessingResult:
+        """Process a GitHub issue using the configured issue processor."""
+        if not self.issue_processor:
+            raise RuntimeError("Issue processor is not configured")
+
+        if hasattr(self.issue_processor, 'process_github_issue'):
+            return self.issue_processor.process_github_issue(issue.number)
+
+        labels = [label.name for label in getattr(issue, 'labels', []) or []]
+        assignees = [assignee.login for assignee in getattr(issue, 'assignees', []) or []]
+
+        created_at = self._normalize_timestamp(getattr(issue, 'created_at', None))
+        updated_at = self._normalize_timestamp(getattr(issue, 'updated_at', None))
+
+        issue_data = IssueData(
+            number=issue.number,
+            title=getattr(issue, 'title', ''),
+            body=getattr(issue, 'body', ''),
+            labels=labels,
+            assignees=assignees,
+            created_at=created_at,
+            updated_at=updated_at,
+            url=getattr(issue, 'html_url', '')
+        )
+
+        return self.issue_processor.process_issue(issue_data)
+
+    @staticmethod
+    def _serialize_processing_result(issue_number: int, result: ProcessingResult) -> Dict[str, Any]:
+        """Convert a processing result to a serializable dictionary."""
+        status_value = result.status.value if hasattr(result.status, 'value') else str(result.status)
+        return {
+            'issue_number': issue_number,
+            'status': status_value,
+            'workflow': result.workflow_name or 'none',
+            'deliverables': result.created_files or [],
+            'error': result.error_message,
+            'copilot_assignee': result.copilot_assignee,
+            'copilot_due_at': result.copilot_due_at,
+            'handoff_summary': result.handoff_summary,
+            'specialist_guidance': result.specialist_guidance,
+            'copilot_assignment': result.copilot_assignment,
+        }
+
     def run_monitoring_cycle(self, create_individual_issues: bool = True) -> Dict[str, Any]:
         """
         Run a complete monitoring cycle
@@ -142,6 +281,19 @@ class SiteMonitorService:
             
             logger.info(f"Monitoring cycle completed successfully in {cycle_duration:.2f} seconds")
             logger.info(f"Found {total_new_results} new results across {len(self.config.sites)} sites")
+
+            self._publish_telemetry(
+                'site_monitor.cycle.summary',
+                {
+                    'cycle_start': cycle_start.isoformat(),
+                    'cycle_end': cycle_end.isoformat(),
+                    'cycle_duration_seconds': cycle_duration,
+                    'sites_monitored': len(self.config.sites),
+                    'new_results_found': total_new_results,
+                    'individual_issues_created': len(individual_issues),
+                    'issues_processed': len(issue_processing_results),
+                },
+            )
             
             return results
             
@@ -246,14 +398,8 @@ class SiteMonitorService:
                 logger.info(f"Processing issue #{issue.number} with automated workflow")
                 
                 # Process the issue using the issue processor
-                result = self.issue_processor.process_issue(issue.number)
-                processing_results.append({
-                    'issue_number': issue.number,
-                    'status': result.status.value if hasattr(result.status, 'value') else str(result.status),
-                    'workflow': result.workflow_name or 'none',
-                    'deliverables': result.created_files or [],
-                    'error': result.error_message
-                })
+                result = self._process_issue_with_agent(issue)
+                processing_results.append(self._serialize_processing_result(issue.number, result))
                 
                 # Add small delay between processing to avoid overwhelming the system
                 time.sleep(1)
@@ -265,7 +411,12 @@ class SiteMonitorService:
                     'status': 'error',
                     'workflow': 'none',
                     'deliverables': [],
-                    'error': str(e)
+                    'error': str(e),
+                    'copilot_assignee': None,
+                    'copilot_due_at': None,
+                    'handoff_summary': None,
+                    'specialist_guidance': None,
+                    'copilot_assignment': None,
                 })
         
         successful_processes = sum(1 for r in processing_results if r['status'] not in ['error', 'failed'])
@@ -359,37 +510,87 @@ class SiteMonitorService:
         
         try:
             logger.info("Scanning for existing site-monitor issues to process")
-            
-            # Get site-monitor labeled issues from GitHub
-            unprocessed_issues = self.github_client.get_unprocessed_monitoring_issues(
-                limit=limit,
-                force_reprocess=force_reprocess
-            )
-            
-            if not unprocessed_issues:
+            processing_start = datetime.now(timezone.utc)
+
+            filters: Dict[str, Any] = {}
+            if not force_reprocess:
+                filters['assignee'] = 'none'
+
+            discovery_context: Dict[str, Any] = {
+                'filters': filters.copy(),
+                'used_batch_processor': False,
+            }
+
+            issues_to_process: List[Any] = []
+            total_discovered = 0
+
+            batch_processor = self._get_batch_processor(include_assigned=force_reprocess)
+
+            if batch_processor:
+                discovery = batch_processor.find_site_monitor_issues(
+                    filters,
+                    include_details=True,
+                )
+                discovery_context.update({
+                    'used_batch_processor': True,
+                    'total_found': discovery.total_found,
+                })
+                candidate_issues = list(discovery.issues or [])
+                total_discovered = discovery.total_found
+
+                if not force_reprocess:
+                    filtered_issues: List[Any] = []
+                    for issue in candidate_issues:
+                        try:
+                            if self.github_client._issue_has_agent_activity(issue):
+                                continue
+                        except Exception as activity_exc:  # noqa: BLE001
+                            logger.debug(
+                                "Could not evaluate agent activity for issue #%s: %s",
+                                getattr(issue, 'number', 'unknown'),
+                                activity_exc,
+                            )
+                        filtered_issues.append(issue)
+                    candidate_issues = filtered_issues
+
+                discovery_context['after_activity_filter'] = len(candidate_issues)
+
+                if limit:
+                    candidate_issues = candidate_issues[:limit]
+                    discovery_context['limit_applied'] = limit
+
+                issues_to_process = candidate_issues
+            else:
+                issues_to_process = self.github_client.get_unprocessed_monitoring_issues(
+                    limit=limit,
+                    force_reprocess=force_reprocess
+                )
+                total_discovered = len(issues_to_process)
+                discovery_context.update({
+                    'total_found': total_discovered,
+                    'after_activity_filter': len(issues_to_process),
+                })
+
+            if not issues_to_process:
                 logger.info("No unprocessed site-monitor issues found")
                 return {
                     'success': True,
                     'processed_issues': [],
-                    'message': 'No unprocessed issues found'
+                    'message': 'No unprocessed issues found',
+                    'discovery': discovery_context,
+                    'total_found': total_discovered,
                 }
-            
-            logger.info(f"Found {len(unprocessed_issues)} unprocessed issues")
-            
+
+            logger.info(f"Found {len(issues_to_process)} unprocessed issues")
+
             # Process each issue
             processing_results = []
-            for issue in unprocessed_issues:
+            for issue in issues_to_process:
                 try:
                     logger.info(f"Processing existing issue #{issue.number}")
                     
-                    result = self.issue_processor.process_issue(issue.number)
-                    processing_results.append({
-                        'issue_number': issue.number,
-                        'status': result.status.value if hasattr(result.status, 'value') else str(result.status),
-                        'workflow': result.workflow_name or 'none',
-                        'deliverables': result.created_files or [],
-                        'error': result.error_message
-                    })
+                    result = self._process_issue_with_agent(issue)
+                    processing_results.append(self._serialize_processing_result(issue.number, result))
                     
                     # Brief delay between issues
                     time.sleep(1)
@@ -401,17 +602,76 @@ class SiteMonitorService:
                         'status': 'error',
                         'workflow': 'none',
                         'deliverables': [],
-                        'error': str(e)
+                        'error': str(e),
+                        'copilot_assignee': None,
+                        'copilot_due_at': None,
+                        'handoff_summary': None,
+                        'specialist_guidance': None,
+                        'copilot_assignment': None,
                     })
-            
+
             successful_processes = sum(1 for r in processing_results if r['status'] not in ['error', 'failed'])
-            logger.info(f"Existing issue processing completed: {successful_processes}/{len(unprocessed_issues)} issues processed successfully")
-            
+            logger.info(
+                "Existing issue processing completed: %s/%s issues processed successfully",
+                successful_processes,
+                len(issues_to_process),
+            )
+
+            metrics_payload = None
+            metrics = None
+            next_copilot_due = None
+            if BatchMetrics:
+                completed_status = IssueProcessingStatus.COMPLETED.value
+                error_status = IssueProcessingStatus.ERROR.value
+                clarification_status = IssueProcessingStatus.NEEDS_CLARIFICATION.value
+
+                success_count = sum(1 for r in processing_results if r['status'] == completed_status)
+                error_count = sum(1 for r in processing_results if r['status'] == error_status)
+                clarification_count = sum(1 for r in processing_results if r['status'] == clarification_status)
+
+                metrics = BatchMetrics(
+                    total_issues=len(issues_to_process),
+                    processed_count=len(processing_results),
+                    success_count=success_count,
+                    error_count=error_count,
+                    skipped_count=max(len(issues_to_process) - len(processing_results), 0),
+                    clarification_count=clarification_count,
+                    start_time=processing_start,
+                    end_time=datetime.now(timezone.utc),
+                )
+
+                for entry in processing_results:
+                    if entry.get('status') == completed_status and any(
+                        [entry.get('copilot_assignee'), entry.get('copilot_due_at'), entry.get('handoff_summary')]
+                    ):
+                        metrics.register_copilot_assignment(entry.get('copilot_assignee'), entry.get('copilot_due_at'))
+
+                metrics_payload = metrics.to_dict()
+                next_copilot_due = metrics.next_copilot_due_at
+
+            telemetry_metrics = metrics_payload or (metrics.to_dict() if metrics else None)
+            self._publish_telemetry(
+                'site_monitor.process_existing.summary',
+                {
+                    'metrics': telemetry_metrics,
+                    'next_copilot_due_at': next_copilot_due,
+                    'processed_issues': len(processing_results),
+                    'successful_processes': successful_processes,
+                    'limit': limit,
+                    'force_reprocess': force_reprocess,
+                    'discovery': discovery_context,
+                    'total_found': total_discovered,
+                },
+            )
+
             return {
                 'success': True,
                 'processed_issues': processing_results,
-                'total_found': len(unprocessed_issues),
-                'successful_processes': successful_processes
+                'total_found': total_discovered,
+                'successful_processes': successful_processes,
+                'metrics': metrics_payload,
+                'next_copilot_due_at': next_copilot_due,
+                'discovery': discovery_context,
             }
             
         except Exception as e:
@@ -423,7 +683,11 @@ class SiteMonitorService:
             }
 
 
-def create_monitor_service_from_config(config_path: str, github_token: str) -> SiteMonitorService:
+def create_monitor_service_from_config(
+    config_path: str,
+    github_token: str,
+    telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None,
+) -> SiteMonitorService:
     """
     Create a SiteMonitorService instance from configuration file
     
@@ -435,7 +699,12 @@ def create_monitor_service_from_config(config_path: str, github_token: str) -> S
         Configured SiteMonitorService instance
     """
     config = load_config_with_env_substitution(config_path)
-    return SiteMonitorService(config, github_token)
+    return SiteMonitorService(
+        config,
+        github_token,
+        config_path=config_path,
+        telemetry_publishers=telemetry_publishers,
+    )
 
 
 def main():

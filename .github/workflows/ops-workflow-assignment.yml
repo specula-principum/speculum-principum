@@ -1,4 +1,4 @@
-name: Operations -2 Workflow Assignment
+name: Operations · Workflow Assignment
 
 permissions:
   contents: read
@@ -43,8 +43,9 @@ jobs:
     name: Check if Workflow Assignment is Needed
     runs-on: ubuntu-latest
     outputs:
-      should_assign: ${{ steps.check.outputs.should_assign }}
-      unassigned_count: ${{ steps.check.outputs.unassigned_count }}
+      should_assign: ${{ steps.discovery.outputs.should_assign }}
+      discovery_count: ${{ steps.discovery.outputs.discovery_count }}
+      triage_count: ${{ steps.discovery.outputs.triage_count }}
     
     steps:
     - name: Checkout repository
@@ -61,29 +62,61 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Check for unassigned site-monitor issues
-      id: check
+    - name: Validate required secrets
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       run: |
-        # Get statistics to determine if assignment is needed
-        OUTPUT=$(python main.py assign-workflows --config config.yaml --statistics --verbose 2>&1)
-        echo "$OUTPUT"
-        
-        # Extract unassigned count from the output
-        UNASSIGNED=$(echo "$OUTPUT" | grep -o "Unassigned issues: [0-9]*" | grep -o "[0-9]*" || echo "0")
-        echo "unassigned_count=$UNASSIGNED" >> $GITHUB_OUTPUT
-        
-        # Determine if assignment is needed
-        if [ "$UNASSIGNED" -gt "0" ]; then
+        set -euo pipefail
+        missing=0
+
+        check_secret() {
+          local name="$1"
+          local value="$2"
+          if [ -z "$value" ]; then
+            echo "::error::Missing required secret: ${name}"
+            missing=1
+          fi
+        }
+
+        check_secret "GITHUB_TOKEN" "$GITHUB_TOKEN"
+        check_secret "GOOGLE_API_KEY" "$GOOGLE_API_KEY"
+        check_secret "GOOGLE_SEARCH_ENGINE_ID" "$GOOGLE_SEARCH_ENGINE_ID"
+
+        if [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+          echo "::error::At least one of OPENAI_API_KEY or ANTHROPIC_API_KEY must be configured."
+          missing=1
+        fi
+
+        if [ "$missing" -ne 0 ]; then
+          echo "::error::Secret validation failed."
+          exit 1
+        fi
+
+    - name: Detect discovery-state issues
+      id: discovery
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "🔎 Counting open issues tagged with state::discovery…"
+        DISCOVERY_JSON=$(gh issue list --state open --label "state::discovery" --json number --limit 200)
+        DISCOVERY_COUNT=$(echo "$DISCOVERY_JSON" | python -c 'import sys, json; data = json.loads(sys.stdin.read() or "[]"); print(len(data))')
+        echo "discovery_count=$DISCOVERY_COUNT" >> $GITHUB_OUTPUT
+
+        echo "🔎 Counting open issues still carrying monitor::triage…"
+        TRIAGE_JSON=$(gh issue list --state open --label "monitor::triage" --json number --limit 200)
+        TRIAGE_COUNT=$(echo "$TRIAGE_JSON" | python -c 'import sys, json; data = json.loads(sys.stdin.read() or "[]"); print(len(data))')
+        echo "triage_count=$TRIAGE_COUNT" >> $GITHUB_OUTPUT
+
+        if [ "$DISCOVERY_COUNT" -gt 0 ]; then
           echo "should_assign=true" >> $GITHUB_OUTPUT
-          echo "Found $UNASSIGNED unassigned site-monitor issues"
+          echo "Found $DISCOVERY_COUNT discovery-state issues awaiting assignment"
         else
           echo "should_assign=false" >> $GITHUB_OUTPUT
-          echo "No unassigned site-monitor issues found"
+          echo "No discovery-state issues require assignment"
         fi
 
   # Job to assign workflows to issues
@@ -92,9 +125,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-assignment-needed
     if: |
-      needs.check-assignment-needed.outputs.should_assign == 'true' || 
-      github.event_name == 'workflow_dispatch' || 
-      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'site-monitor'))
+      github.event_name == 'workflow_dispatch' ||
+      needs.check-assignment-needed.outputs.should_assign == 'true' ||
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'state::discovery'))
     
     steps:
     - name: Checkout repository
@@ -183,6 +216,34 @@ jobs:
           --limit 5 \
           --verbose
     
+    - name: Verify monitor::triage cleared from assigned issues
+      if: success()
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+        INPUT_STATISTICS_ONLY: ${{ github.event.inputs.statistics_only }}
+      run: |
+        if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+          if [ "${INPUT_STATISTICS_ONLY:-false}" = "true" ]; then
+            echo "Skipping label validation for statistics-only dispatch."
+            exit 0
+          fi
+          if [ "${INPUT_DRY_RUN:-true}" != "false" ]; then
+            echo "Skipping label validation for dry-run dispatch."
+            exit 0
+          fi
+        fi
+
+        echo "🔍 Checking for issues stuck with monitor::triage after assignment..."
+        STUCK_JSON=$(gh issue list --state open --label "monitor::triage" --label "state::assigned" --json number --limit 200)
+        STUCK_COUNT=$(echo "$STUCK_JSON" | python -c 'import sys, json; data = json.loads(sys.stdin.read() or "[]"); print(len(data))')
+        if [ "$STUCK_COUNT" -gt 0 ]; then
+          echo "❌ Found $STUCK_COUNT issues still labeled monitor::triage after assignment."
+          exit 1
+        fi
+        echo "✅ monitor::triage cleared from assigned issues"
+
     - name: Create Summary Report
       if: github.event.inputs.statistics_only != 'true'
       env:
@@ -197,7 +258,8 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## Workflow Assignment Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Unassigned issues before:** ${{ needs.check-assignment-needed.outputs.unassigned_count }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Discovery-state issues before:** ${{ needs.check-assignment-needed.outputs.discovery_count }}" >> $GITHUB_STEP_SUMMARY
+        echo "**monitor::triage issues before:** ${{ needs.check-assignment-needed.outputs.triage_count }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
         

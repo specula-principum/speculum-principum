@@ -70,9 +70,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ runner.temp }}/telemetry/pr
         run: |
           # Build command arguments
-          ARGS="--config config.yaml --verbose"
+          mkdir -p "${SPECULUM_CLI_TELEMETRY_DIR}"
+
+          ARGS="--config config.yaml --verbose --label-filter state::assigned --continue-on-error"
           
           # Add specific issue if provided
           if [ -n "${{ github.event.inputs.issue_number }}" ]; then

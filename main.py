@@ -7,6 +7,7 @@ Main entry point for the application with site monitoring capabilities
 import os
 import sys
 import argparse
+from typing import Optional, Any
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -20,14 +21,22 @@ from src.core.issue_processor import (
 from src.core.processing_orchestrator import ProcessingOrchestrator
 from src.core.site_monitor import create_monitor_service_from_config
 from src.agents.ai_workflow_assignment_agent import AIWorkflowAssignmentAgent
+from src.agents.workflow_assignment_agent import WorkflowAssignmentAgent
 from src.utils.cli_helpers import (
-    ConfigValidator, 
-    ProgressReporter, 
+    ConfigValidator,
     IssueResultFormatter,
-    BatchProcessor, 
-    safe_execute_cli_command, 
-    CliResult
+    safe_execute_cli_command,
+    CliResult,
+    prepare_cli_execution,
 )
+from src.utils.cli_monitors import get_monitor_service, MonitorServiceError
+from src.utils.telemetry import publish_telemetry_event
+from src.utils.telemetry_helpers import (
+    attach_cli_static_fields,
+    emit_cli_summary,
+    setup_cli_publishers,
+)
+from src.utils.cli_runtime import ensure_runtime_ready
 from src.utils.specialist_config_cli import (
     setup_specialist_config_parser,
     handle_specialist_config_command
@@ -59,13 +68,17 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     
     # Issue processing commands
     setup_process_issues_parser(subparsers)
-    setup_process_copilot_issues_parser(subparsers)
     setup_assign_workflows_parser(subparsers)
     
     # Specialist workflow configuration commands
     setup_specialist_config_parser(subparsers)
     
     return parser
+
+
+def attach_static_fields(publishers, static_fields):
+    """Backward-compatible shim for tests expecting the legacy helper."""
+    return attach_cli_static_fields(publishers, **static_fields)
 
 
 def setup_create_issue_parser(subparsers) -> None:
@@ -210,47 +223,6 @@ def setup_process_issues_parser(subparsers) -> None:
         help='Find and output site-monitor issues without processing (for CI/CD)'
     )
 
-
-
-def setup_process_copilot_issues_parser(subparsers) -> None:
-    """Set up process-copilot-issues command parser."""
-    copilot_parser = subparsers.add_parser(
-        'process-copilot-issues', 
-        help='Process issues assigned to GitHub Copilot for AI analysis'
-    )
-    copilot_parser.add_argument(
-        '--config', 
-        default='config.yaml', 
-        help='Configuration file path'
-    )
-    copilot_parser.add_argument(
-        '--specialist-filter', 
-        choices=['intelligence-analyst', 'osint-researcher', 'target-profiler', 'business-analyst'],
-        help='Filter by specialist type'
-    )
-    copilot_parser.add_argument(
-        '--batch-size', 
-        type=int, 
-        default=5, 
-        help='Maximum issues to process in batch mode'
-    )
-    copilot_parser.add_argument(
-        '--dry-run', 
-        action='store_true', 
-        help='Show what would be processed without making changes'
-    )
-    copilot_parser.add_argument(
-        '--verbose', '-v', 
-        action='store_true', 
-        help='Show detailed progress information'
-    )
-    copilot_parser.add_argument(
-        '--continue-on-error', 
-        action='store_true', 
-        help='Continue processing even if individual issues fail'
-    )
-
-
 def setup_assign_workflows_parser(subparsers) -> None:
     """Set up assign-workflows command parser."""
     assign_parser = subparsers.add_parser(
@@ -329,42 +301,122 @@ def handle_create_issue_command(args, github_token: str, repo_name: str) -> None
 
 def handle_monitor_command(args, github_token: str) -> None:
     """Handle monitor command."""
-    if not os.path.exists(args.config):
-        print(f"Error: Configuration file not found: {args.config}", file=sys.stderr)
+    monitor_mode = "aggregate-only" if args.no_individual_issues else "full"
+    telemetry_publishers = setup_cli_publishers(
+        "monitor",
+        extra_static_fields={
+            "no_individual_issues": args.no_individual_issues,
+        },
+        static_fields={
+            "workflow_stage": "monitoring",
+            "monitor_mode": monitor_mode,
+        },
+    )
+
+    try:
+        service = get_monitor_service(
+            args.config,
+            github_token,
+            telemetry=telemetry_publishers,
+        )
+    except MonitorServiceError as exc:
+        emit_cli_summary(
+            telemetry_publishers,
+            "site_monitor.cli_summary",
+            CliResult(
+                success=False,
+                message=str(exc),
+                data={
+                    "create_individual_issues": not args.no_individual_issues,
+                },
+                error_code=1,
+            ),
+            phase="monitor_setup",
+            extra={
+                "create_individual_issues": not args.no_individual_issues,
+            },
+        )
+        print(f"❌ Monitoring setup failed: {exc}", file=sys.stderr)
         sys.exit(1)
-    
-    service = create_monitor_service_from_config(args.config, github_token)
-    results = service.run_monitoring_cycle(
-        create_individual_issues=not args.no_individual_issues
+
+    try:
+        results = service.run_monitoring_cycle(
+            create_individual_issues=not args.no_individual_issues
+        )
+    except Exception as exc:  # noqa: BLE001
+        emit_cli_summary(
+            telemetry_publishers,
+            "site_monitor.cli_summary",
+            CliResult(
+                success=False,
+                message=str(exc),
+                data={
+                    "create_individual_issues": not args.no_individual_issues,
+                },
+                error_code=1,
+            ),
+            phase="monitoring_cycle",
+            extra={
+                "create_individual_issues": not args.no_individual_issues,
+            },
+        )
+        print(f"❌ Monitoring failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    monitoring_success = bool(results.get('success'))
+    summary_result = CliResult(
+        success=monitoring_success,
+        message=(
+            "Monitoring completed successfully"
+            if monitoring_success
+            else f"Monitoring failed: {results.get('error')}"
+        ),
+        data={
+            "new_results_found": results.get('new_results_found'),
+            "individual_issues_created": results.get('individual_issues_created'),
+            "cycle_start": results.get('cycle_start'),
+            "cycle_end": results.get('cycle_end'),
+            "error": results.get('error'),
+        },
+        error_code=0 if monitoring_success else 1,
+    )
+
+    emit_cli_summary(
+        telemetry_publishers,
+        "site_monitor.cli_summary",
+        summary_result,
+        phase="monitoring_cycle",
     )
     
-    if results['success']:
-        print(f"✅ Monitoring completed successfully")
-        print(f"📊 Found {results['new_results_found']} new results")
-        print(f"📝 Created {results['individual_issues_created']} individual issues")
+    if results.get('success'):
+        print("✅ Monitoring completed successfully")
+        print(f"📊 Found {results.get('new_results_found')} new results")
+        print(f"📝 Created {results.get('individual_issues_created')} individual issues")
     else:
-        print(f"❌ Monitoring failed: {results['error']}", file=sys.stderr)
+        print(f"❌ Monitoring failed: {results.get('error')}", file=sys.stderr)
         sys.exit(1)
 
 
 def handle_setup_command(args, github_token: str) -> None:
     """Handle setup command."""
-    if not os.path.exists(args.config):
-        print(f"Error: Configuration file not found: {args.config}", file=sys.stderr)
+    try:
+        service = get_monitor_service(args.config, github_token)
+    except MonitorServiceError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
-    
-    service = create_monitor_service_from_config(args.config, github_token)
+
     service.setup_repository()
     print("✅ Repository setup completed")
 
 
 def handle_status_command(args, github_token: str) -> None:
     """Handle status command."""
-    if not os.path.exists(args.config):
-        print(f"Error: Configuration file not found: {args.config}", file=sys.stderr)
+    try:
+        service = get_monitor_service(args.config, github_token)
+    except MonitorServiceError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
-    
-    service = create_monitor_service_from_config(args.config, github_token)
+
     status = service.get_monitoring_status()
     print(f"📊 Site Monitor Status")
     print(f"Repository: {status['repository']}")
@@ -377,11 +429,16 @@ def handle_status_command(args, github_token: str) -> None:
 
 def handle_cleanup_command(args, github_token: str) -> None:
     """Handle cleanup command."""
-    if not os.path.exists(args.config):
-        print(f"Error: Configuration file not found: {args.config}", file=sys.stderr)
+    prepare_cli_execution(
+        "cleanup",
+        dry_run=args.dry_run,
+    )
+    try:
+        service = get_monitor_service(args.config, github_token)
+    except MonitorServiceError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
-    
-    service = create_monitor_service_from_config(args.config, github_token)
+
     results = service.cleanup_old_data(
         days_old=args.days_old,
         dry_run=args.dry_run
@@ -401,17 +458,72 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
     """Handle process-issues command."""
     
     def process_issues_command() -> CliResult:
-        # Validate configuration and environment
-        config_result = ConfigValidator.validate_config_file(args.config)
-        if not config_result.success:
-            return config_result
-        
-        env_result = ConfigValidator.validate_environment()
-        if not env_result.success:
-            return env_result
-        
+        context = prepare_cli_execution(
+            "process-issues",
+            verbose=args.verbose,
+            dry_run=args.dry_run,
+        )
+
+        if args.find_issues_only:
+            processing_mode = "find-issues-only"
+        elif args.from_monitor:
+            processing_mode = "from-monitor"
+        elif args.issue:
+            processing_mode = "single-issue"
+        else:
+            processing_mode = "batch"
+
+        telemetry_publishers = setup_cli_publishers(
+            "process-issues",
+            extra_static_fields={
+                "dry_run": args.dry_run,
+                "from_monitor": args.from_monitor,
+                "issue": args.issue,
+                "batch_size": args.batch_size,
+                "find_issues_only": args.find_issues_only,
+                "assignee_filter": args.assignee_filter,
+            },
+            static_fields={
+                "workflow_stage": "issue-processing",
+                "processing_mode": processing_mode,
+            },
+        )
+
+        def emit_summary(
+            result: CliResult,
+            *,
+            phase: str,
+            extra: Optional[dict] = None,
+            structured: bool = False,
+        ) -> CliResult:
+            """Helper to emit telemetry with standardized CLI output."""
+
+            decorated_result = context.decorate_cli_result(result, structured=structured)
+            return emit_cli_summary(
+                telemetry_publishers,
+                "process_issues.cli_summary",
+                decorated_result,
+                phase=phase,
+                extra=extra,
+            )
+
+        runtime_result = ensure_runtime_ready(
+            args.config,
+            telemetry_publishers=telemetry_publishers,
+            telemetry_event="process_issues.runtime_validation",
+        )
+
+        if not runtime_result.success:
+            return emit_summary(
+                runtime_result,
+                phase="preflight_validation",
+            )
+
+        runtime_context = runtime_result.data or {}
+        runtime_config = runtime_context.get("config")
+
         # Initialize components
-        reporter = ProgressReporter(args.verbose)
+        reporter = context.reporter
         
         try:
             # Create processor
@@ -422,15 +534,18 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
             )
             
             # Create orchestrator for batch operations
-            orchestrator = ProcessingOrchestrator(processor)
+            orchestrator = ProcessingOrchestrator(
+                processor,
+                telemetry_publishers=telemetry_publishers,
+            )
             
             # Validate workflow directory from config
-            config = processor.config
+            config = runtime_config or processor.config
             workflow_dir = getattr(config, 'workflow_directory', 'docs/workflow/deliverables')
             
             workflow_result = ConfigValidator.validate_workflow_directory(workflow_dir)
             if not workflow_result.success:
-                return workflow_result
+                return context.decorate_cli_result(workflow_result)
             
             if args.verbose:
                 reporter.show_info(f"Using workflow directory: {workflow_dir}")
@@ -446,7 +561,12 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                     from src.core.batch_processor import BatchProcessor
                     
                     # Create a batch processor just for finding issues
-                    batch_processor = BatchProcessor(processor, processor.github, config=None)
+                    batch_processor = BatchProcessor(
+                        processor,
+                        processor.github,
+                        config=None,
+                        telemetry_publishers=telemetry_publishers,
+                    )
                     
                     # Build filters
                     filters = {}
@@ -456,28 +576,63 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         filters['additional_labels'] = args.label_filter
                     
                     # Find issues
-                    issue_numbers = batch_processor._find_site_monitor_issues(filters)
+                    discovery = batch_processor.find_site_monitor_issues(
+                        filters,
+                        include_details=True,
+                    )
+                    issue_numbers = discovery.issue_numbers
                     
                     if not issue_numbers:
                         reporter.complete_operation(True)
-                        return CliResult(
+                        result = CliResult(
                             success=True,
                             message="[]",  # Empty JSON array for no issues
                             data={'issues': [], 'count': 0}
                         )
+                        return emit_summary(
+                            result,
+                            phase="find_issues",
+                            extra={"issues_found": 0},
+                            structured=True,
+                        )
                     
                     # Get detailed issue information
                     issues_data = []
+                    issue_lookup = (
+                        {issue.number: issue for issue in discovery.issues}
+                        if discovery.issues
+                        else {}
+                    )
+
                     for issue_number in issue_numbers[:args.batch_size]:
-                        try:
-                            issue_data = processor.github.get_issue_data(issue_number)
-                            issues_data.append({
+                        issue_payload: dict[str, Any]
+                        issue = issue_lookup.get(issue_number)
+
+                        if issue is not None:
+                            issue_payload = {
                                 'number': issue_number,
-                                'title': issue_data.get('title', ''),
-                                'labels': issue_data.get('labels', [])
-                            })
-                        except Exception as e:
-                            reporter.show_info(f"Warning: Could not get data for issue #{issue_number}: {e}")
+                                'title': getattr(issue, 'title', ''),
+                                'labels': [label.name for label in getattr(issue, 'labels', [])],
+                            }
+                        else:
+                            try:
+                                issue_data = processor.github.get_issue_data(issue_number)
+                                issue_payload = {
+                                    'number': issue_number,
+                                    'title': issue_data.get('title', ''),
+                                    'labels': issue_data.get('labels', []),
+                                }
+                            except Exception as e:
+                                reporter.show_info(
+                                    f"Warning: Could not get data for issue #{issue_number}: {e}"
+                                )
+                                issue_payload = {
+                                    'number': issue_number,
+                                    'title': '',
+                                    'labels': [],
+                                }
+
+                        issues_data.append(issue_payload)
                     
                     reporter.complete_operation(True)
                     
@@ -485,18 +640,28 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                     import json
                     issues_json = json.dumps(issues_data)
                     
-                    return CliResult(
+                    result = CliResult(
                         success=True,
                         message=issues_json,
                         data={'issues': issues_data, 'count': len(issues_data)}
                     )
+                    return emit_summary(
+                        result,
+                        phase="find_issues",
+                        extra={"issues_found": len(issues_data)},
+                        structured=True,
+                    )
                     
                 except Exception as e:
                     reporter.complete_operation(False)
-                    return CliResult(
+                    result = CliResult(
                         success=False,
                         message=f"❌ Failed to find issues: {str(e)}",
                         error_code=1
+                    )
+                    return emit_summary(
+                        result,
+                        phase="find_issues",
                     )
             
             # Process issues (single or batch)
@@ -512,17 +677,27 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         
                         if 'site-monitor' not in labels:
                             reporter.complete_operation(False)
-                            return CliResult(
+                            result = CliResult(
                                 success=False,
                                 message=f"❌ Issue #{args.issue} does not have the 'site-monitor' label",
                                 error_code=1
                             )
+                            return emit_summary(
+                                result,
+                                phase="single_issue_validation",
+                                extra={"issue_number": args.issue},
+                            )
                     except Exception as e:
                         reporter.complete_operation(False)
-                        return CliResult(
+                        result = CliResult(
                             success=False,
                             message=f"❌ Could not retrieve issue #{args.issue}: {str(e)}",
                             error_code=1
+                        )
+                        return emit_summary(
+                            result,
+                            phase="single_issue_validation",
+                            extra={"issue_number": args.issue},
                         )
                 
                 # Process using batch processor
@@ -538,31 +713,41 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                 # Format single result
                 if batch_results:
                     result = batch_results[0]
+                    result_payload = result.to_dict()
                     formatted_result = IssueResultFormatter.format_single_result({
-                        'status': result.status.value,
-                        'issue': result.issue_number,
-                        'workflow': result.workflow_name,
-                        'files_created': result.created_files or [],
-                        'error': result.error_message,
-                        'clarification': result.clarification_needed
+                        'status': result_payload['status'],
+                        'issue': result_payload['issue_number'],
+                        'workflow': result_payload['workflow_name'],
+                        'files_created': result_payload['created_files'] or [],
+                        'error': result_payload['error_message'],
+                        'clarification': result_payload['clarification_needed'],
+                        'copilot_assignee': result_payload['copilot_assignee'],
+                        'copilot_due_at': result_payload['copilot_due_at'],
+                        'handoff_summary': result_payload['handoff_summary'],
+                        'specialist_guidance': result_payload.get('specialist_guidance'),
+                        'copilot_assignment': result_payload.get('copilot_assignment'),
                     })
                     
-                    return CliResult(
+                    cli_result = CliResult(
                         success=result.status not in [IssueProcessingStatus.ERROR],
                         message=formatted_result,
-                        data={
-                            'issue_number': result.issue_number,
-                            'status': result.status.value,
-                            'workflow_name': result.workflow_name,
-                            'created_files': result.created_files,
-                            'error_message': result.error_message
-                        }
+                        data=result_payload
+                    )
+                    return emit_summary(
+                        cli_result,
+                        phase="single_issue_processing",
+                        extra={"issue_number": args.issue},
                     )
                 else:
-                    return CliResult(
+                    cli_result = CliResult(
                         success=False,
                         message=f"❌ No result returned for issue #{args.issue}",
                         error_code=1
+                    )
+                    return emit_summary(
+                        cli_result,
+                        phase="single_issue_processing",
+                        extra={"issue_number": args.issue},
                     )
             
             else:
@@ -585,7 +770,11 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         reporter.show_info("🔍 Using site monitor to find unprocessed issues...")
                         
                         # Create site monitor service
-                        monitor_service = create_monitor_service_from_config(args.config, github_token)
+                        monitor_service = create_monitor_service_from_config(
+                            args.config,
+                            github_token,
+                            telemetry_publishers=telemetry_publishers,
+                        )
                         
                         # Process existing issues using site monitor integration
                         monitor_result = monitor_service.process_existing_issues(
@@ -594,37 +783,83 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         )
                         
                         if monitor_result['success']:
-                            # Convert monitor results to expected format
-                            
+                            status_lookup = {status.value: status for status in IssueProcessingStatus}
+
+                            def _parse_status(value: str) -> IssueProcessingStatus:
+                                if not value:
+                                    return IssueProcessingStatus.ERROR
+                                return status_lookup.get(value.lower(), IssueProcessingStatus.ERROR)
+
                             batch_results = []
-                            for result in monitor_result['processed_issues']:
-                                status = IssueProcessingStatus.COMPLETED if result['status'] == 'completed' else IssueProcessingStatus.ERROR
+                            for result in monitor_result.get('processed_issues', []):
+                                status_enum = _parse_status(result.get('status', ''))
                                 batch_results.append(ProcessingResult(
-                                    issue_number=result['issue_number'],
-                                    status=status,
-                                    workflow_name=result['workflow'],
-                                    created_files=result['deliverables'],
-                                    error_message=result['error']
+                                    issue_number=result.get('issue_number'),
+                                    status=status_enum,
+                                    workflow_name=result.get('workflow'),
+                                    created_files=result.get('deliverables') or [],
+                                    error_message=result.get('error'),
+                                    copilot_assignee=result.get('copilot_assignee'),
+                                    copilot_due_at=result.get('copilot_due_at'),
+                                    handoff_summary=result.get('handoff_summary'),
+                                    specialist_guidance=result.get('specialist_guidance'),
+                                    copilot_assignment=result.get('copilot_assignment'),
                                 ))
-                            
-                            # Create metrics
-                            
-                            total_found = monitor_result['total_found']
-                            successful = monitor_result['successful_processes']
-                            
-                            batch_metrics = BatchMetrics(
-                                total_issues=total_found,
-                                processed_count=len(batch_results),
-                                success_count=successful,
-                                error_count=len(batch_results) - successful,
-                                start_time=datetime.now(),
-                                end_time=datetime.now()
-                            )
+
+                            metrics_data = monitor_result.get('metrics') or {}
+
+                            def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
+                                if not value:
+                                    return None
+                                try:
+                                    normalised = value.replace('Z', '+00:00')
+                                    return datetime.fromisoformat(normalised)
+                                except ValueError:
+                                    return None
+
+                            if metrics_data:
+                                batch_metrics = BatchMetrics(
+                                    total_issues=metrics_data.get('total_issues', monitor_result.get('total_found', len(batch_results))),
+                                    processed_count=metrics_data.get('processed_count', len(batch_results)),
+                                    success_count=metrics_data.get('success_count', monitor_result.get('successful_processes', 0)),
+                                    error_count=metrics_data.get('error_count', sum(1 for r in batch_results if r.status == IssueProcessingStatus.ERROR)),
+                                    skipped_count=metrics_data.get('skipped_count', 0),
+                                    clarification_count=metrics_data.get('clarification_count', sum(1 for r in batch_results if r.status == IssueProcessingStatus.NEEDS_CLARIFICATION)),
+                                    start_time=_parse_timestamp(metrics_data.get('start_time')),
+                                    end_time=_parse_timestamp(metrics_data.get('end_time')),
+                                )
+
+                                copilot_info = metrics_data.get('copilot_assignments') or {}
+                                batch_metrics.copilot_assignment_count = copilot_info.get('count', 0)
+                                batch_metrics.copilot_assignees.update(copilot_info.get('assignees', []))
+                                batch_metrics.copilot_due_dates.extend(copilot_info.get('due_dates', []))
+                            else:
+                                total_found = monitor_result.get('total_found', len(batch_results))
+                                successful = monitor_result.get('successful_processes', 0)
+                                now = datetime.now()
+                                batch_metrics = BatchMetrics(
+                                    total_issues=total_found,
+                                    processed_count=len(batch_results),
+                                    success_count=successful,
+                                    error_count=sum(1 for r in batch_results if r.status == IssueProcessingStatus.ERROR),
+                                    skipped_count=0,
+                                    clarification_count=sum(1 for r in batch_results if r.status == IssueProcessingStatus.NEEDS_CLARIFICATION),
+                                    start_time=now,
+                                    end_time=now,
+                                )
+
+                                for item in batch_results:
+                                    if any([item.copilot_assignee, item.copilot_due_at, item.handoff_summary]):
+                                        batch_metrics.register_copilot_assignment(item.copilot_assignee, item.copilot_due_at)
                         else:
-                            return CliResult(
+                            result = CliResult(
                                 success=False,
                                 message=f"❌ Site monitor failed to find issues: {monitor_result['error']}",
                                 error_code=1
+                            )
+                            return emit_summary(
+                                result,
+                                phase="process_monitor_bridge",
                             )
                     else:
                         # Process all site-monitor issues using standard method
@@ -644,245 +879,194 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         )
                         reporter.show_info(f"Success rate: {batch_metrics.success_rate:.1f}%")
                         reporter.show_info(f"Duration: {batch_metrics.duration_seconds:.1f}s")
+                        if batch_metrics.copilot_assignment_count:
+                            reporter.show_info(
+                                f"Copilot assignments: {batch_metrics.copilot_assignment_count}"
+                            )
+                            next_due_verbose = batch_metrics.next_copilot_due_at
+                            if next_due_verbose:
+                                reporter.show_info(
+                                    f"Next Copilot due at: {next_due_verbose}"
+                                )
                     
                     # Convert results for formatting
                     results = []
+                    raw_results = []
                     for result in batch_results:
+                        result_payload = result.to_dict()
+                        raw_results.append(result_payload)
                         results.append({
-                            'status': result.status.value,
-                            'issue': result.issue_number,
-                            'workflow': result.workflow_name,
-                            'files_created': result.created_files or [],
-                            'error': result.error_message,
-                            'clarification': result.clarification_needed
+                            'status': result_payload['status'],
+                            'issue': result_payload['issue_number'],
+                            'workflow': result_payload['workflow_name'],
+                            'files_created': result_payload['created_files'] or [],
+                            'error': result_payload['error_message'],
+                            'clarification': result_payload['clarification_needed'],
+                            'copilot_assignee': result_payload['copilot_assignee'],
+                            'copilot_due_at': result_payload['copilot_due_at'],
+                            'handoff_summary': result_payload['handoff_summary'],
+                            'specialist_guidance': result_payload.get('specialist_guidance'),
+                            'copilot_assignment': result_payload.get('copilot_assignment'),
                         })
                     
                     # Format batch results
                     formatted_results = IssueResultFormatter.format_batch_results(results)
+
+                    copilot_summary_lines: list[str] = []
+                    if batch_metrics.copilot_assignment_count:
+                        copilot_summary_lines.append(
+                            f"🤖 Copilot assignments: {batch_metrics.copilot_assignment_count}"
+                        )
+                        next_due = batch_metrics.next_copilot_due_at
+                        if next_due:
+                            copilot_summary_lines.append(
+                                f"⏰ Next Copilot due at: {next_due}"
+                            )
+
+                    if copilot_summary_lines:
+                        formatted_results = "\n\n".join(
+                            [formatted_results, "\n".join(copilot_summary_lines)]
+                        )
                     
                     # Check for errors
                     error_count = batch_metrics.error_count
                     success = error_count == 0 or args.continue_on_error
                     
-                    return CliResult(
+                    cli_result = CliResult(
                         success=success,
                         message=formatted_results,
                         data={
-                            'results': results, 
+                            'results': raw_results,
                             'error_count': error_count,
-                            'metrics': batch_metrics
+                            'metrics': batch_metrics.to_dict(),
+                            'copilot_assignment_count': batch_metrics.copilot_assignment_count,
+                            'next_copilot_due_at': batch_metrics.next_copilot_due_at,
                         }
+                    )
+                    return emit_summary(
+                        cli_result,
+                        phase="batch_processing",
+                        extra={
+                            "processed_count": batch_metrics.processed_count,
+                            "total_issues": batch_metrics.total_issues,
+                            "error_count": error_count,
+                        },
                     )
                     
                 except Exception as e:
-                    return CliResult(
+                    cli_result = CliResult(
                         success=False,
                         message=f"Failed to retrieve issues: {str(e)}",
                         error_code=1
                     )
+                    return emit_summary(
+                        cli_result,
+                        phase="batch_processing_error",
+                    )
         
         except Exception as e:
-            return CliResult(
+            cli_result = CliResult(
                 success=False,
                 message=f"Issue processing failed: {str(e)}",
                 error_code=1
+            )
+            return emit_summary(
+                cli_result,
+                phase="command_error",
             )
     
     # Execute the command safely
     exit_code = safe_execute_cli_command(process_issues_command)
     if exit_code != 0:
         sys.exit(exit_code)
-
-
-def handle_process_copilot_issues_command(args, github_token: str, repo_name: str) -> None:
-    """Handle process-copilot-issues command."""
-    
-    def process_copilot_issues_command() -> CliResult:
-        # Validate configuration and environment
-        config_result = ConfigValidator.validate_config_file(args.config)
-        if not config_result.success:
-            return config_result
-        
-        env_result = ConfigValidator.validate_environment()
-        if not env_result.success:
-            return env_result
-        
-        # Initialize components
-        reporter = ProgressReporter(args.verbose)
-        
-        try:
-            # Create processor
-            processor = GitHubIntegratedIssueProcessor(
-                github_token=github_token,
-                repository=repo_name,
-                config_path=args.config
-            )
-            
-            # Create batch processor
-            from src.core.batch_processor import BatchProcessor
-            batch_processor = BatchProcessor(processor, processor.github, config=None)
-            
-            # Validate workflow directory from config
-            config = processor.config
-            workflow_dir = getattr(config, 'workflow_directory', 'docs/workflow/deliverables')
-            
-            workflow_result = ConfigValidator.validate_workflow_directory(workflow_dir)
-            if not workflow_result.success:
-                return workflow_result
-            
-            if args.verbose:
-                reporter.show_info(f"Using workflow directory: {workflow_dir}")
-                if workflow_result.data:
-                    reporter.show_info(f"Found {workflow_result.data['workflow_count']} workflow(s)")
-            
-            # Find Copilot-assigned issues
-            reporter.start_operation("Finding Copilot-assigned issues")
-            
-            try:
-                copilot_issues = processor.get_copilot_assigned_issues()
-                
-                if not copilot_issues:
-                    reporter.complete_operation(True)
-                    return CliResult(
-                        success=True,
-                        message="✅ No Copilot-assigned issues found for processing",
-                        data={'issues': [], 'count': 0}
-                    )
-                
-                # Apply specialist filter if provided
-                if args.specialist_filter:
-                    original_count = len(copilot_issues)
-                    copilot_issues = [
-                        issue for issue in copilot_issues
-                        if args.specialist_filter in issue.get('labels', [])
-                        or any(args.specialist_filter.replace('-', '_') in label.replace('-', '_')
-                               for label in issue.get('labels', []))
-                    ]
-                    
-                    if args.verbose:
-                        reporter.show_info(f"Filtered from {original_count} to {len(copilot_issues)} issues for specialist: {args.specialist_filter}")
-                
-                if not copilot_issues:
-                    filter_msg = f" for specialist '{args.specialist_filter}'" if args.specialist_filter else ""
-                    reporter.complete_operation(True)
-                    return CliResult(
-                        success=True,
-                        message=f"✅ No Copilot-assigned issues found{filter_msg}",
-                        data={'issues': [], 'count': 0}
-                    )
-                
-                # Limit issues processed
-                limited_issues = copilot_issues[:args.batch_size]
-                
-                if args.verbose:
-                    reporter.show_info(f"Processing {len(limited_issues)} Copilot-assigned issues")
-                    for issue in limited_issues:
-                        reporter.show_info(f"  - Issue #{issue['number']}: {issue['title']}")
-                
-                reporter.complete_operation(True)
-                
-                # Process issues using batch processor
-                if args.dry_run:
-                    reporter.start_operation("Dry run - showing what would be processed")
-                else:
-                    reporter.start_operation(f"Processing {len(limited_issues)} Copilot-assigned issues")
-                
-                batch_metrics, batch_results = batch_processor.process_copilot_assigned_issues(
-                    specialist_filter=args.specialist_filter,
-                    dry_run=args.dry_run
-                )
-                
-                reporter.complete_operation(batch_metrics.error_count == 0)
-                
-                # Format results
-                results = [
-                    {
-                        'status': result.status.value,
-                        'issue': result.issue_number,
-                        'workflow': result.workflow_name,
-                        'files_created': result.created_files or [],
-                        'error': result.error_message,
-                        'clarification': result.clarification_needed
-                    }
-                    for result in batch_results
-                ]
-                
-                # Format batch results
-                formatted_results = IssueResultFormatter.format_batch_results(results)
-                
-                # Check for errors
-                error_count = batch_metrics.error_count
-                success = error_count == 0 or args.continue_on_error
-                
-                return CliResult(
-                    success=success,
-                    message=formatted_results,
-                    data={
-                        'results': results,
-                        'error_count': error_count,
-                        'metrics': batch_metrics,
-                        'specialist_filter': args.specialist_filter
-                    }
-                )
-                
-            except Exception as e:
-                reporter.complete_operation(False)
-                return CliResult(
-                    success=False,
-                    message=f"❌ Failed to process Copilot-assigned issues: {str(e)}",
-                    error_code=1
-                )
-        
-        except Exception as e:
-            return CliResult(
-                success=False,
-                message=f"Copilot issue processing failed: {str(e)}",
-                error_code=1
-            )
-    
-    # Execute the command safely
-    exit_code = safe_execute_cli_command(process_copilot_issues_command)
-    if exit_code != 0:
-        sys.exit(exit_code)
-
-
 def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> None:
     """Handle assign-workflows command."""
     
     def assign_workflows_command() -> CliResult:
-        # Validate configuration and environment
-        config_result = ConfigValidator.validate_config_file(args.config)
-        if not config_result.success:
-            return config_result
+        context = prepare_cli_execution(
+            "assign-workflows",
+            verbose=args.verbose,
+            dry_run=args.dry_run,
+        )
+
+        telemetry_publishers = setup_cli_publishers(
+            "assign-workflows",
+            extra_static_fields={
+                "dry_run": args.dry_run,
+                "limit": args.limit,
+                "statistics": args.statistics,
+                "disable_ai": args.disable_ai,
+            },
+            static_fields={
+                "workflow_stage": "workflow-assignment",
+            },
+        )
+
+        def finalize(result: CliResult, *, structured: bool = False) -> CliResult:
+            """Apply standardized CLI decorations before returning."""
+
+            return context.decorate_cli_result(result, structured=structured)
+
+        runtime_result = ensure_runtime_ready(
+            args.config,
+            telemetry_publishers=telemetry_publishers,
+            telemetry_event="assign_workflows.runtime_validation",
+        )
+
+        if not runtime_result.success:
+            return finalize(runtime_result)
+
+        runtime_context = runtime_result.data or {}
+        runtime_config = runtime_context.get("config")
         
         try:
             # Determine whether to disable AI based on arguments and configuration
-            disable_ai = args.disable_ai
-            
+            disable_ai_flag = args.disable_ai
+
             # Load AI configuration from file
-            ai_enabled = True  # Default to enabled
-            try:
-                from src.utils.config_manager import ConfigManager
-                config = ConfigManager.load_config(args.config)
-                ai_config = getattr(config, 'ai', None)
-                if ai_config and not ai_config.enabled:
-                    ai_enabled = False
-                if disable_ai:
-                    ai_enabled = False
-            except Exception:
-                ai_enabled = True  # Default to enabled if config fails
+            ai_config_enabled = True  # Default to enabled
+            ai_config = getattr(runtime_config, 'ai', None)
+            if ai_config is not None and not getattr(ai_config, 'enabled', True):
+                ai_config_enabled = False
+
+            ai_enabled = ai_config_enabled and not disable_ai_flag
+
+            if ai_enabled:
+                assignment_mode = "ai"
+                telemetry_publishers = attach_static_fields(
+                    telemetry_publishers,
+                    {
+                        "assignment_mode": assignment_mode,
+                        "assignment_agent": "AIWorkflowAssignmentAgent",
+                    },
+                )
+                agent = AIWorkflowAssignmentAgent(
+                    github_token=github_token,
+                    repo_name=repo_name,
+                    config_path=args.config,
+                    enable_ai=True,
+                    telemetry_publishers=telemetry_publishers,
+                )
+                agent_type = "AI-enhanced"
+            else:
+                assignment_mode = "fallback"
+                telemetry_publishers = attach_static_fields(
+                    telemetry_publishers,
+                    {
+                        "assignment_mode": assignment_mode,
+                        "assignment_agent": "WorkflowAssignmentAgent",
+                    },
+                )
+                agent = WorkflowAssignmentAgent(
+                    github_token=github_token,
+                    repo_name=repo_name,
+                    config_path=args.config,
+                    telemetry_publishers=telemetry_publishers,
+                )
+                agent_type = "Label-based (fallback)"
             
-            # Initialize the AI workflow assignment agent
-            agent = AIWorkflowAssignmentAgent(
-                github_token=github_token,
-                repo_name=repo_name,
-                config_path=args.config,
-                enable_ai=ai_enabled
-            )
-            
-            agent_type = "AI-enhanced" if ai_enabled else "Label-based (fallback)"
-            
-            reporter = ProgressReporter(verbose=args.verbose)
+            reporter = context.reporter
+            reporter.show_info(f"Assignment mode: {agent_type} [{assignment_mode}]")
             
             if args.statistics:
                 # Show statistics instead of processing
@@ -890,11 +1074,23 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                 stats = agent.get_assignment_statistics()
                 
                 if 'error' in stats:
-                    return CliResult(
+                    publish_telemetry_event(
+                        telemetry_publishers,
+                        "workflow_assignment.statistics_view",
+                        {
+                            "success": False,
+                            "agent_type": agent_type,
+                            "error": stats.get('error'),
+                            "dry_run": args.dry_run,
+                            "limit": args.limit,
+                            "statistics_snapshot": stats,
+                        },
+                    )
+                    return finalize(CliResult(
                         success=False,
                         message=f"❌ Failed to get statistics: {stats['error']}",
                         error_code=1
-                    )
+                    ))
                 
                 # Format statistics output
                 stats_lines = [
@@ -932,11 +1128,23 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                     for label, count in sorted_labels[:10]:
                         stats_lines.append(f"  {label}: {count}")
                 
-                return CliResult(
+                publish_telemetry_event(
+                    telemetry_publishers,
+                    "workflow_assignment.statistics_view",
+                    {
+                        "success": True,
+                        "agent_type": agent_type,
+                        "statistics_snapshot": stats,
+                        "dry_run": args.dry_run,
+                        "limit": args.limit,
+                    },
+                )
+
+                return finalize(CliResult(
                     success=True,
                     message="\n".join(stats_lines),
                     data=stats
-                )
+                ))
             
             else:
                 # Process issues for workflow assignment
@@ -948,11 +1156,11 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                 )
                 
                 if 'error' in result:
-                    return CliResult(
+                    return finalize(CliResult(
                         success=False,
                         message=f"❌ Processing failed: {result['error']}",
                         error_code=1
-                    )
+                    ))
                 
                 # Format results
                 total = result['total_issues']
@@ -1005,22 +1213,19 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                             if ai_analysis.get('urgency_level'):
                                 result_lines.append(f"    Urgency: {ai_analysis['urgency_level']}")
                 
-                if args.dry_run:
-                    result_lines.insert(2, f"🧪 **DRY RUN** - No changes were made")
-                
                 success = processed > 0 or total == 0
-                return CliResult(
+                return finalize(CliResult(
                     success=success,
                     message="\n".join(result_lines),
                     data=result
-                )
+                ))
                 
         except Exception as e:
-            return CliResult(
+            return finalize(CliResult(
                 success=False,
                 message=f"Workflow assignment failed: {str(e)}",
                 error_code=1
-            )
+            ))
     
     # Execute the command safely
     exit_code = safe_execute_cli_command(assign_workflows_command)
@@ -1073,8 +1278,6 @@ def main():
             handle_cleanup_command(args, github_token)
         elif args.command == 'process-issues':
             handle_process_issues_command(args, github_token, repo_name)
-        elif args.command == 'process-copilot-issues':
-            handle_process_copilot_issues_command(args, github_token, repo_name)
         elif args.command == 'assign-workflows':
             handle_assign_workflows_command(args, github_token, repo_name)
         elif args.command == 'specialist-config':

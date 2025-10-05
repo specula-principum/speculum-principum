@@ -21,7 +21,7 @@ from typing import List, Dict, Any
 
 from src.core.batch_processor import (
     BatchProcessor, BatchConfig, BatchMetrics, BatchProgressReporter,
-    BatchProgressReporter
+    BatchProgressReporter, SiteMonitorIssueDiscovery
 )
 from src.core.issue_processor import (
     IssueProcessor, IssueProcessingStatus, ProcessingResult, IssueData
@@ -77,6 +77,9 @@ class TestBatchMetrics:
         assert metrics.start_time is None
         assert metrics.end_time is None
         assert metrics.processing_times == []
+        assert metrics.copilot_assignment_count == 0
+        assert metrics.copilot_assignees == set()
+        assert metrics.copilot_due_dates == []
     
     def test_duration_calculation(self):
         """Test duration calculation."""
@@ -107,6 +110,29 @@ class TestBatchMetrics:
         metrics = BatchMetrics()
         
         assert metrics.success_rate == 0.0
+
+    def test_metrics_to_dict_with_copilot_metadata(self):
+        """Ensure metrics serialization captures Copilot aggregates."""
+        start_time = datetime(2025, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
+        end_time = datetime(2025, 10, 1, 13, 0, 0, tzinfo=timezone.utc)
+        metrics = BatchMetrics(
+            total_issues=3,
+            processed_count=2,
+            success_count=2,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        metrics.register_copilot_assignment('github-copilot[bot]', '2025-10-02T09:00:00Z')
+        metrics.processing_times.extend([3.5, 4.0])
+
+        metrics_dict = metrics.to_dict()
+
+        assert metrics_dict['total_issues'] == 3
+        assert metrics_dict['duration_seconds'] == 3600.0
+        assert metrics_dict['copilot_assignments']['count'] == 1
+        assert metrics_dict['copilot_assignments']['assignees'] == ['github-copilot[bot]']
+        assert metrics_dict['copilot_assignments']['due_dates'] == ['2025-10-02T09:00:00Z']
+        assert metrics_dict['copilot_assignments']['next_due_at'] == '2025-10-02T09:00:00Z'
 
 
 class TestBatchProgressReporter:
@@ -149,6 +175,33 @@ class TestBatchProgressReporter:
         assert callback.call_count == 5
 
 
+class TestProcessingResultSerialization:
+    """Test helpers on ProcessingResult."""
+
+    def test_to_dict_includes_copilot_metadata(self):
+        result = ProcessingResult(
+            issue_number=321,
+            status=IssueProcessingStatus.COMPLETED,
+            workflow_name='osint-researcher',
+            created_files=['study/osint/report.md'],
+            copilot_assignee='github-copilot[bot]',
+            copilot_due_at='2025-10-02T12:00:00Z',
+            handoff_summary='🚀 Summary heading',
+            processing_time_seconds=42.0,
+            output_directory='study/osint',
+            git_branch='issue/321-osint',
+            git_commit='abc1234',
+        )
+
+        result_dict = result.to_dict()
+
+        assert result_dict['issue_number'] == 321
+        assert result_dict['status'] == 'completed'
+        assert result_dict['workflow_name'] == 'osint-researcher'
+        assert result_dict['created_files'] == ['study/osint/report.md']
+        assert result_dict['copilot_assignee'] == 'github-copilot[bot]'
+        assert result_dict['copilot_due_at'] == '2025-10-02T12:00:00Z'
+        assert result_dict['handoff_summary'] == '🚀 Summary heading'
 class TestBatchProcessor:
     """Test BatchProcessor functionality."""
     
@@ -224,9 +277,15 @@ class TestBatchProcessor:
         mock_github_client.get_issues_with_labels.return_value = [mock_issue1, mock_issue2]
         
         # Test with default filters (should exclude assigned issues)
-        issue_numbers = batch_processor._find_site_monitor_issues({})
-        
-        assert issue_numbers == [123]  # Only unassigned issue
+        discovery = batch_processor.find_site_monitor_issues({}, include_details=True)
+
+        assert isinstance(discovery, SiteMonitorIssueDiscovery)
+        assert discovery.issue_numbers == [123]  # Only unassigned issue
+        assert discovery.count == 1
+        assert discovery.total_found == 1
+        assert discovery.filters == {}
+        assert discovery.issues is not None
+        assert [issue.number for issue in discovery.issues] == [123]
         mock_github_client.get_issues_with_labels.assert_called_once_with(['site-monitor'], state='open')
     
     def test_find_site_monitor_issues_with_assignee_filter(self, batch_processor, mock_github_client):
@@ -243,9 +302,10 @@ class TestBatchProcessor:
         
         # Test with specific assignee filter
         filters = {'assignee': 'user1'}
-        issue_numbers = batch_processor._find_site_monitor_issues(filters)
-        
-        assert issue_numbers == [123]
+        discovery = batch_processor.find_site_monitor_issues(filters)
+
+        assert discovery.issue_numbers == [123]
+        assert discovery.filters == filters
     
     def test_find_site_monitor_issues_with_label_filter(self, batch_processor, mock_github_client):
         """Test finding issues with additional label filter."""
@@ -272,9 +332,20 @@ class TestBatchProcessor:
         
         # Test with additional label filter
         filters = {'additional_labels': ['urgent']}
-        issue_numbers = batch_processor._find_site_monitor_issues(filters)
-        
-        assert issue_numbers == [123]  # Only issue with urgent label
+        discovery = batch_processor.find_site_monitor_issues(filters)
+
+        assert discovery.issue_numbers == [123]  # Only issue with urgent label
+        assert discovery.total_found == 1
+
+    def test_find_site_monitor_issues_handles_errors(self, batch_processor, mock_github_client):
+        """Ensure discovery gracefully handles GitHub errors."""
+        mock_github_client.get_issues_with_labels.side_effect = Exception("API unavailable")
+
+        discovery = batch_processor.find_site_monitor_issues({'assignee': 'none'})
+
+        assert discovery.issue_numbers == []
+        assert discovery.total_found == 0
+        assert discovery.filters == {'assignee': 'none'}
     
     def test_process_single_issue_success(self, batch_processor, mock_issue_processor, mock_github_client):
         """Test successful single issue processing."""
@@ -304,6 +375,43 @@ class TestBatchProcessor:
         assert result == expected_result
         mock_github_client.get_issue_data.assert_called_once_with(123)
         mock_issue_processor.process_issue.assert_called_once()
+
+    def test_process_issues_emits_telemetry_summary(self, mock_issue_processor, mock_github_client, batch_config):
+        """Ensure telemetry publishers receive batch summary with Copilot SLA data."""
+        telemetry_events: List[Dict[str, Any]] = []
+
+        batch_processor = BatchProcessor(
+            issue_processor=mock_issue_processor,
+            github_client=mock_github_client,
+            config=batch_config,
+            telemetry_publishers=[telemetry_events.append],
+        )
+
+        due_iso = "2025-10-05T12:00:00Z"
+        completed_result = ProcessingResult(
+            issue_number=42,
+            status=IssueProcessingStatus.COMPLETED,
+            workflow_name="example-workflow",
+            created_files=["study/example/report.md"],
+            copilot_assignee="github-copilot[bot]",
+            copilot_due_at=due_iso,
+            handoff_summary="🚀 Unified handoff summary",
+        )
+
+        with patch.object(batch_processor, '_process_batch', return_value=[completed_result]):
+            with patch.object(batch_processor, '_create_batches', return_value=[[42]]):
+                metrics, results = batch_processor.process_issues([42], dry_run=False)
+
+        assert results == [completed_result]
+        assert metrics.copilot_assignment_count == 1
+        assert telemetry_events, "Telemetry publisher should receive at least one event"
+        event = telemetry_events[-1]
+        assert event['event_type'] == 'batch_processor.summary'
+        assert event['copilot_assignment_count'] == 1
+        assert event['next_copilot_due_at'] == due_iso
+        assert event['metrics']['copilot_assignments']['next_due_at'] == due_iso
+        assert event['context']['total_requested'] == 1
+        assert event['context']['dry_run'] is False
     
     def test_process_single_issue_dry_run(self, batch_processor, mock_issue_processor, mock_github_client):
         """Test dry run processing."""
@@ -316,16 +424,24 @@ class TestBatchProcessor:
             'url': 'https://github.com/repo/issues/123'
         }
         mock_github_client.get_issue_data.return_value = issue_data_dict
+
+        preview_result = ProcessingResult(
+            issue_number=123,
+            status=IssueProcessingStatus.PREVIEW,
+            workflow_name='test-workflow',
+            created_files=['study/preview/test-workflow-123/deliverable.md'],
+            copilot_assignee='github-copilot[bot]',
+        )
+        mock_issue_processor.generate_preview_result.return_value = preview_result
         
         # Test dry run
         result = batch_processor._process_single_issue_with_retry(123, dry_run=True)
         
-        assert result.issue_number == 123
-        assert result.status == IssueProcessingStatus.PENDING
-        assert result.processing_time_seconds == 0.0
+        assert result == preview_result
         
         # Should not call process_issue in dry run
         mock_issue_processor.process_issue.assert_not_called()
+        mock_issue_processor.generate_preview_result.assert_called_once()
     
     def test_process_single_issue_with_retry(self, batch_processor, mock_issue_processor, mock_github_client):
         """Test retry logic for failed processing."""
@@ -461,7 +577,9 @@ class TestBatchProcessor:
             ProcessingResult(
                 issue_number=123,
                 status=IssueProcessingStatus.COMPLETED,
-                processing_time_seconds=1.0
+                processing_time_seconds=1.0,
+                copilot_assignee='github-copilot[bot]',
+                copilot_due_at='2025-10-02T09:00:00Z'
             ),
             ProcessingResult(
                 issue_number=124,
@@ -472,16 +590,27 @@ class TestBatchProcessor:
                 issue_number=125,
                 status=IssueProcessingStatus.NEEDS_CLARIFICATION,
                 processing_time_seconds=0.3
+            ),
+            ProcessingResult(
+                issue_number=126,
+                status=IssueProcessingStatus.PREVIEW,
+                workflow_name='test-workflow',
+                copilot_assignee='github-copilot[bot]',
+                copilot_due_at='2025-10-03T09:00:00Z',
             )
         ]
         
         batch_processor._update_metrics_from_batch(metrics, batch_results)
         
-        assert metrics.processed_count == 3
+        assert metrics.processed_count == 4
         assert metrics.success_count == 1
         assert metrics.error_count == 1
         assert metrics.clarification_count == 1
+        assert metrics.preview_count == 1
         assert metrics.processing_times == [1.0, 0.5, 0.3]
+        assert metrics.copilot_assignment_count == 2
+        assert metrics.copilot_due_dates == ['2025-10-02T09:00:00Z', '2025-10-03T09:00:00Z']
+        assert metrics.next_copilot_due_at == '2025-10-02T09:00:00Z'
     
     def test_save_batch_results(self, batch_processor, tmp_path):
         """Test saving batch results to file."""
@@ -494,9 +623,17 @@ class TestBatchProcessor:
                 processing_time_seconds=1.0
             )
         ]
-        
+        metrics = BatchMetrics(
+            total_issues=1,
+            processed_count=1,
+            success_count=1,
+            start_time=datetime(2025, 10, 1, 12, 0, 0, tzinfo=timezone.utc),
+            end_time=datetime(2025, 10, 1, 12, 5, 0, tzinfo=timezone.utc),
+        )
+        metrics.register_copilot_assignment('github-copilot[bot]', '2025-10-02T09:00:00Z')
+
         output_path = tmp_path / "results.json"
-        batch_processor.save_batch_results(results, str(output_path))
+        batch_processor.save_batch_results(results, str(output_path), metrics)
         
         assert output_path.exists()
         
@@ -509,6 +646,11 @@ class TestBatchProcessor:
         assert len(data['results']) == 1
         assert data['results'][0]['issue_number'] == 123
         assert data['results'][0]['status'] == 'completed'
+        assert data['results'][0]['workflow_name'] == 'test-workflow'
+        assert data['results'][0]['copilot_assignee'] is None
+        assert 'metrics' in data
+        assert data['metrics']['copilot_assignments']['count'] == 1
+        assert data['metrics']['copilot_assignments']['due_dates'] == ['2025-10-02T09:00:00Z']
     
     def test_priority_sorting(self, batch_processor):
         """Test priority-based issue sorting."""

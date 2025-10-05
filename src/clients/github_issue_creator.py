@@ -8,7 +8,10 @@ from github.GithubException import GithubException
 from typing import List, Optional, Dict, Any
 from unittest.mock import Mock
 from datetime import datetime, timedelta
+from textwrap import dedent
 import logging
+
+from ..workflow.workflow_state_manager import ensure_discovery_labels
 
 logger = logging.getLogger(__name__)
 
@@ -231,15 +234,29 @@ class GitHubIssueCreator:
         # Build issue body
         body = self._build_individual_result_body(site_name, result)
         
-        # Combine default and custom labels
+        # Combine default and custom labels while preserving order/casing
         default_labels = ['site-monitor', 'automated', 'documentation']
-        all_labels = list(set(default_labels + (labels or [])))
+        provided_labels = labels or []
+
+        deduped_labels: List[str] = []
+        seen_labels = set()
+        for label in default_labels + provided_labels:
+            normalized = label.lower()
+            if normalized not in seen_labels:
+                deduped_labels.append(label)
+                seen_labels.add(normalized)
+
+        discovery_plan = ensure_discovery_labels(deduped_labels)
+        for required_label in sorted(discovery_plan.labels_to_add):
+            if required_label not in seen_labels:
+                deduped_labels.append(required_label)
+                seen_labels.add(required_label)
         
         # Create the issue
         issue = self.create_issue(
             title=title,
             body=body,
-            labels=all_labels
+            labels=deduped_labels
         )
         
         logger.info(f"Created individual result issue #{issue.number} for {site_name}")
@@ -248,21 +265,46 @@ class GitHubIssueCreator:
     def _build_individual_result_body(self, site_name: str, result: Any) -> str:
         """Build the body content for an individual search result issue"""
         timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
-        
-        body = f"""# New Update Found on {site_name}
+        snippet = (result.snippet or "_No preview available._").strip()
+        snippet = " ".join(snippet.split())  # Collapse whitespace/newlines
+        display_link = result.display_link or result.link
 
-🔍 **Search Result** | 📅 **Date**: {timestamp}
+        body = dedent(
+            f"""
+            # Workflow Intake: {site_name}
 
-## 📄 {result.title}
+            ## Discovery
 
-**🔗 URL**: {result.link}
+            - **Site**: {site_name}
+            - **Title**: {result.title}
+            - **URL**: {result.link}
+            - **Source**: {display_link}
+            - **Detected**: {timestamp}
 
-**📝 Snippet**: {result.snippet}
+            > {snippet}
 
----
-*This issue was automatically created by the Site Monitor service for a single search result.*
-"""
-        
+            ### Next Actions
+            - [ ] Run `python main.py assign-workflows --config config.yaml --limit 10 --dry-run` to classify this discovery.
+            - [ ] Review discovery metadata for duplicates or priority adjustments.
+            - [ ] Confirm ownership and readiness for specialist processing.
+
+            ## AI Assessment
+
+            _Pending automated assignment. This section will be populated by the workflow assignment service._
+
+            ## Specialist Guidance
+
+            _Pending unified issue processing. Guidance will be generated once the issue reaches `state::assigned`._
+
+            ## Copilot Assignment
+
+            _Pending unified issue processing. Copilot will be assigned after specialist guidance is published._
+
+            ---
+            *This issue was automatically created by the Site Monitor service for a single search result.*
+            """
+        ).strip()
+
         return body
 
     def close_old_monitoring_issues(self, days_old: int = 7, 
@@ -475,6 +517,31 @@ This site monitoring issue is being automatically closed as it's older than {day
                     'name': 'documentation',
                     'color': 'FEF2C0',  # Light yellow
                     'description': 'Documentation related updates'
+                },
+                {
+                    'name': 'monitor::triage',
+                    'color': 'FBCA04',  # Mustard yellow
+                    'description': 'Temporary discovery label awaiting workflow assignment'
+                },
+                {
+                    'name': 'state::discovery',
+                    'color': 'C2E0C6',  # Light green
+                    'description': 'Workflow state: discovery intake'
+                },
+                {
+                    'name': 'state::assigned',
+                    'color': 'BFD4F2',  # Light blue
+                    'description': 'Workflow state: assigned to specialist processing'
+                },
+                {
+                    'name': 'state::copilot',
+                    'color': 'E6E6E6',  # Light gray
+                    'description': 'Workflow state: Copilot executing deliverables'
+                },
+                {
+                    'name': 'state::done',
+                    'color': 'BFDADC',  # Teal
+                    'description': 'Workflow state: work completed'
                 }
             ]
         

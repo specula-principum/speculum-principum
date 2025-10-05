@@ -165,6 +165,26 @@ class TestGitHubModelsClient:
 
 class TestAIWorkflowAssignmentAgent:
     """Test AI workflow assignment agent"""
+
+    def test_render_ai_assessment_section_includes_rationale(self):
+        analysis = ContentAnalysis(
+            summary="Synthesize threat landscape for Q4.",
+            key_topics=["threat intelligence", "strategic outlook"],
+            suggested_workflows=["Research Analysis"],
+            confidence_scores={"Research Analysis": 0.92},
+            technical_indicators=["emerging threat", "fusion required"],
+            urgency_level="high",
+            content_type="research",
+        )
+
+        section = AIWorkflowAssignmentAgent._render_ai_assessment_section(
+            analysis,
+            assigned_workflow="Research Analysis",
+        )
+
+        assert "Confidence: 92%" in section
+        assert "Rationale: Matches topics" in section
+        assert "(assigned)" in section
     
     @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
     @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')
@@ -304,6 +324,75 @@ class TestAIWorkflowAssignmentAgent:
         # Should use default thresholds
         assert agent.HIGH_CONFIDENCE_THRESHOLD == 0.8
         assert agent.MEDIUM_CONFIDENCE_THRESHOLD == 0.6
+
+    @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
+    @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')
+    def test_process_issues_batch_emits_telemetry(
+        self,
+        mock_matcher,
+        mock_github,
+        mock_github_token,
+        mock_repo_name,
+    ) -> None:
+        """Telemetry publishers receive batch lifecycle events."""
+
+        mock_matcher.return_value.get_available_workflows.return_value = []
+
+        events: list[dict[str, Any]] = []
+
+        def publisher(event: dict[str, Any]) -> None:
+            events.append(event)
+
+        agent = AIWorkflowAssignmentAgent(
+            github_token=mock_github_token,
+            repo_name=mock_repo_name,
+            enable_ai=False,
+            telemetry_publishers=[publisher],
+        )
+
+        issue_payload = {'number': 321}
+        mock_result = {
+            'issue_number': 321,
+            'action_taken': 'auto_assigned',
+            'assigned_workflow': 'Research Analysis',
+            'labels_added': ['workflow::research-analysis'],
+            'dry_run': True,
+            'ai_analysis': {
+                'summary': 'High confidence assignment',
+                'suggested_workflows': ['Research Analysis'],
+                'confidence_scores': {'Research Analysis': 0.92},
+            },
+            'message': 'High confidence assignment',
+        }
+
+        with patch.object(agent, 'get_unassigned_site_monitor_issues', return_value=[issue_payload]):
+            with patch.object(agent, 'process_issue_with_ai', return_value=mock_result):
+                with patch('time.sleep', return_value=None):
+                    result = agent.process_issues_batch(limit=1, dry_run=True)
+
+        assert result['total_issues'] == 1
+        assert result['processed'] == 1
+        assert len(events) == 3
+
+        event_types = [event['event_type'] for event in events]
+        assert event_types == [
+            'workflow_assignment.batch_start',
+            'workflow_assignment.issue_result',
+            'workflow_assignment.batch_summary',
+        ]
+
+        issue_event = events[1]
+        assert issue_event['issue_number'] == 321
+        assert issue_event['action_taken'] == 'auto_assigned'
+        assert issue_event['ai_summary'] == 'High confidence assignment'
+        assert issue_event['suggested_workflows'] == ['Research Analysis']
+        assert issue_event['confidence_scores']['Research Analysis'] == pytest.approx(0.92)
+        assert issue_event['assignment_mode'] == 'ai'
+
+        summary_event = events[-1]
+        assert summary_event['processed'] == 1
+        assert summary_event['status'] == 'success'
+        assert summary_event['assignment_mode'] == 'ai'
 
 
 class TestIntegration:

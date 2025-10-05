@@ -54,6 +54,39 @@ validation:
   checks: []
 ```
 
+## Label and State Model
+
+| Label Family | Prefix | Purpose |
+| --- | --- | --- |
+| Temporary discovery | `monitor::triage` | Applied by site monitoring to mark newly created issues that still require workflow assignment. Removed automatically once an assignment is made. |
+| Workflow state | `state::` | Tracks pipeline progress. Valid values: `state::discovery`, `state::assigned`, `state::copilot`, `state::done`. Only one state label should exist on an issue at any time. |
+| Workflow selection | `workflow::` | Identifies the canonical workflow that governs specialist guidance and deliverables. Set by assignment agents. |
+| Specialist alignment | `specialist::` | Declares which specialist persona owns the guidance for the issue (e.g., `specialist::intelligence-analyst`). |
+
+Agents rely on the state machine below when advancing issues:
+
+```
+state::discovery  →  state::assigned  →  state::copilot  →  state::done
+```
+
+- **Site monitoring** initializes `monitor::triage` and `state::discovery`.
+- **Workflow assignment (AI-first, fallback supported)** removes the discovery label, applies `workflow::`/`specialist::` labels, and transitions to `state::assigned`.
+- **Issue processing** generates specialist guidance, assigns Copilot, and advances the issue to `state::copilot`.
+- **Copilot completion** (automated or manual) clears in-progress labels and marks the issue `state::done`.
+
+All tooling must treat the labels as case-insensitive and de-duplicate before applying changes.
+
+## Required Issue Sections
+
+Every workflow-compatible issue body contains the following sections:
+
+- `## Discovery` — Populated by site monitoring with source metadata and retrieval timestamp.
+- `## AI Assessment` — Written by the workflow assignment agents. Includes recommended workflows, rationale, and signal metadata.
+- `## Specialist Guidance` — Generated during issue processing. Provides persona context, required actions, deliverables, and collaboration notes.
+- `## Copilot Assignment` — Defines due dates, acceptance criteria, and validation steps for the Copilot handoff.
+
+Processing or assignment agents should update these sections in-place via Markdown section upserts to keep history and comments clean.
+
 ## Available Variables
 
 The following variables can be used in patterns:
@@ -66,10 +99,10 @@ The following variables can be used in patterns:
 
 ## Trigger Label Logic
 
-1. All workflows require the `site-monitor` label to be processed
-2. Additional `trigger_labels` refine which workflow is selected
-3. If multiple workflows match, the agent will request clarification
-4. If no specific workflow matches (only `site-monitor`), the agent will list available options
+1. All workflows still require the `site-monitor` label for discovery origins.
+2. Assignment agents consider workflow `trigger_labels` alongside the existing label set to resolve a single `workflow::` target.
+3. If multiple workflows match, the agent requests clarification and keeps the issue in `state::discovery` until resolved.
+4. If no workflow matches (only discovery labels remain), the agent lists recommended options and applies `needs clarification` guidance.
 
 ## Deliverable Templates
 
@@ -77,12 +110,11 @@ Templates referenced in the `template` field should be placed in the `templates/
 
 ## Processing Flow
 
-1. **Issue Detection** - Agent scans for issues with `site-monitor` label
-2. **Workflow Matching** - Finds appropriate workflow based on labels
-3. **Assignment** - Agent assigns itself to the issue
-4. **Generation** - Creates deliverables per workflow specification
-5. **Git Operations** - Creates branch and commits generated files
-6. **Completion** - Updates issue with results and removes assignment
+1. **Issue Detection** – Site monitor or manual intake ensures discovery metadata and discovery-state labels are present.
+2. **Workflow Assignment** – AI-first agent (with fallback support) selects and applies a single workflow, removes `monitor::triage`, and transitions the issue to `state::assigned`.
+3. **Specialist Guidance Generation** – `process-issues` uses workflow configuration to populate `## Specialist Guidance` and update assignment metadata.
+4. **Copilot Handoff** – The processor assigns Copilot, writes the `## Copilot Assignment` block, updates labels to `state::copilot`, and emits telemetry artifacts.
+5. **Copilot Execution** – Copilot or automation completes deliverables, transitions the issue to `state::done`, and posts completion summary.
 
 ## Example Workflows
 
@@ -107,11 +139,12 @@ Templates referenced in the `template` field should be placed in the `templates/
 
 ## Best Practices
 
-- Use descriptive trigger labels that clearly indicate workflow purpose
-- Keep deliverable names URL-friendly (lowercase, hyphens, no spaces)
-- Set realistic timeouts based on workflow complexity
-- Include validation rules to ensure quality output
-- Document any special requirements in the workflow description
+- Use descriptive trigger labels that clearly indicate workflow purpose.
+- Keep deliverable names URL-friendly (lowercase, hyphens, no spaces).
+- Set realistic timeouts based on workflow complexity.
+- Include validation rules to ensure quality output.
+- Document any special requirements in the workflow description.
+- Validate that workflow metadata declares the appropriate `specialist::` label so state transitions remain deterministic.
 
 ## Troubleshooting
 

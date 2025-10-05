@@ -80,15 +80,17 @@
 
 #### 2. Batch Processor Enhancements
 - **File**: `src/core/batch_processor.py`
-- **New Method**:
+- **New Method** (historical):
   - `process_copilot_assigned_issues(specialist_filter: Optional[str] = None, dry_run: bool = False)`
-    - Processes all Copilot-assigned issues in batches
-    - Supports filtering by specialist type: `intelligence-analyst`, `osint-researcher`, `target-profiler`, `threat-hunter`, `business-analyst`
-    - Returns batch metrics and processing results
+    - Processed all Copilot-assigned issues in batches
+    - Supported filtering by specialist type: `intelligence-analyst`, `osint-researcher`, `target-profiler`, `threat-hunter`, `business-analyst`
+    - Returned batch metrics and processing results
+
+> **Update — 2025-09-30:** The dedicated Copilot batch helper has been retired. All batch execution now flows through `BatchProcessor.process_issues`, which handles Copilot handoff via shared state transitions.
 
 #### 3. CLI Command Implementation
 - **File**: `main.py`
-- **New Command**: `process-copilot-issues`
+- **New Command** (historical): `process-copilot-issues`
 - **Arguments**:
   - `--config`: Configuration file path (default: config.yaml)
   - `--specialist-filter`: Filter by specialist type
@@ -96,6 +98,8 @@
   - `--dry-run`: Preview mode without making changes
   - `--verbose`: Detailed progress reporting
   - `--continue-on-error`: Keep processing despite individual failures
+
+> **Update — 2025-09-30:** The standalone command has been removed. Use `python main.py process-issues` with label filters/state transitions for Copilot processing.
 
 #### 4. Comprehensive Testing
 - **File**: `tests/unit/core/test_copilot_assignment_simple.py`
@@ -110,22 +114,22 @@
 
 ```bash
 # List what Copilot issues would be processed (dry run)
-python main.py process-copilot-issues --dry-run --verbose
+python main.py process-issues --label-filter state::assigned --dry-run --verbose
 
 # Process all Copilot issues
-python main.py process-copilot-issues
+python main.py process-issues --label-filter state::assigned --continue-on-error
 
 # Process only intelligence analyst issues
-python main.py process-copilot-issues --specialist-filter intelligence-analyst
+python main.py process-issues --label-filter state::assigned specialist::intelligence-analyst
 
 # Process with custom batch size and continue on errors
-python main.py process-copilot-issues --batch-size 3 --continue-on-error --verbose
+python main.py process-issues --label-filter state::assigned --batch-size 3 --continue-on-error --verbose
 ```
 
 ### Acceptance Criteria Status
 
 - ✅ System can identify Copilot-assigned issues
-- ✅ CLI command `process-copilot-issues` works  
+- ✅ CLI command `process-issues` now covers the Copilot flow  
 - ✅ Batch processing supports Copilot filtering
 - ✅ Unit tests for new functionality
 

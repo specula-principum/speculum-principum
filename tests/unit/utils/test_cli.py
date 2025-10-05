@@ -25,7 +25,7 @@ from typing import Dict, Any, List
 from src.utils.cli_helpers import (
     ProgressReporter, ConfigValidator, IssueResultFormatter,
     BatchProcessor, CliResult, safe_execute_cli_command,
-    format_file_list, get_user_confirmation
+    format_file_list, get_user_confirmation, prepare_cli_execution
 )
 
 
@@ -277,6 +277,43 @@ class TestCliResult:
         assert result.error_code == 1
         assert result.data is not None
         assert result.data['error_details'] == 'More info'
+
+
+class TestCliExecutionContext:
+    """Test CLI execution context helper utilities."""
+
+    def test_prepare_cli_execution_dry_run_banner(self, capsys):
+        """Dry run should emit a banner and decorate messages."""
+        context = prepare_cli_execution("process-issues", dry_run=True)
+
+        captured = capsys.readouterr()
+        assert "🧪 Dry run enabled for process-issues" in captured.out
+
+        decorated = context.decorate_message("Summary output")
+        assert decorated.splitlines()[0] == "🧪 Dry run enabled for process-issues — no changes will be made."
+
+        cli_result = context.decorate_cli_result(CliResult(success=True, message="Done"))
+        assert cli_result.message.startswith("🧪 Dry run enabled for process-issues — no changes will be made.")
+
+    def test_prepare_cli_execution_structured_passthrough(self, capsys):
+        """Structured outputs should not be prefixed with dry run messaging."""
+        context = prepare_cli_execution("assign-workflows", dry_run=True)
+        capsys.readouterr()  # Clear dry run banner output
+
+        original = CliResult(success=True, message="[]", data={"issues": []})
+        decorated = context.decorate_cli_result(original, structured=True)
+
+        assert decorated is original
+        assert decorated.message == "[]"
+
+    def test_prepare_cli_execution_non_dry_run(self, capsys):
+        """Non-dry-run execution should not insert banners."""
+        context = prepare_cli_execution("process-issues", dry_run=False)
+
+        captured = capsys.readouterr()
+        assert "Dry run" not in captured.out
+
+        assert context.decorate_message("Summary") == "Summary"
 
 
 class TestSafeExecuteCliCommand:

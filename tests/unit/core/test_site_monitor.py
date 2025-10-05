@@ -9,6 +9,8 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
 from src.core.site_monitor import SiteMonitorService, create_monitor_service_from_config
+from src.core.batch_processor import SiteMonitorIssueDiscovery
+from src.core.issue_processor import ProcessingResult, IssueProcessingStatus
 from src.utils.config_manager import MonitorConfig, SiteConfig, GitHubConfig, SearchConfig
 from src.clients.search_client import SearchResult
 
@@ -235,6 +237,144 @@ class TestSiteMonitorService:
         assert 'Search failed' in results['error']
         assert 'cycle_start' in results
         assert 'cycle_end' in results
+
+    @patch('src.core.site_monitor.time.sleep', return_value=None)
+    @patch('src.core.site_monitor.BatchProcessor')
+    @patch('src.core.site_monitor.GitHubIntegratedIssueProcessor')
+    @patch('src.core.site_monitor.GoogleCustomSearchClient')
+    @patch('src.core.site_monitor.DeduplicationManager')
+    @patch('src.core.site_monitor.GitHubIssueCreator')
+    def test_process_existing_issues_metrics(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        mock_issue_processor,
+        mock_batch_processor,
+        _sleep,
+        sample_config_with_agent,
+    ):
+        """Ensure Copilot metrics are surfaced when processing existing issues."""
+        github_client = Mock()
+        github_client._issue_has_agent_activity.return_value = False
+        mock_github_creator.return_value = github_client
+        mock_dedup_manager.return_value = Mock()
+        mock_search_client.return_value = Mock()
+
+        issue = Mock()
+        issue.number = 101
+        issue.title = "Example Issue"
+        issue.body = "Discovery details"
+        issue.labels = []
+        issue.assignees = []
+        issue.assignee = None
+        issue.created_at = datetime.utcnow()
+        issue.updated_at = datetime.utcnow()
+        issue.html_url = "https://example.com/issues/101"
+
+        discovery = SiteMonitorIssueDiscovery(
+            issue_numbers=[101],
+            filters={},
+            total_found=1,
+            issues=[issue],
+        )
+
+        batch_processor_instance = Mock()
+        batch_processor_instance.find_site_monitor_issues.return_value = discovery
+        mock_batch_processor.return_value = batch_processor_instance
+
+        due_iso = "2025-10-02T09:00:00Z"
+        processing_result = ProcessingResult(
+            issue_number=101,
+            status=IssueProcessingStatus.COMPLETED,
+            workflow_name="Example Workflow",
+            created_files=["study/example/report.md"],
+            copilot_assignee="github-copilot[bot]",
+            copilot_due_at=due_iso,
+            handoff_summary="🚀 Unified Issue Processing Update",
+            specialist_guidance="### Persona: Intelligence Analyst",
+            copilot_assignment="**Assignee**: @github-copilot[bot]",
+        )
+
+        processor_instance = Mock()
+        processor_instance.process_github_issue.return_value = processing_result
+        mock_issue_processor.return_value = processor_instance
+
+        service = SiteMonitorService(sample_config_with_agent, "test-token")
+        results = service.process_existing_issues()
+
+        assert results['success'] is True
+        assert len(results['processed_issues']) == 1
+        assert results['processed_issues'][0]['copilot_due_at'] == due_iso
+        assert results['processed_issues'][0]['specialist_guidance'] == "### Persona: Intelligence Analyst"
+        assert results['processed_issues'][0]['copilot_assignment'] == "**Assignee**: @github-copilot[bot]"
+        assert results['metrics']['copilot_assignments']['count'] == 1
+        assert results['metrics']['copilot_assignments']['next_due_at'] == due_iso
+        assert results['next_copilot_due_at'] == due_iso
+        assert results['discovery']['used_batch_processor'] is True
+        assert results['discovery']['total_found'] == 1
+        github_client.get_unprocessed_monitoring_issues.assert_not_called()
+
+    @patch('src.core.site_monitor.time.sleep', return_value=None)
+    @patch('src.core.site_monitor.GitHubIntegratedIssueProcessor')
+    @patch('src.core.site_monitor.GoogleCustomSearchClient')
+    @patch('src.core.site_monitor.DeduplicationManager')
+    @patch('src.core.site_monitor.GitHubIssueCreator')
+    def test_process_existing_issues_telemetry_emission(self, mock_github_creator, mock_dedup_manager,
+                                                        mock_search_client, mock_issue_processor, _sleep, sample_config_with_agent):
+        """Telemetry publishers should receive Copilot SLA details."""
+
+        github_client = Mock()
+        mock_github_creator.return_value = github_client
+        mock_dedup_manager.return_value = Mock()
+        mock_search_client.return_value = Mock()
+
+        issue = Mock()
+        issue.number = 101
+        issue.title = "Example Issue"
+        issue.body = "Discovery details"
+        issue.labels = []
+        issue.assignees = []
+        issue.assignee = None
+        issue.created_at = datetime.utcnow()
+        issue.updated_at = datetime.utcnow()
+        issue.html_url = "https://example.com/issues/101"
+
+        github_client.get_issues_with_labels.return_value = [issue]
+        github_client._issue_has_agent_activity.return_value = False
+        github_client.get_unprocessed_monitoring_issues.return_value = [issue]
+
+        due_iso = "2025-10-03T08:30:00Z"
+        processing_result = ProcessingResult(
+            issue_number=101,
+            status=IssueProcessingStatus.COMPLETED,
+            workflow_name="Example Workflow",
+            created_files=["study/example/report.md"],
+            copilot_assignee="github-copilot[bot]",
+            copilot_due_at=due_iso,
+            handoff_summary="🚀 Unified Issue Processing Update",
+            specialist_guidance="### Persona: Intelligence Analyst",
+            copilot_assignment="**Assignee**: @github-copilot[bot]",
+        )
+
+        processor_instance = Mock()
+        processor_instance.process_github_issue.return_value = processing_result
+        mock_issue_processor.return_value = processor_instance
+
+        telemetry_events = []
+        service = SiteMonitorService(
+            sample_config_with_agent,
+            "test-token",
+            telemetry_publishers=[telemetry_events.append],
+        )
+
+        service.process_existing_issues()
+
+        assert telemetry_events, "Telemetry publisher should receive summary event"
+        event = telemetry_events[-1]
+        assert event['event_type'] == 'site_monitor.process_existing.summary'
+        assert event['metrics']['copilot_assignments']['next_due_at'] == due_iso
+        assert event['next_copilot_due_at'] == due_iso
     
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
@@ -363,7 +503,12 @@ class TestServiceCreation:
             
             # Verify config was loaded and service was created
             mock_load_config.assert_called_once_with("config.yaml")
-            mock_service_class.assert_called_once_with(mock_config, "test-token")
+            mock_service_class.assert_called_once_with(
+                mock_config,
+                "test-token",
+                config_path="config.yaml",
+                telemetry_publishers=None,
+            )
             assert service == mock_service_instance
 
 
@@ -462,7 +607,7 @@ class TestFilterAndProcessing:
 class TestSiteMonitorIntegration:
     """Integration tests for site monitor with issue processor."""
     
-    @patch('src.core.site_monitor.IssueProcessor')
+    @patch('src.core.site_monitor.GitHubIntegratedIssueProcessor')
     @patch('src.core.site_monitor.GitHubIssueCreator')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
@@ -512,9 +657,12 @@ class TestSiteMonitorIntegration:
             status=IssueProcessingStatus.COMPLETED,
             workflow_name="test-workflow",
             created_files=["study/123/analysis.md"],
-            error_message=None
+            error_message=None,
+            copilot_assignee="github-copilot[bot]",
+            copilot_due_at="2025-10-02T09:00:00Z",
+            handoff_summary="🚀 Unified handoff summary",
         )
-        mock_issue_processor.process_issue.return_value = processing_result
+        mock_issue_processor.process_github_issue.return_value = processing_result
         mock_issue_processor_class.return_value = mock_issue_processor
         
         # Create service and run monitoring cycle
@@ -527,8 +675,8 @@ class TestSiteMonitorIntegration:
         assert len(result['issue_processing_results']) == 1
         
         # Verify issue processing was called
-        mock_issue_processor.process_issue.assert_called_once_with(123)
-        
+        mock_issue_processor.process_github_issue.assert_called_once_with(123)
+
         # Verify processing result structure
         processing_result_dict = result['issue_processing_results'][0]
         assert processing_result_dict['issue_number'] == 123
@@ -536,3 +684,8 @@ class TestSiteMonitorIntegration:
         assert processing_result_dict['workflow'] == 'test-workflow'
         assert len(processing_result_dict['deliverables']) == 1
         assert processing_result_dict['error'] is None
+        assert processing_result_dict['copilot_assignee'] == "github-copilot[bot]"
+        assert processing_result_dict['copilot_due_at'] == "2025-10-02T09:00:00Z"
+        assert processing_result_dict['handoff_summary'] == "🚀 Unified handoff summary"
+
+

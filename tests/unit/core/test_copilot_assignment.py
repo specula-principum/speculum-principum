@@ -10,7 +10,6 @@ from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime, timezone
 
 from src.core.issue_processor import GitHubIntegratedIssueProcessor
-from src.core.batch_processor import BatchProcessor
 
 
 @pytest.fixture
@@ -222,62 +221,3 @@ class TestCopilotAssignmentDetection:
                     processor.github.repo.get_issues = Mock(return_value=[])  # Empty for limit test
                     issues = processor.get_copilot_assigned_issues(limit=0)
                     assert len(issues) == 0
-
-
-class TestBatchProcessorCopilotSupport:
-    """Test BatchProcessor Copilot assignment support."""
-    
-    @patch('src.core.issue_processor.ConfigManager')
-    @patch('src.core.issue_processor.WorkflowMatcher')
-    @patch('src.core.issue_processor.DeliverableGenerator')
-    def test_process_copilot_assigned_issues(self, mock_deliverable, mock_workflow, mock_config_manager, mock_config):
-        """Test process_copilot_assigned_issues method."""
-        mock_config_manager.load_config_with_env_substitution.return_value = mock_config
-        
-        with patch('src.clients.github_issue_creator.GitHubIssueCreator') as mock_github_class:
-            # Create mock issue processor with Copilot support
-            mock_processor = Mock(spec=GitHubIntegratedIssueProcessor)
-            mock_processor.get_copilot_assigned_issues.return_value = [
-                {'number': 123, 'labels': ['intelligence', 'site-monitor']},
-                {'number': 456, 'labels': ['osint-researcher', 'site-monitor']},
-            ]
-            
-            # Create batch processor
-            mock_github = Mock()
-            batch_processor = BatchProcessor(mock_processor, mock_github)
-            
-            # Mock the process_issues method
-            batch_processor.process_issues = Mock(return_value=("metrics", "results"))
-            
-            # Test without specialist filter
-            metrics, results = batch_processor.process_copilot_assigned_issues()
-            
-            # Should call process_issues with all issue numbers
-            batch_processor.process_issues.assert_called_once_with([123, 456], dry_run=False)
-            
-            # Test with specialist filter - note that 'intelligence' label should match 'intelligence-analyst' filter
-            batch_processor.process_issues.reset_mock()
-            metrics, results = batch_processor.process_copilot_assigned_issues(
-                specialist_filter='intelligence'  # Use 'intelligence' which matches the label
-            )
-            
-            # Should filter to only issues with intelligence label
-            batch_processor.process_issues.assert_called_once_with([123], dry_run=False)
-    
-    @patch('src.core.issue_processor.ConfigManager')
-    @patch('src.core.issue_processor.WorkflowMatcher')
-    @patch('src.core.issue_processor.DeliverableGenerator')
-    def test_process_copilot_assigned_issues_no_processor_support(self, mock_deliverable, mock_workflow, mock_config_manager, mock_config):
-        """Test handling when processor doesn't support Copilot detection."""
-        mock_config_manager.load_config_with_env_substitution.return_value = mock_config
-        
-        # Create mock issue processor WITHOUT Copilot support
-        mock_processor = Mock(spec=[])  # Empty spec means no methods available
-        
-        mock_github = Mock()
-        batch_processor = BatchProcessor(mock_processor, mock_github)
-        
-        metrics, results = batch_processor.process_copilot_assigned_issues()
-        
-        # Should return empty results
-        assert len(results) == 0

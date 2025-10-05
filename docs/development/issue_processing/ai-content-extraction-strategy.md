@@ -4,6 +4,8 @@
 
 Transform the Speculum Principum issue processor from template-based generation to AI-powered content extraction and structuring, focusing on intelligence analysis workflows for organizing information about target sites and organizations.
 
+> **Update — 2025-09-30:** The standalone `process-copilot-issues` CLI has been retired. All Copilot-focused processing now flows through the unified `process-issues` command.
+
 ## Current State Assessment
 
 ### Existing Architecture
@@ -284,7 +286,7 @@ class MultiAgentOrchestrator:
 **New CLI Options**:
 ```bash
 # Process Copilot-assigned issues with AI
-python main.py process-copilot-issues --specialist intelligence-analyst --limit 10
+python main.py process-issues --label-filter state::assigned --batch-size 10 --verbose
 
 # Extract content with specific specialist
 python main.py extract-content --issue 123 --specialist osint-researcher

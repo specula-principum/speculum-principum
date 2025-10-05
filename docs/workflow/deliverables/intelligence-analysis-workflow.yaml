@@ -3,6 +3,16 @@ name: "Intelligence Analysis Workflow"
 description: "AI-powered intelligence analysis for threat assessment and strategic evaluation"
 version: "1.0.0"
 
+# Labels that trigger the workflow (in addition to automatic `site-monitor`)
+trigger_labels:
+  - "intelligence"
+  - "intelligence-analyst"
+  - "threat-assessment"
+  - "strategic-analysis"
+  - "apt"
+  - "threat-actor"
+  - "geopolitical"
+
 # Trigger conditions for this workflow
 triggers:
   labels:

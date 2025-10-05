@@ -27,7 +27,19 @@ from enum import Enum
 from datetime import datetime, timezone
 import json
 
-from ..workflow.workflow_matcher import WorkflowMatcher, WorkflowLoadError
+from ..workflow.workflow_matcher import WorkflowMatcher, WorkflowLoadError, WorkflowInfo
+from ..workflow.workflow_state_manager import (
+    WORKFLOW_LABEL_PREFIX,
+    SPECIALIST_LABEL_PREFIX,
+    WorkflowState,
+    plan_state_transition,
+)
+from ..workflow.issue_handoff_builder import (
+    IssueHandoffBuilder,
+    IssueHandoffPayload,
+    DEFAULT_COPILOT_ASSIGNEE,
+)
+from ..utils.markdown_sections import upsert_section
 from ..utils.config_manager import ConfigManager
 from ..clients.github_issue_creator import GitHubIssueCreator
 from ..workflow.deliverable_generator import DeliverableGenerator, DeliverableSpec
@@ -119,6 +131,7 @@ class IssueProcessingStatus(Enum):
     """Status values for issue processing operations."""
     PENDING = "pending"
     PROCESSING = "processing"
+    PREVIEW = "preview"
     NEEDS_CLARIFICATION = "needs_clarification"
     COMPLETED = "completed"
     ERROR = "error"
@@ -162,11 +175,39 @@ class ProcessingResult:
     error_message: Optional[str] = None
     clarification_needed: Optional[str] = None
     processing_time_seconds: Optional[float] = None
+    output_directory: Optional[str] = None
+    git_branch: Optional[str] = None
+    git_commit: Optional[str] = None
+    copilot_assignee: Optional[str] = None
+    copilot_due_at: Optional[str] = None
+    handoff_summary: Optional[str] = None
+    specialist_guidance: Optional[str] = None
+    copilot_assignment: Optional[str] = None
     
     def __post_init__(self):
         """Initialize empty lists if None."""
         if self.created_files is None:
             self.created_files = []
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert processing result to a JSON-serializable dictionary."""
+        return {
+            'issue_number': self.issue_number,
+            'status': self.status.value,
+            'workflow_name': self.workflow_name,
+            'created_files': list(self.created_files or []),
+            'error_message': self.error_message,
+            'clarification_needed': self.clarification_needed,
+            'processing_time_seconds': self.processing_time_seconds,
+            'output_directory': self.output_directory,
+            'git_branch': self.git_branch,
+            'git_commit': self.git_commit,
+            'copilot_assignee': self.copilot_assignee,
+            'copilot_due_at': self.copilot_due_at,
+            'handoff_summary': self.handoff_summary,
+            'specialist_guidance': self.specialist_guidance,
+            'copilot_assignment': self.copilot_assignment,
+        }
 
 
 class IssueProcessor:
@@ -226,6 +267,7 @@ class IssueProcessor:
         # Initialize workflow matcher with error handling
         workflow_path = workflow_dir or (self.config.agent.workflow_directory if self.config.agent else 'docs/workflow/deliverables')
         try:
+            self.workflow_directory = workflow_path
             self.workflow_matcher = WorkflowMatcher(workflow_path)
             self.logger.info(f"Workflow matcher initialized with directory: {workflow_path}")
         except WorkflowLoadError as e:
@@ -558,7 +600,10 @@ class IssueProcessor:
                 status=IssueProcessingStatus.COMPLETED,
                 workflow_name=workflow_info.name,
                 created_files=execution_result['created_files'],
-                processing_time_seconds=processing_time
+                processing_time_seconds=processing_time,
+                output_directory=execution_result.get('output_directory'),
+                git_branch=execution_result.get('git_branch'),
+                git_commit=execution_result.get('git_commit')
             )
             
         except ProcessingTimeoutError as e:
@@ -607,6 +652,15 @@ class IssueProcessor:
                 self._save_processing_state()
             except Exception as e:
                 self.logger.warning(f"Failed to save processing state after issue #{issue_number}: {e}")
+
+    def generate_preview_result(self, issue_data: IssueData) -> ProcessingResult:
+        """Return a simulated processing result for preview/dry-run scenarios."""
+
+        return ProcessingResult(
+            issue_number=issue_data.number,
+            status=IssueProcessingStatus.PENDING,
+            error_message="Preview generation is not available for this processor.",
+        )
 
     def _validate_issue_data(self, issue_data: IssueData) -> None:
         """
@@ -1186,7 +1240,152 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
                 self.logger.warning(f"Failed to initialize AI content extraction agent: {e}")
                 self.enable_ai_extraction = False
                 self.content_extraction_agent = None
+
+        try:
+            self.handoff_builder = IssueHandoffBuilder(
+                config_path=config_path,
+                workflow_directory=self.workflow_directory,
+            )
+            self.logger.info("Issue handoff builder initialized")
+        except Exception as e:
+            self.logger.warning(f"Issue handoff builder unavailable: {e}")
+            self.handoff_builder = None
     
+    def generate_preview_result(self, issue_data: IssueData) -> ProcessingResult:  # type: ignore[override]
+        """Return a simulated processing result with rendered handoff sections."""
+
+        try:
+            self._validate_issue_data(issue_data)
+        except IssueProcessingError as exc:  # pragma: no cover - defensive guard
+            return ProcessingResult(
+                issue_number=issue_data.number,
+                status=IssueProcessingStatus.ERROR,
+                error_message=str(exc),
+            )
+
+        if 'site-monitor' not in issue_data.labels:
+            return ProcessingResult(
+                issue_number=issue_data.number,
+                status=IssueProcessingStatus.ERROR,
+                error_message="Preview requires the 'site-monitor' label to determine workflow context.",
+            )
+
+        try:
+            workflow_result = self._find_workflow_with_retry(issue_data)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            return ProcessingResult(
+                issue_number=issue_data.number,
+                status=IssueProcessingStatus.ERROR,
+                error_message=f"Failed to analyse workflow for preview: {exc}",
+            )
+
+        workflow_info, _ = workflow_result
+        if workflow_info is None:
+            clarification_msg = self._generate_clarification_message(issue_data)
+            return ProcessingResult(
+                issue_number=issue_data.number,
+                status=IssueProcessingStatus.NEEDS_CLARIFICATION,
+                clarification_needed=clarification_msg,
+            )
+
+        preview_files = self._build_preview_file_list(workflow_info, issue_data)
+        metadata: Dict[str, Any] = {
+            'git_branch': self._build_preview_branch_name(issue_data, workflow_info),
+            'preview': True,
+        }
+
+        payload: Optional[IssueHandoffPayload] = None
+        if self.handoff_builder:
+            try:
+                payload = self.handoff_builder.build_handoff(
+                    issue_title=issue_data.title,
+                    issue_url=issue_data.url,
+                    issue_body=issue_data.body,
+                    workflow_info=workflow_info,
+                    labels=issue_data.labels,
+                    created_files=preview_files,
+                    metadata=metadata,
+                )
+            except Exception as exc:  # pragma: no cover - defensive guard
+                self.logger.warning("Failed to render preview handoff sections: %s", exc)
+                payload = None
+
+        result = ProcessingResult(
+            issue_number=issue_data.number,
+            status=IssueProcessingStatus.PREVIEW,
+            workflow_name=workflow_info.name,
+            created_files=preview_files,
+        )
+
+        if payload:
+            result.copilot_assignee = payload.copilot_assignee
+            result.copilot_due_at = payload.copilot_due_iso
+            result.handoff_summary = payload.summary_comment
+            result.specialist_guidance = payload.specialist_guidance
+            result.copilot_assignment = payload.copilot_assignment
+        else:
+            result.copilot_assignee = DEFAULT_COPILOT_ASSIGNEE
+            result.copilot_due_at = None
+            result.handoff_summary = "Preview available, but specialist guidance template could not be rendered."
+            result.specialist_guidance = (
+                "Preview unavailable: specialist configuration is missing."
+            )
+            result.copilot_assignment = (
+                "Preview unavailable: Copilot assignment template could not be generated."
+            )
+
+        return result
+
+    def _build_preview_file_list(self, workflow_info: WorkflowInfo, issue_data: IssueData) -> List[str]:
+        """Create placeholder file paths mirroring workflow deliverables."""
+
+        base_slug = self._slugify(workflow_info.name) or "workflow"
+        base_dir = f"study/preview/{base_slug}-{issue_data.number}"
+        preview_files: List[str] = []
+
+        for deliverable in workflow_info.deliverables or []:
+            filename = deliverable.get('filename') if isinstance(deliverable, dict) else None
+            if isinstance(filename, str) and filename.strip():
+                formatted = filename.replace('{issue_number}', str(issue_data.number))
+                formatted = formatted.replace('{workflow}', base_slug)
+                if not formatted.startswith('study/') and '/' not in formatted.split('/', 1)[0]:
+                    formatted = f"study/{formatted}"
+                preview_files.append(formatted)
+                continue
+
+            name_hint = None
+            if isinstance(deliverable, dict):
+                name_hint = deliverable.get('name') or deliverable.get('title')
+            slug = self._slugify(str(name_hint)) if name_hint else f"deliverable-{len(preview_files) + 1}"
+            preview_files.append(f"{base_dir}/{slug}.md")
+
+        if not preview_files:
+            preview_files.append(f"{base_dir}/summary.md")
+
+        # De-duplicate while preserving order
+        seen: set[str] = set()
+        deduped: List[str] = []
+        for path in preview_files:
+            if path not in seen:
+                seen.add(path)
+                deduped.append(path)
+        return deduped
+
+    def _build_preview_branch_name(self, issue_data: IssueData, workflow_info: WorkflowInfo) -> str:
+        """Derive a human-readable branch name for preview output."""
+
+        prefix = "preview"
+        if getattr(self, 'git_manager', None) is not None:
+            branch_prefix = getattr(self.git_manager, 'branch_prefix', None)
+            if branch_prefix:
+                prefix = f"{branch_prefix}-preview"
+
+        workflow_slug = self._slugify(workflow_info.name)
+        title_slug = self._slugify(issue_data.title)
+        descriptor = workflow_slug or title_slug or "issue"
+        branch_name = f"{prefix}-{issue_data.number}-{descriptor}"[:60]
+        return branch_name.rstrip('-')
+
     def process_github_issue(self, issue_number: int) -> ProcessingResult:
         """
         Process a GitHub issue by number.
@@ -1364,10 +1563,32 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
             self._unassign_from_agent(issue_number)
             
         elif result.status == IssueProcessingStatus.COMPLETED:
-            # Add completion comment
+            handoff_payload = None
+            try:
+                handoff_payload = self._finalize_copilot_handoff(issue_number, result)
+            except Exception as e:
+                self.logger.error(f"Failed to finalize Copilot handoff for issue #{issue_number}: {e}")
+
             completion_comment = self._generate_completion_comment(result)
-            self.github.add_comment(issue_number, completion_comment)
-            self.logger.info(f"Added completion comment to issue #{issue_number}")
+            if handoff_payload:
+                result.copilot_assignee = handoff_payload.copilot_assignee
+                result.copilot_due_at = handoff_payload.copilot_due_iso
+                result.handoff_summary = handoff_payload.summary_comment
+                result.specialist_guidance = handoff_payload.specialist_guidance
+                result.copilot_assignment = handoff_payload.copilot_assignment
+
+            comment_body = handoff_payload.summary_comment if handoff_payload else None
+            if comment_body:
+                comment_body = f"{comment_body}\n\n---\n{completion_comment}"
+            else:
+                comment_body = completion_comment
+
+            self.github.add_comment(issue_number, comment_body)
+            self.logger.info(f"Posted completion summary to issue #{issue_number}")
+            try:
+                self._unassign_from_agent(issue_number)
+            except Exception as e:
+                self.logger.warning(f"Failed to unassign agent from issue #{issue_number}: {e}")
             
         elif result.status == IssueProcessingStatus.ERROR:
             # Add error comment and unassign
@@ -1398,6 +1619,85 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
             f"---\n"
             f"*Automated processing by Issue Processor v1.0*"
         )
+
+    def _finalize_copilot_handoff(self, issue_number: int, result: ProcessingResult) -> Optional[IssueHandoffPayload]:
+        """Update issue metadata and assignment for Copilot handoff."""
+
+        if not self.handoff_builder:
+            self.logger.debug("Handoff builder not available; skipping Copilot handoff update")
+            return None
+
+        if not result.workflow_name:
+            self.logger.debug("No workflow name recorded; skipping Copilot handoff update")
+            return None
+
+        issue = self.github.get_issue(issue_number)
+        workflow_info = self.workflow_matcher.get_workflow_by_name(result.workflow_name)
+
+        if workflow_info is None:
+            self.logger.warning(
+                f"Workflow '{result.workflow_name}' not found in matcher; skipping handoff update"
+            )
+            return None
+
+        current_labels = [label.name for label in issue.labels] if issue.labels else []
+        metadata: Dict[str, str] = {}
+        if result.git_branch:
+            metadata["git_branch"] = result.git_branch
+        if result.git_commit:
+            metadata["git_commit"] = result.git_commit
+        if result.output_directory:
+            metadata["output_directory"] = result.output_directory
+
+        payload = self.handoff_builder.build_handoff(
+            issue_title=issue.title,
+            issue_url=issue.html_url,
+            issue_body=issue.body or "",
+            workflow_info=workflow_info,
+            labels=current_labels,
+            created_files=result.created_files or [],
+            metadata=metadata if metadata else None,
+        )
+
+        updated_body = upsert_section(issue.body or "", "Specialist Guidance", payload.specialist_guidance.strip())
+        updated_body = upsert_section(updated_body, "Copilot Assignment", payload.copilot_assignment.strip())
+
+        workflow_label = f"{WORKFLOW_LABEL_PREFIX}{self._slugify(workflow_info.name)}"
+        specialist_labels = [label for label in current_labels if label.startswith(SPECIALIST_LABEL_PREFIX)]
+        transition_plan = plan_state_transition(
+            current_labels,
+            WorkflowState.COPILOT_ASSIGNED,
+            ensure_labels=[workflow_label],
+            specialist_labels=specialist_labels or None,
+            clear_temporary=True,
+        )
+
+        final_labels = sorted(transition_plan.final_labels)
+        edit_kwargs: Dict[str, Any] = {}
+
+        if updated_body != (issue.body or ""):
+            edit_kwargs["body"] = updated_body
+        if set(final_labels) != set(current_labels):
+            edit_kwargs["labels"] = final_labels
+
+        if edit_kwargs:
+            issue.edit(**edit_kwargs)
+
+        copilot_assignee = payload.copilot_assignee
+        try:
+            current_assignees = [assignee.login for assignee in issue.assignees] if issue.assignees else []
+            if copilot_assignee not in current_assignees:
+                self.github.assign_issue(issue_number, [copilot_assignee])
+        except Exception as e:
+            self.logger.warning(f"Failed to assign issue #{issue_number} to {copilot_assignee}: {e}")
+
+        result.copilot_assignee = payload.copilot_assignee
+        result.copilot_due_at = payload.copilot_due_iso
+        result.handoff_summary = payload.summary_comment
+        result.specialist_guidance = payload.specialist_guidance
+        result.copilot_assignment = payload.copilot_assignment
+
+        return payload
     
     def _generate_error_comment(self, result: ProcessingResult) -> str:
         """

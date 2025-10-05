@@ -6,7 +6,7 @@ import pytest
 import tempfile
 import json
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import Mock, MagicMock, patch
 from dataclasses import asdict
 
 from src.agents.workflow_assignment_agent import (
@@ -241,13 +241,19 @@ class TestWorkflowAssignmentAgent:
         mock_workflow = Mock()
         mock_workflow.name = "Test Workflow"
         mock_workflow.trigger_labels = ['test', 'analysis']
+        mock_workflow.processing = {}
         
         # Mock GitHub issue
         mock_issue = Mock()
-        label = Mock()
-        label.name = 'site-monitor'
-        mock_issue.labels = [label]  # Only has site-monitor, missing workflow labels
-        mock_issue.add_to_labels = Mock()
+        monitor_label = Mock()
+        monitor_label.name = 'monitor::triage'
+        state_label = Mock()
+        state_label.name = 'state::discovery'
+        site_label = Mock()
+        site_label.name = 'site-monitor'
+        mock_issue.labels = [monitor_label, state_label, site_label]
+        mock_issue.body = "Existing body"
+        mock_issue.edit = Mock()
         mock_issue.create_comment = Mock()
         
         agent.github.repo.get_issue.return_value = mock_issue
@@ -257,31 +263,55 @@ class TestWorkflowAssignmentAgent:
         assert result.issue_number == 1
         assert result.action == AssignmentAction.ASSIGN_WORKFLOW
         assert result.workflow_name == "Test Workflow"
-        assert set(result.labels_added) == {'test', 'analysis'}
-        
-        # Verify GitHub operations
+        assert set(result.labels_added) == {'test', 'analysis', 'workflow::test-workflow', 'state::assigned'}
+        assert set(result.labels_removed) == {'monitor::triage', 'state::discovery'}
+
         agent.github.repo.get_issue.assert_called_once_with(1)
-        mock_issue.add_to_labels.assert_has_calls([call('test'), call('analysis')], any_order=True)
+        mock_issue.edit.assert_called_once()
+        edit_kwargs = mock_issue.edit.call_args.kwargs
+        assert 'labels' in edit_kwargs
+        assert set(edit_kwargs['labels']) == {
+            'analysis',
+            'site-monitor',
+            'state::assigned',
+            'test',
+            'workflow::test-workflow',
+        }
+        assert 'body' in edit_kwargs
+        assert 'AI Assessment' in edit_kwargs['body']
         mock_issue.create_comment.assert_called_once()
+        comment_text = mock_issue.create_comment.call_args[0][0]
+        assert 'Fallback Mode' in comment_text
+        assert 'Labels Removed' in comment_text
     
     def test_assign_workflow_to_issue_dry_run(self, agent):
         """Test assigning workflow in dry run mode"""
         mock_workflow = Mock()
         mock_workflow.name = "Test Workflow"
         mock_workflow.trigger_labels = ['test', 'analysis']
+        mock_workflow.processing = {}
         
         mock_issue = Mock()
-        label = Mock()
-        label.name = 'site-monitor'
-        mock_issue.labels = [label]
+        monitor_label = Mock()
+        monitor_label.name = 'monitor::triage'
+        state_label = Mock()
+        state_label.name = 'state::discovery'
+        site_label = Mock()
+        site_label.name = 'site-monitor'
+        mock_issue.labels = [monitor_label, state_label, site_label]
+        mock_issue.body = "Existing body"
+        mock_issue.edit = Mock()
+        mock_issue.create_comment = Mock()
         
         agent.github.repo.get_issue.return_value = mock_issue
         
         result = agent.assign_workflow_to_issue(1, mock_workflow, dry_run=True)
         
         assert result.action == AssignmentAction.ASSIGN_WORKFLOW
+        assert set(result.labels_added) == {'test', 'analysis', 'workflow::test-workflow', 'state::assigned'}
+        assert set(result.labels_removed) == {'monitor::triage', 'state::discovery'}
         # Verify no GitHub operations in dry run
-        mock_issue.add_to_labels.assert_not_called()
+        mock_issue.edit.assert_not_called()
         mock_issue.create_comment.assert_not_called()
     
     def test_request_clarification_for_issue(self, agent):
@@ -363,15 +393,21 @@ class TestWorkflowAssignmentAgent:
         mock_workflow = Mock()
         mock_workflow.name = "Research Workflow"
         mock_workflow.trigger_labels = ['research']
+        mock_workflow.processing = {}
         
         agent.workflow_matcher.get_best_workflow_match.return_value = (mock_workflow, "Matched")
         
         # Mock GitHub operations
         mock_issue = Mock()
-        label = Mock()
-        label.name = 'site-monitor'
-        mock_issue.labels = [label]
-        mock_issue.add_to_labels = Mock()
+        monitor_label = Mock()
+        monitor_label.name = 'monitor::triage'
+        state_label = Mock()
+        state_label.name = 'state::discovery'
+        site_label = Mock()
+        site_label.name = 'site-monitor'
+        mock_issue.labels = [monitor_label, state_label, site_label]
+        mock_issue.body = "Existing body"
+        mock_issue.edit = Mock()
         mock_issue.create_comment = Mock()
         agent.github.repo.get_issue.return_value = mock_issue
         
@@ -379,6 +415,8 @@ class TestWorkflowAssignmentAgent:
         
         assert result.action == AssignmentAction.ASSIGN_WORKFLOW
         assert result.workflow_name == "Research Workflow"
+        mock_issue.edit.assert_called_once()
+        mock_issue.create_comment.assert_called_once()
     
     def test_process_issue_assignment_no_workflow_match(self, agent):
         """Test processing issue with no workflow match"""

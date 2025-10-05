@@ -2,6 +2,18 @@ name: "OSINT Research Analysis"
 description: "Comprehensive OSINT research workflow for information verification and digital reconnaissance"
 version: "1.0.0"
 
+# Primary labels that should trigger this workflow
+trigger_labels:
+  - "osint"
+  - "osint-researcher"
+  - "reconnaissance"
+  - "digital-footprint"
+  - "verification"
+  - "source-analysis"
+  - "investigation"
+  - "open-source-intelligence"
+  - "research"
+
 # Workflow triggers and assignment conditions
 triggers:
   # Label-based triggers

@@ -17,8 +17,9 @@ or triggered manually via CLI commands.
 """
 
 import logging
+import re
 import time
-from typing import Dict, List, Optional, Tuple, Any, Set
+from typing import Dict, List, Optional, Tuple, Any, Set, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -27,6 +28,13 @@ from ..workflow.workflow_matcher import WorkflowMatcher, WorkflowInfo, WorkflowM
 from ..clients.github_issue_creator import GitHubIssueCreator
 from ..utils.config_manager import ConfigManager
 from ..utils.logging_config import get_logger, log_exception
+from ..utils.telemetry import (
+    TelemetryPublisher,
+    normalize_publishers,
+    publish_telemetry_event,
+)
+from ..workflow.workflow_state_manager import WorkflowState, plan_state_transition
+from ..utils.markdown_sections import upsert_section
 
 
 class AssignmentAction(Enum):
@@ -73,11 +81,14 @@ class WorkflowAssignmentAgent:
     NEEDS_CLARIFICATION_LABEL = 'needs clarification'
     AGENT_PROCESSING_LABEL = 'agent-processing'
     
-    def __init__(self, 
-                 github_token: str, 
-                 repo_name: str, 
-                 config_path: str = "config.yaml",
-                 workflow_directory: str = "docs/workflow/deliverables"):
+    def __init__(
+        self,
+        github_token: str,
+        repo_name: str,
+        config_path: str = "config.yaml",
+        workflow_directory: str = "docs/workflow/deliverables",
+        telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None,
+    ):
         """
         Initialize the workflow assignment agent.
         
@@ -90,6 +101,7 @@ class WorkflowAssignmentAgent:
         self.logger = get_logger(__name__)
         self.github = GitHubIssueCreator(github_token, repo_name)
         self.repo_name = repo_name
+        self.telemetry_publishers = normalize_publishers(telemetry_publishers)
         
         # Load configuration
         try:
@@ -107,6 +119,40 @@ class WorkflowAssignmentAgent:
         except Exception as e:
             self.logger.error(f"Failed to initialize workflow matcher: {e}")
             raise
+
+    def add_telemetry_publisher(self, publisher: TelemetryPublisher) -> None:
+        """Register an additional telemetry publisher at runtime."""
+
+        self.telemetry_publishers.append(publisher)
+
+    def _publish_telemetry(self, event_type: str, payload: Dict[str, Any]) -> None:
+        """Emit telemetry event if publishers are configured."""
+
+        publish_telemetry_event(self.telemetry_publishers, event_type, payload, logger=self.logger)
+
+    def _publish_issue_result_telemetry(
+        self,
+        result: AssignmentResult,
+        duration_seconds: float,
+        dry_run: bool,
+        *,
+        error: Optional[str] = None,
+    ) -> None:
+        """Publish per-issue telemetry payload matching the AI agent contract."""
+
+        payload = {
+            "issue_number": result.issue_number,
+            "action_taken": result.action.value,
+            "assigned_workflow": result.workflow_name,
+            "labels_added": list(result.labels_added or []),
+            "labels_removed": list(result.labels_removed or []),
+            "dry_run": dry_run,
+            "duration_seconds": duration_seconds,
+            "note": result.message,
+            "error": error or (result.message if result.action == AssignmentAction.ERROR else None),
+            "assignment_mode": "fallback",
+        }
+        self._publish_telemetry("workflow_assignment.issue_result", payload)
     
     def get_unassigned_site_monitor_issues(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
@@ -192,6 +238,134 @@ class WorkflowAssignmentAgent:
             log_exception(self.logger, "Issue workflow analysis failed", e)
             return None, error_msg
     
+    @staticmethod
+    def _slugify_label(value: str) -> str:
+        """Convert arbitrary workflow names into label-friendly slugs."""
+
+        slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        return slug or "workflow"
+
+    @staticmethod
+    def _determine_specialist_label(workflow: WorkflowInfo) -> Optional[str]:
+        """Extract an optional specialist label from workflow metadata."""
+
+        candidates: List[Optional[str]] = []
+        processing = getattr(workflow, "processing", {}) or {}
+        if isinstance(processing, dict):
+            candidates.extend(
+                processing.get(key) for key in ("specialist_type", "specialist")
+            )
+
+        config = getattr(workflow, "config", None)
+        if isinstance(config, dict):
+            candidates.append(config.get("specialist_type"))
+
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip().lower()
+        return None
+
+    @staticmethod
+    def _extract_label_names(labels: Iterable[Any]) -> List[str]:
+        """Normalise heterogeneous label representations into plain strings."""
+
+        normalised: List[str] = []
+        for label in labels or []:
+            candidate: Optional[str] = None
+
+            if isinstance(label, str):
+                candidate = label
+            else:
+                name_attr = getattr(label, "name", None)
+                if isinstance(name_attr, str):
+                    candidate = name_attr
+                else:
+                    mock_name = getattr(label, "_mock_name", None)
+                    if isinstance(mock_name, str) and mock_name:
+                        candidate = mock_name
+                    elif name_attr is not None and hasattr(name_attr, "_mock_name"):
+                        nested_mock_name = getattr(name_attr, "_mock_name", None)
+                        if isinstance(nested_mock_name, str) and nested_mock_name:
+                            candidate = nested_mock_name
+
+            if candidate:
+                stripped = candidate.strip()
+                if stripped:
+                    normalised.append(stripped)
+
+        return normalised
+
+    @staticmethod
+    def _apply_transition_plan(
+        current_labels: List[str],
+        plan,
+        *,
+        extra_labels: Optional[Iterable[str]] = None,
+    ) -> Tuple[List[str], List[str]]:
+        """Apply a transition plan to the label set and return additions."""
+
+        label_lookup: Dict[str, str] = {label.lower(): label for label in current_labels}
+        original_keys = set(label_lookup.keys())
+
+        for label in getattr(plan, "labels_to_remove", []):
+            label_lookup.pop(label, None)
+
+        for label in getattr(plan, "labels_to_add", []):
+            label_lookup[label] = label
+
+        if extra_labels:
+            for label in extra_labels:
+                if not isinstance(label, str):
+                    continue
+                normalised = label.lower()
+                if normalised not in label_lookup:
+                    label_lookup[normalised] = label
+
+        final_labels = sorted(label_lookup.values(), key=str.lower)
+        added_keys = set(label_lookup.keys()) - original_keys
+        added_labels = [label_lookup[key] for key in added_keys]
+        return final_labels, added_labels
+
+    @staticmethod
+    def _render_fallback_assessment(
+        workflow: WorkflowInfo,
+        *,
+        specialist_label: Optional[str],
+    ) -> str:
+        """Render the AI Assessment section for fallback assignments."""
+
+        lines: List[str] = []
+        lines.append("**Summary**")
+        lines.append("- Workflow assigned using label-based heuristics while AI analysis was unavailable.")
+        lines.append("")
+
+        lines.append("**Recommended Workflows**")
+        rationale_parts: List[str] = []
+        if specialist_label:
+            rationale_parts.append(f"specialist focus {specialist_label}")
+        if workflow.trigger_labels:
+            joined = ", ".join(sorted(workflow.trigger_labels))
+            rationale_parts.append(f"trigger labels {joined}")
+        rationale = "; ".join(rationale_parts) if rationale_parts else "fallback label matching"
+        lines.append(f"- {workflow.name} — Rationale: Matches {rationale}. (assigned)")
+        lines.append("")
+
+        if workflow.trigger_labels:
+            lines.append("**Key Topics**")
+            for label in sorted(set(workflow.trigger_labels))[:10]:
+                lines.append(f"- {label}")
+            lines.append("")
+
+        lines.append("**Indicators**")
+        lines.append("- Fallback label-based assignment")
+        lines.append("")
+
+        lines.append("**Classification**")
+        lines.append("- Urgency: Unknown")
+        lines.append("- Content Type: Unknown")
+
+        return "\n".join(lines).strip()
+
     def assign_workflow_to_issue(self, 
                                issue_number: int, 
                                workflow: WorkflowInfo,
@@ -208,52 +382,81 @@ class WorkflowAssignmentAgent:
             AssignmentResult with outcome details
         """
         try:
-            # Determine labels to add (workflow trigger labels)
-            labels_to_add = []
             current_issue = self.github.repo.get_issue(issue_number)
-            current_labels = {label.name for label in current_issue.labels}
-            
-            # Add workflow trigger labels that aren't already present
-            for trigger_label in workflow.trigger_labels:
-                if trigger_label not in current_labels:
-                    labels_to_add.append(trigger_label)
-            
-            if not labels_to_add:
-                # Workflow labels already present
-                message = f"Workflow '{workflow.name}' labels already present"
-                self.logger.info(f"Issue #{issue_number}: {message}")
-                return AssignmentResult(
-                    issue_number=issue_number,
-                    action=AssignmentAction.ASSIGN_WORKFLOW,
-                    workflow_name=workflow.name,
-                    message=message
-                )
-            
-            if not dry_run:
-                # Add the workflow trigger labels
-                for label in labels_to_add:
-                    current_issue.add_to_labels(label)
-                
-                # Add comment explaining the assignment
-                comment_body = (
-                    f"🤖 **Workflow Assignment**\n\n"
-                    f"I've assigned the **{workflow.name}** workflow to this issue.\n\n"
-                    f"**Added labels:** {', '.join(labels_to_add)}\n\n"
-                    f"The issue will be processed according to this workflow's specifications. "
-                    f"If this assignment is incorrect, please remove the workflow labels and add "
-                    f"more specific labels to help with proper classification."
-                )
-                current_issue.create_comment(comment_body)
-            
-            message = f"Assigned workflow '{workflow.name}' (labels: {', '.join(labels_to_add)})"
+            current_labels = self._extract_label_names(current_issue.labels)
+            workflow_slug = self._slugify_label(workflow.name)
+            specialist = self._determine_specialist_label(workflow)
+            specialist_labels = [specialist] if specialist else None
+
+            transition_plan = plan_state_transition(
+                current_labels,
+                WorkflowState.ASSIGNED,
+                ensure_labels=[workflow_slug],
+                specialist_labels=specialist_labels,
+                clear_temporary=True,
+            )
+
+            final_labels, _ = self._apply_transition_plan(
+                current_labels,
+                transition_plan,
+                extra_labels=workflow.trigger_labels,
+            )
+
+            additions = [label for label in final_labels if label.lower() not in {l.lower() for l in current_labels}]
+            removals = [label for label in current_labels if label.lower() not in transition_plan.final_labels]
+
+            assessment_section = self._render_fallback_assessment(
+                workflow,
+                specialist_label=specialist,
+            )
+
+            issue_body = current_issue.body
+            if issue_body is None:
+                issue_body = ""
+            elif not isinstance(issue_body, str):
+                issue_body = str(issue_body)
+
+            updated_body = upsert_section(issue_body, "AI Assessment", assessment_section)
+
+            message = (
+                f"Assigned workflow '{workflow.name}' with fallback heuristics "
+                f"(added: {', '.join(sorted(additions)) if additions else 'none'})."
+            )
             self.logger.info(f"Issue #{issue_number}: {message}")
-            
+
+            if not dry_run:
+                edit_kwargs: Dict[str, Any] = {}
+                if updated_body != issue_body:
+                    edit_kwargs["body"] = updated_body
+                if set(label.lower() for label in final_labels) != set(label.lower() for label in current_labels):
+                    edit_kwargs["labels"] = final_labels
+                if edit_kwargs:
+                    current_issue.edit(**edit_kwargs)
+
+                comment_lines = [
+                    "🤖 **Workflow Assignment (Fallback Mode)**",
+                    "",
+                    f"Assigned **{workflow.name}** workflow using label heuristics while AI analysis was unavailable.",
+                    f"**Labels Applied:** {', '.join(sorted(additions)) if additions else 'No new labels'}",
+                ]
+                if removals:
+                    comment_lines.append(f"**Labels Removed:** {', '.join(sorted(removals))}")
+                comment_lines.extend(
+                    [
+                        "",
+                        "The AI assessment section has been updated for downstream specialists.",
+                        "If this assignment is incorrect, adjust the workflow labels and rerun assignment.",
+                    ]
+                )
+                current_issue.create_comment("\n".join(comment_lines))
+
             return AssignmentResult(
                 issue_number=issue_number,
                 action=AssignmentAction.ASSIGN_WORKFLOW,
                 workflow_name=workflow.name,
                 message=message,
-                labels_added=labels_to_add
+                labels_added=sorted(additions, key=str.lower),
+                labels_removed=sorted(removals, key=str.lower),
             )
             
         except Exception as e:
@@ -431,9 +634,36 @@ class WorkflowAssignmentAgent:
         try:
             # Get candidate issues
             issues = self.get_unassigned_site_monitor_issues(limit)
+            candidate_count = len(issues)
+
+            self._publish_telemetry(
+                "workflow_assignment.batch_start",
+                {
+                    "agent_type": "fallback",
+                    "limit": limit,
+                    "dry_run": dry_run,
+                    "candidate_count": candidate_count,
+                    "assignment_mode": "fallback",
+                },
+            )
             
             if not issues:
                 self.logger.info("No issues found for workflow assignment")
+                self._publish_telemetry(
+                    "workflow_assignment.batch_summary",
+                    {
+                        "agent_type": "fallback",
+                        "total_issues": 0,
+                        "processed": 0,
+                        "duration_seconds": time.time() - start_time,
+                        "statistics": {action.value: 0 for action in AssignmentAction},
+                        "dry_run": dry_run,
+                        "status": "empty",
+                        "issue_numbers": [],
+                        "error_count": 0,
+                        "assignment_mode": "fallback",
+                    },
+                )
                 return {
                     'total_issues': 0,
                     'processed': 0,
@@ -445,12 +675,16 @@ class WorkflowAssignmentAgent:
             # Process each issue
             results = []
             statistics = {action.value: 0 for action in AssignmentAction}
+            issue_numbers: List[int] = []
             
             for issue_data in issues:
                 try:
+                    issue_start = time.time()
                     result = self.process_issue_assignment(issue_data, dry_run)
                     results.append(result)
                     statistics[result.action.value] += 1
+                    issue_numbers.append(result.issue_number)
+                    self._publish_issue_result_telemetry(result, time.time() - issue_start, dry_run)
                     
                     # Add small delay between issues to be respectful to GitHub API
                     time.sleep(0.1)
@@ -463,6 +697,8 @@ class WorkflowAssignmentAgent:
                     )
                     results.append(error_result)
                     statistics[AssignmentAction.ERROR.value] += 1
+                    issue_numbers.append(issue_data['number'])
+                    self._publish_issue_result_telemetry(error_result, time.time() - issue_start, dry_run, error=str(e))
                     
                     log_exception(self.logger, f"Failed to process issue #{issue_data['number']}", e)
             
@@ -479,17 +715,71 @@ class WorkflowAssignmentAgent:
             for action, count in statistics.items():
                 if count > 0:
                     self.logger.info(f"  {action}: {count}")
+
+            error_count = statistics.get(AssignmentAction.ERROR.value, 0)
+            status = "success"
+            if processed_count == 0:
+                status = "empty"
+            elif error_count and error_count < processed_count:
+                status = "partial"
+            elif error_count and error_count >= processed_count:
+                status = "error"
+
+            self._publish_telemetry(
+                "workflow_assignment.batch_summary",
+                {
+                    "agent_type": "fallback",
+                    "total_issues": len(issues),
+                    "processed": processed_count,
+                    "statistics": statistics,
+                    "duration_seconds": duration,
+                    "dry_run": dry_run,
+                    "status": status,
+                    "issue_numbers": issue_numbers,
+                    "error_count": error_count,
+                    "assignment_mode": "fallback",
+                },
+            )
+
+            result_payload = [
+                {
+                    "issue_number": item.issue_number,
+                    "action_taken": item.action.value,
+                    "assigned_workflow": item.workflow_name,
+                    "labels_added": list(item.labels_added or []),
+                    "labels_removed": list(item.labels_removed or []),
+                    "message": item.message,
+                    "dry_run": dry_run,
+                }
+                for item in results
+            ]
             
             return {
                 'total_issues': len(issues),
                 'processed': processed_count,
-                'results': results,
+                'results': result_payload,
                 'statistics': statistics,
                 'duration_seconds': duration
             }
             
         except Exception as e:
             log_exception(self.logger, "Batch processing failed", e)
+            self._publish_telemetry(
+                "workflow_assignment.batch_summary",
+                {
+                    "agent_type": "fallback",
+                    "total_issues": 0,
+                    "processed": 0,
+                    "statistics": {action.value: 0 for action in AssignmentAction},
+                    "duration_seconds": time.time() - start_time,
+                    "dry_run": dry_run,
+                    "status": "error",
+                    "issue_numbers": [],
+                    "error_count": 1,
+                    "error": str(e),
+                    "assignment_mode": "fallback",
+                },
+            )
             return {
                 'total_issues': 0,
                 'processed': 0,

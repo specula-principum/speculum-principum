@@ -11,6 +11,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from src.clients.github_issue_creator import GitHubIssueCreator
+from src.clients.search_client import SearchResult
 from tests.conftest import MockGitHubException
 
 
@@ -156,6 +157,95 @@ class TestGitHubIssueCreator:
         
         with pytest.raises(RuntimeError, match="Unexpected error creating issue: Unexpected error"):
             creator.create_issue(title="Test Issue")
+
+    def test_create_individual_result_issue_applies_discovery_template(self, mock_github_token, mock_repository_name, mock_github_issue):
+        """Ensure individual issues include discovery template and required labels."""
+        with patch('src.clients.github_issue_creator.Github') as mock_github_class, \
+             patch('src.clients.github_issue_creator.Auth') as mock_auth_class:
+            mock_github_instance = Mock()
+            mock_repo = Mock()
+            mock_github_class.return_value = mock_github_instance
+            mock_github_instance.get_repo.return_value = mock_repo
+            mock_repo.create_issue.return_value = mock_github_issue
+            mock_repo.get_labels.return_value = [
+                Mock(name='site-monitor'),
+                Mock(name='daily-summary'),
+                Mock(name='automated'),
+                Mock(name='documentation'),
+                Mock(name='monitor::triage'),
+                Mock(name='state::discovery'),
+                Mock(name='state::assigned'),
+                Mock(name='state::copilot'),
+                Mock(name='state::done'),
+                Mock(name='custom-label'),
+            ]
+            mock_auth_class.Token.return_value = Mock()
+
+            creator = GitHubIssueCreator(mock_github_token, mock_repository_name)
+            search_result = SearchResult(
+                title="Example Discovery",
+                link="https://example.com/article",
+                snippet="Example snippet detailing the discovery.",
+                display_link="example.com"
+            )
+
+            issue = creator.create_individual_result_issue(
+                site_name="Example Site",
+                result=search_result,
+                labels=['site-monitor', 'custom-label']
+            )
+
+            mock_repo.create_issue.assert_called_once()
+            _, kwargs = mock_repo.create_issue.call_args
+
+            labels = kwargs['labels']
+            assert 'site-monitor' in labels
+            assert 'custom-label' in labels
+            assert 'monitor::triage' in labels
+            assert 'state::discovery' in labels
+
+            body = kwargs['body']
+            assert body.startswith('# Workflow Intake: Example Site')
+            assert '## Discovery' in body
+            assert 'Example snippet detailing the discovery.' in body
+            assert '## AI Assessment' in body
+            assert 'Pending automated assignment' in body
+            assert '## Specialist Guidance' in body
+            assert '## Copilot Assignment' in body
+
+            assert issue == mock_github_issue
+
+    def test_create_monitoring_labels_includes_state_labels(self, mock_github_token, mock_repository_name):
+        """Default monitoring labels should include workflow state entries."""
+        with patch('src.clients.github_issue_creator.Github') as mock_github_class, \
+             patch('src.clients.github_issue_creator.Auth') as mock_auth_class:
+            mock_github_instance = Mock()
+            mock_repo = Mock()
+            mock_github_class.return_value = mock_github_instance
+            mock_github_instance.get_repo.return_value = mock_repo
+            mock_repo.get_labels.return_value = []
+            mock_repo.create_label = Mock()
+            mock_auth_class.Token.return_value = Mock()
+
+            creator = GitHubIssueCreator(mock_github_token, mock_repository_name)
+            created_labels = creator.create_monitoring_labels()
+
+            expected_labels = {
+                'site-monitor',
+                'daily-summary',
+                'automated',
+                'documentation',
+                'monitor::triage',
+                'state::discovery',
+                'state::assigned',
+                'state::copilot',
+                'state::done',
+            }
+
+            assert set(created_labels) == expected_labels
+
+            created_names = {call.kwargs['name'] for call in mock_repo.create_label.call_args_list}
+            assert expected_labels == created_names
     
     @patch('src.clients.github_issue_creator.Github')
     def test_get_repository_info_success(self, mock_github_class, mock_github_token, mock_repository_name, sample_repo_info):

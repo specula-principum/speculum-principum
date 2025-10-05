@@ -2,6 +2,9 @@
 Test fixtures and mock data for Speculum Principum tests
 """
 
+import subprocess
+import warnings
+
 import pytest
 from unittest.mock import Mock, MagicMock
 from pathlib import Path
@@ -10,6 +13,57 @@ from github.Repository import Repository
 from github.Issue import Issue
 from github.GithubException import GithubException
 from src.utils.config_manager import MonitorConfig, SiteConfig, GitHubConfig, SearchConfig
+
+
+@pytest.fixture(autouse=True)
+def restore_repository_branch():
+    """Ensure tests leave the git repository on its original branch."""
+
+    repo_root = Path(__file__).resolve().parent.parent
+    git_dir = repo_root / ".git"
+    if not git_dir.exists():
+        yield
+        return
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        original_branch = result.stdout.strip()
+    except subprocess.CalledProcessError:
+        # Detached HEAD or repository unavailable; skip restoration.
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        try:
+            current_branch = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+
+            if current_branch != original_branch:
+                subprocess.run(
+                    ["git", "checkout", original_branch],
+                    cwd=repo_root,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+        except subprocess.CalledProcessError as exc:
+            warnings.warn(
+                f"Failed to restore git branch '{original_branch}': {exc.stderr or exc.stdout or exc}",
+                RuntimeWarning,
+            )
 
 
 @pytest.fixture

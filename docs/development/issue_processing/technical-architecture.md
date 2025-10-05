@@ -4,6 +4,8 @@
 
 This document outlines the technical architecture for the AI-powered content extraction and specialist analysis system.
 
+> **Update — 2025-09-30:** The dedicated `process-copilot-issues` CLI has been retired. Use the unified `process-issues` command for Copilot handoff and specialist guidance generation.
+
 ## High-Level Architecture
 
 ```
@@ -522,8 +524,8 @@ class AIProcessingOrchestrator(ProcessingOrchestrator):
 ### 1. CLI Integration
 
 ```bash
-# New AI-powered commands
-python main.py process-copilot-issues --specialist intelligence-analyst --limit 5
+# Unified AI-powered command
+python main.py process-issues --label-filter state::assigned --batch-size 5 --verbose
 python main.py extract-content --issue 123 --specialist osint-researcher  
 python main.py generate-analysis --issue 123 --deliverable threat-assessment
 ```
@@ -538,16 +540,16 @@ on:
     types: [assigned]
     
 jobs:
-  process-copilot-issues:
-    if: contains(github.event.issue.assignees.*.login, 'github-copilot[bot]')
+    process-issues:
+        if: contains(github.event.issue.assignees.*.login, 'github-copilot[bot]')
     runs-on: ubuntu-latest
     steps:
       - name: Process Copilot Issue
         run: |
-          python main.py process-copilot-issues \
-            --issue ${{ github.event.issue.number }} \
-            --auto-assign-specialist \
-            --verbose
+                    python main.py process-issues \
+                        --issue ${{ github.event.issue.number }} \
+                        --continue-on-error \
+                        --verbose
 ```
 
 ### 3. Configuration Integration

@@ -15,9 +15,8 @@ import sys
 import os
 from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
-import json
 
 from .config_manager import ConfigManager
 
@@ -79,7 +78,7 @@ class ProgressReporter:
         
         print(f"  📋 {message}{progress_info}")
     
-    def complete_operation(self, success: bool, message: str = None) -> None:
+    def complete_operation(self, success: bool, message: Optional[str] = None) -> None:
         """
         Complete the current operation.
         
@@ -239,6 +238,7 @@ class IssueResultFormatter:
             'needs_clarification': '❓',
             'already_processing': '⏳',
             'error': '❌',
+            'preview': '🧪',
             'skipped': '⏭️',
             'paused': '⏸️'
         }
@@ -255,6 +255,33 @@ class IssueResultFormatter:
             message += f"\n  📋 Workflow: {workflow}"
             if files_created:
                 message += f"\n  📄 Created {len(files_created)} file(s)"
+            copilot_assignee = result.get('copilot_assignee')
+            copilot_due = result.get('copilot_due_at')
+            if copilot_assignee or copilot_due:
+                assignee_display = f"@{copilot_assignee}" if copilot_assignee else "Copilot"
+                due_display = f" (due {copilot_due})" if copilot_due else ""
+                message += f"\n  🤖 Copilot: {assignee_display}{due_display}"
+            handoff_summary = result.get('handoff_summary')
+            if handoff_summary:
+                headline = handoff_summary.strip().splitlines()[0]
+                message += f"\n  📝 Handoff: {headline}"
+
+        elif status == 'preview':
+            workflow = result.get('workflow', 'Unknown workflow')
+            files_created = result.get('files_created', [])
+            message += f"\n  🧪 Dry-run preview for workflow: {workflow}"
+            if files_created:
+                message += f"\n  📄 Expected file outputs: {len(files_created)}"
+            copilot_assignee = result.get('copilot_assignee')
+            copilot_due = result.get('copilot_due_at')
+            if copilot_assignee or copilot_due:
+                assignee_display = f"@{copilot_assignee}" if copilot_assignee else "Copilot"
+                due_display = f" (due {copilot_due})" if copilot_due else ""
+                message += f"\n  🤖 Copilot (preview): {assignee_display}{due_display}"
+            handoff_summary = result.get('handoff_summary')
+            if handoff_summary:
+                headline = handoff_summary.strip().splitlines()[0]
+                message += f"\n  📝 Handoff preview: {headline}"
         
         elif status == 'error':
             error = result.get('error', 'Unknown error')
@@ -364,6 +391,69 @@ class BatchProcessor:
         reporter.complete_operation(success, completion_message)
         
         return results
+
+
+@dataclass
+class CliExecutionContext:
+    """Runtime helpers for standardized CLI command execution."""
+
+    command_name: str
+    reporter: ProgressReporter
+    dry_run: bool
+    dry_run_message: Optional[str] = None
+
+    def decorate_message(self, message: str, *, structured: bool = False) -> str:
+        """Prefix CLI output with a dry run banner when appropriate."""
+
+        if structured or not self.dry_run or not self.dry_run_message:
+            return message
+
+        if not message:
+            return self.dry_run_message
+
+        if self.dry_run_message in message:
+            return message
+
+        return f"{self.dry_run_message}\n{message}"
+
+    def decorate_cli_result(self, result: CliResult, *, structured: bool = False) -> CliResult:
+        """Return a CliResult with standardized dry run messaging."""
+
+        if structured or not self.dry_run or not self.dry_run_message:
+            return result
+
+        message = result.message or ""
+        decorated_message = self.decorate_message(message, structured=structured)
+
+        if decorated_message == message:
+            return result
+
+        return replace(result, message=decorated_message)
+
+
+def prepare_cli_execution(
+    command_name: str,
+    *,
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> CliExecutionContext:
+    """Create a CLI execution context with consistent messaging."""
+
+    reporter = ProgressReporter(verbose=verbose)
+    dry_run_message: Optional[str] = None
+
+    if dry_run:
+        dry_run_message = (
+            f"🧪 Dry run enabled for {command_name} — no changes will be made."
+        )
+        reporter.show_info(dry_run_message)
+
+    return CliExecutionContext(
+        command_name=command_name,
+        reporter=reporter,
+        dry_run=dry_run,
+        dry_run_message=dry_run_message,
+    )
 
 
 def safe_execute_cli_command(func: Callable[[], CliResult]) -> int:
