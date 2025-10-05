@@ -67,8 +67,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       run: |
         set -euo pipefail
         missing=0
@@ -85,11 +83,6 @@ jobs:
         check_secret "GITHUB_TOKEN" "$GITHUB_TOKEN"
         check_secret "GOOGLE_API_KEY" "$GOOGLE_API_KEY"
         check_secret "GOOGLE_SEARCH_ENGINE_ID" "$GOOGLE_SEARCH_ENGINE_ID"
-
-        if [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
-          echo "::error::At least one of OPENAI_API_KEY or ANTHROPIC_API_KEY must be configured."
-          missing=1
-        fi
 
         if [ "$missing" -ne 0 ]; then
           echo "::error::Secret validation failed."

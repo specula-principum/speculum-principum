@@ -174,7 +174,7 @@ python main.py process-issues --label-filter state::assigned --batch-size 3 --co
   - `AIModelConfig` - Model selection for different use cases
   - `AISettingsConfig` - Performance and behavior settings
   - `AIExtractionFocusConfig` - Content extraction focus areas
-  - Enhanced `AIConfig` with provider support (github-models, openai, anthropic)
+  - Enhanced `AIConfig` with GitHub Models provider support
   - Extended `AIConfidenceThresholds` for various AI operations
 
 #### 4. Content Extraction Agent Foundation

@@ -19,7 +19,7 @@ google:
 # ENHANCED: AI Configuration Section
 ai:
   enabled: true
-  provider: "github-models"  # github-models, openai, anthropic
+  provider: "github-models"  # GitHub Models is the only supported provider
   
   # Model configuration
   models:

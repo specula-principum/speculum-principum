@@ -20,7 +20,7 @@
 - ✅ Test Suite: 560/562 passed (2 skipped requiring real credentials), 77% coverage, 19.85s duration
 - ✅ CLI Dry-Runs: Status check, assign-workflows (AI-enhanced with statistics), process-issues (batch mode with preview)
 - ✅ GitHub Actions: 7 active workflows validated (assignment, processing, daily-ops, monitoring, setup, cleanup, status)
-- ✅ Secrets Guardrails: Pre-flight validation on all workflows (GitHub, Google, OpenAI/Anthropic)
+- ✅ Secrets Guardrails: Pre-flight validation on all workflows (GitHub, Google, GitHub Models)
 - ✅ Integration Tests: End-to-end pipeline validated (workflow_pipeline, CLI pipeline, GitHub integration)
 
 **Key Deliverables**
@@ -32,7 +32,7 @@
 **System Readiness Metrics**
 - **Code Quality**: 77% coverage across 7,904 statements, critical paths at 85-92%
 - **CLI Performance**: <2s batch processing (5 issues preview), 0.00s/issue in dry-run
-- **API Status**: 90/90 Google calls remaining, AI providers operational
+- **API Status**: 90/90 Google calls remaining, GitHub Models API operational
 - **Workflow Status**: 6 workflows loaded, 5 site-monitor issues tracked
 - **Documentation**: 15 refactor docs (2,500+ lines), 100% milestone coverage
 
@@ -171,7 +171,7 @@
 
 **What happened**
 - Added preflight secret validation steps to `ops-workflow-assignment.yml`, `ops-issue-processing.yml`, and `ops-daily-operations.yml` so runs fail fast when Google or LLM credentials are missing.
-- Required at least one of `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, reflecting the AI-first workflow contract while still permitting fallback when configured.
+- Consolidated around GitHub Models as the sole AI provider, removing external secret requirements while keeping guardrails for core tokens.
 - Extended the migration checklist to record the new guardrails and document the expectation for telemetry-ready secrets coverage.
 
 **Decisions / Notes**
@@ -181,7 +181,7 @@
 
 **Next up**
 1. Execute the supervised live-mode rehearsal following the published plan.
-2. Assess whether to surface provider selection (OpenAI vs Anthropic) in CLI output to aid operators during investigations.
+2. Assess whether to surface GitHub Models quota status in CLI output to aid operators during investigations.
 3. Monitor the first few guarded runs to confirm validation messaging is clear for operators.
 
 **Validation**

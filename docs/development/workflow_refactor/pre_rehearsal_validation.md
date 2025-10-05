@@ -131,7 +131,6 @@ All workflows now include preflight secret validation:
 - ✅ `GITHUB_TOKEN` - Auto-injected by GitHub Actions
 - ✅ `GOOGLE_API_KEY` - For site monitoring
 - ✅ `GOOGLE_SEARCH_ENGINE_ID` - For site monitoring
-- ✅ At least one of: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` - For AI features
 
 **Validation Strategy**: Hard fail on missing secrets to prevent silent dry-run successes
 
