@@ -5,9 +5,9 @@ permissions:
   issues: write
 
 on:
-  # Trigger when new site-monitor issues are created
-  issues:
-    types: [opened, labeled]
+  # issues:
+  #   types: [opened, labeled]
+  workflow_dispatch:
   
   # Allow manual execution
   workflow_dispatch:
