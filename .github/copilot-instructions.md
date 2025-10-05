@@ -42,7 +42,7 @@ Three-tier system: **Site Monitoring** (Google Search API → deduplication → 
 
 **Error handling**: Google API rate limiting via `daily_query_limit`, GitHub retry logic, GitHub Models API fallback, workflow validation, git conflict resolution, batch processing error recovery.
 
-**Configuration**: All configs use `${VAR_NAME}` substitution. Required: `GITHUB_TOKEN`, `GOOGLE_API_KEY`, `GOOGLE_SEARCH_ENGINE_ID`. Optional: OpenAI/Anthropic tokens for AI features. Workflows in `docs/workflow/deliverables/`.
+**Configuration**: All configs use `${VAR_NAME}` substitution. Required: `GITHUB_TOKEN`, `GOOGLE_API_KEY`, `GOOGLE_SEARCH_ENGINE_ID`. AI features run exclusively through GitHub Models—no external provider secrets are needed. Workflows in `docs/workflow/deliverables/`.
 
 ## Enhanced Features
 

@@ -181,8 +181,7 @@ Transform the intelligence pipeline from fragmented, manual workflows into a uni
 **API Usage Estimates** (based on 240 issues/day at full capacity):
 - GitHub API: Within free tier limits
 - Google Search API: ~$0 (within 100 calls/day quota)
-- OpenAI API (gpt-4o): ~$5-10/day for assignment analysis
-- Alternative: Anthropic API (similar cost profile)
+- GitHub Models API: Included with GitHub Actions usage (no external billing)
 
 **GitHub Actions Minutes**:
 - Estimated: ~500 minutes/month

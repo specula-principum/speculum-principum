@@ -91,7 +91,6 @@ gh issue list --label "state::assigned" --state open --json number,title,labels 
 - [x] `GITHUB_TOKEN`
 - [x] `GOOGLE_API_KEY`
 - [x] `GOOGLE_SEARCH_ENGINE_ID`
-- [x] `OPENAI_API_KEY` OR `ANTHROPIC_API_KEY`
 
 **If Secret Validation Fails**: STOP - Do not proceed. Escalate to DevOps immediately.
 
@@ -315,7 +314,7 @@ gh issue list --label "site-monitor" --state open --json labels --jq '[.[].label
 **API & Rate Limits**:
 - [ ] Google Search API calls within quota
 - [ ] GitHub API rate limit not exhausted
-- [ ] AI provider (OpenAI/Anthropic) within limits
+- [ ] GitHub Models requests within quota
 - [ ] No 429 (rate limit) or 403 (permission) errors
 
 ---
@@ -488,7 +487,7 @@ gh issue edit 26 --remove-assignee github-copilot[bot]
 | Workflow Lead | [Name] | [Email/Slack] | Primary |
 | DevOps | [Name] | [Email/Slack] | GitHub Actions issues |
 | GitHub Admin | [Name] | [Email/Slack] | Permissions/repo issues |
-| AI/API | [Name] | [Email/Slack] | OpenAI/Anthropic failures |
+| AI/API | [Name] | [Email/Slack] | GitHub Models incidents |
 
 ---
 

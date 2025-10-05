@@ -143,7 +143,7 @@ gh run list --limit 5
 - [ ] `GITHUB_TOKEN` - Auto-provided by GitHub Actions
 - [ ] `GOOGLE_API_KEY` - For site monitoring
 - [ ] `GOOGLE_SEARCH_ENGINE_ID` - For site monitoring
-- [ ] `OPENAI_API_KEY` **OR** `ANTHROPIC_API_KEY` - For AI features (at least one required)
+
 
 **Validation Method**: Run ops-daily-operations workflow in dry-run mode
 ```

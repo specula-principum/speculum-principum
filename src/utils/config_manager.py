@@ -140,7 +140,7 @@ class AIExtractionFocusConfig:
 class AIConfig:
     """Enhanced AI configuration for content extraction and workflow assignment"""
     enabled: bool = False
-    provider: str = "github-models"  # github-models, openai, anthropic
+    provider: str = "github-models"  # Internal GitHub Models provider only
     models: Optional[AIModelConfig] = None
     settings: Optional[AISettingsConfig] = None
     confidence_thresholds: Optional[AIConfidenceThresholds] = None
@@ -582,9 +582,15 @@ class ConfigLoader:
                     threat_hunter=focus_data.get('threat_hunter')
                 )
             
+            provider_value = ai_data.get('provider', 'github-models')
+            if provider_value != 'github-models':
+                raise ValueError(
+                    f"Unsupported AI provider '{provider_value}'. Only the built-in GitHub Models provider is allowed."
+                )
+
             ai = AIConfig(
                 enabled=ai_data.get('enabled', False),
-                provider=ai_data.get('provider', 'github-models'),
+                provider=provider_value,
                 models=models,
                 settings=settings,
                 confidence_thresholds=confidence_thresholds,

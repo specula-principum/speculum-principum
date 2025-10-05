@@ -131,7 +131,7 @@ gh run view <run-id>
 ### Secret Validation Fails
 **Symptom**: Workflow fails at "Validate required secrets" step  
 **Solution**: Verify GitHub secrets are set (Settings → Secrets and variables → Actions)  
-**Required**: GITHUB_TOKEN, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID, OPENAI_API_KEY or ANTHROPIC_API_KEY
+**Required**: GITHUB_TOKEN, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID (GitHub Models handles AI inference internally)
 
 ### Workflow Hangs or Times Out
 **Symptom**: Workflow runs >15 minutes without completing  
@@ -162,7 +162,7 @@ gh run view <run-id>
 | GitHub Actions failure | DevOps | Check Actions tab, review logs |
 | API rate limits | Technical Lead | Monitor quotas, implement backoff |
 | Permission errors | GitHub Admin | Verify repo settings, workflow permissions |
-| AI provider issues | AI/API Lead | Check OpenAI/Anthropic status, switch provider |
+| GitHub Models availability | AI/API Lead | Check GitHub status page, retry once limits reset |
 | Critical blocker | Workflow Lead | Execute rollback per Section 7 of execution guide |
 
 ---
