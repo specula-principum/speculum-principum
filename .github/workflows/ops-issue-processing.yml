@@ -111,10 +111,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: inventory
     if: needs.inventory.outputs.should_process == 'true' || github.event_name == 'workflow_dispatch'
-    env:
-      TELEMETRY_DIR: ${{ runner.temp }}/telemetry
-      SMOKE_LOG: ${{ runner.temp }}/process-smoke.log
-      PROCESS_LOG: ${{ runner.temp }}/process-live.log
     steps:
       - name: Verify monitor::triage cleared
         if: needs.inventory.outputs.triage_stuck_count != '0' && github.event_name != 'workflow_dispatch'
@@ -126,6 +122,13 @@ jobs:
         if: needs.inventory.outputs.triage_stuck_count != '0' && github.event_name == 'workflow_dispatch'
         run: |
           echo "::warning::monitor::triage still present on ${{ needs.inventory.outputs.triage_stuck_count }} assigned issues. Proceeding because this is a manual run."
+
+      - name: Initialize telemetry paths
+        id: telemetry_paths
+        run: |
+          echo "telemetry_dir=${RUNNER_TEMP}/telemetry" >> "$GITHUB_OUTPUT"
+          echo "smoke_log=${RUNNER_TEMP}/process-smoke.log" >> "$GITHUB_OUTPUT"
+          echo "process_log=${RUNNER_TEMP}/process-live.log" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -197,7 +200,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_DIR }}/smoke
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ steps.telemetry_paths.outputs.telemetry_dir }}/smoke
+          SMOKE_LOG: ${{ steps.telemetry_paths.outputs.smoke_log }}
           ASSIGNEE_FILTER_INPUT: ${{ github.event.inputs.assignee_filter }}
         run: |
           set -euo pipefail
@@ -224,7 +228,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_DIR }}/live
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ steps.telemetry_paths.outputs.telemetry_dir }}/live
+          PROCESS_LOG: ${{ steps.telemetry_paths.outputs.process_log }}
           ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number }}
           BATCH_SIZE_INPUT: ${{ github.event.inputs.batch_size }}
           ASSIGNEE_FILTER_INPUT: ${{ github.event.inputs.assignee_filter }}
@@ -259,6 +264,8 @@ jobs:
 
       - name: Capture metrics outputs
         id: metrics
+        env:
+          PROCESS_LOG: ${{ steps.telemetry_paths.outputs.process_log }}
         run: |
           processed=0
           success_rate=0
@@ -282,9 +289,9 @@ jobs:
         with:
           name: issue-processing-telemetry
           path: |
-            ${{ env.TELEMETRY_DIR }}
-            ${{ env.SMOKE_LOG }}
-            ${{ env.PROCESS_LOG }}
+            ${{ steps.telemetry_paths.outputs.telemetry_dir }}
+            ${{ steps.telemetry_paths.outputs.smoke_log }}
+            ${{ steps.telemetry_paths.outputs.process_log }}
           retention-days: 7
           if-no-files-found: ignore
 

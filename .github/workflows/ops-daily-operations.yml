@@ -33,12 +33,15 @@ jobs:
   daily-dry-run:
     name: Daily Dry-Run Orchestration
     runs-on: ubuntu-latest
-    env:
-      TELEMETRY_ROOT: ${{ runner.temp }}/telemetry/daily-ops
-      LOG_MONITOR: ${{ runner.temp }}/daily-monitor.log
-      LOG_ASSIGN: ${{ runner.temp }}/daily-assign.log
-      LOG_PROCESS: ${{ runner.temp }}/daily-process.log
     steps:
+      - name: Initialize telemetry paths
+        id: telemetry_paths
+        run: |
+          echo "telemetry_root=${RUNNER_TEMP}/telemetry/daily-ops" >> "$GITHUB_OUTPUT"
+          echo "log_monitor=${RUNNER_TEMP}/daily-monitor.log" >> "$GITHUB_OUTPUT"
+          echo "log_assign=${RUNNER_TEMP}/daily-assign.log" >> "$GITHUB_OUTPUT"
+          echo "log_process=${RUNNER_TEMP}/daily-process.log" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -109,7 +112,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_ROOT }}/monitor
+          TELEMETRY_ROOT: ${{ steps.telemetry_paths.outputs.telemetry_root }}
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ steps.telemetry_paths.outputs.telemetry_root }}/monitor
+          LOG_MONITOR: ${{ steps.telemetry_paths.outputs.log_monitor }}
         run: |
           set -euo pipefail
           mkdir -p "${SPECULUM_CLI_TELEMETRY_DIR}"
@@ -122,7 +127,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
-          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_ROOT }}/assign
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ steps.telemetry_paths.outputs.telemetry_root }}/assign
+          LOG_ASSIGN: ${{ steps.telemetry_paths.outputs.log_assign }}
           VERBOSE_INPUT: ${{ github.event.inputs.verbose }}
         run: |
           set -euo pipefail
@@ -150,7 +156,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          SPECULUM_CLI_TELEMETRY_DIR: ${{ env.TELEMETRY_ROOT }}/process
+          SPECULUM_CLI_TELEMETRY_DIR: ${{ steps.telemetry_paths.outputs.telemetry_root }}/process
+          LOG_PROCESS: ${{ steps.telemetry_paths.outputs.log_process }}
           VERBOSE_INPUT: ${{ github.event.inputs.verbose }}
         run: |
           set -euo pipefail
@@ -181,10 +188,10 @@ jobs:
         with:
           name: daily-operations-dry-run
           path: |
-            ${{ env.TELEMETRY_ROOT }}
-            ${{ env.LOG_MONITOR }}
-            ${{ env.LOG_ASSIGN }}
-            ${{ env.LOG_PROCESS }}
+            ${{ steps.telemetry_paths.outputs.telemetry_root }}
+            ${{ steps.telemetry_paths.outputs.log_monitor }}
+            ${{ steps.telemetry_paths.outputs.log_assign }}
+            ${{ steps.telemetry_paths.outputs.log_process }}
           retention-days: 7
           if-no-files-found: ignore
 
