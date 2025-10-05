@@ -8,9 +8,6 @@ on:
   # issues:
   #   types: [opened, labeled]
   workflow_dispatch:
-  
-  # Allow manual execution
-  workflow_dispatch:
     inputs:
       limit:
         description: 'Maximum number of issues to process'
