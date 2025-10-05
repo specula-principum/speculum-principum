@@ -1,4 +1,4 @@
-name: Operations · Site Monitoring
+name: Issue Pipeline · Stage 1 – Site Monitoring Intake
 
 on:
   # schedule:

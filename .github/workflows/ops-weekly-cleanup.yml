@@ -1,4 +1,4 @@
-name: Operations -X Weekly Cleanup
+name: Issue Pipeline Utility · Weekly Cleanup
 
 on:
   # schedule:

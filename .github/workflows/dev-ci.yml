@@ -1,4 +1,4 @@
-name: Development - CI/CD Pipeline
+name: Engineering Utility · CI/CD Quality Gate
 
 on:
   push:
