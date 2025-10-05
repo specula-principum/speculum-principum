@@ -1,4 +1,4 @@
-name: Issue Pipeline · Stage 3 – Deliverable Processing (PR Mode)
+name: Issue Pipeline · Stage 3 - Deliverable Processing (PR Mode)
 permissions:
   contents: write
   issues: write

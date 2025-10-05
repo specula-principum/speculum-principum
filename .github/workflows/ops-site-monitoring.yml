@@ -1,4 +1,4 @@
-name: Issue Pipeline · Stage 1 – Site Monitoring Intake
+name: Issue Pipeline · Stage 1 - Site Monitoring Intake
 
 on:
   # schedule:
