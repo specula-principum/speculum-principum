@@ -1,4 +1,4 @@
-name: Operations -X Setup Monitoring
+name: Issue Pipeline Utility · Monitoring Setup
 
 on:
   workflow_dispatch:

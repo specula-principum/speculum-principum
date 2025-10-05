@@ -1,4 +1,4 @@
-name: Operations -X Status Check
+name: Issue Pipeline Utility · Status Check
 
 on:
   workflow_dispatch:

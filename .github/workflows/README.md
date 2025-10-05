@@ -7,20 +7,20 @@ This directory contains GitHub Actions workflows for automating various operatio
 The workflows are organized into two main categories:
 
 ### Development Workflows
-- **`dev-ci.yml`** - Development CI/CD Pipeline (testing, linting, security scanning)
+- **`dev-ci.yml`** – Engineering Utility · CI/CD Quality Gate (testing, linting, security scanning)
 
 ### Operations Workflows
 
 #### Site Monitoring & Issue Processing
-- **`ops-site-monitoring.yml`** - On-demand site monitoring operations
-- **`ops-workflow-assignment.yml`** - Assign workflows to unassigned site-monitor issues
-- **`ops-issue-processing.yml`** - Automated issue processing with workflow-based deliverable generation
+- **`ops-site-monitoring.yml`** – Issue Pipeline · Stage 1 – Site Monitoring Intake
+- **`ops-workflow-assignment.yml`** – Issue Pipeline · Stage 2 – Workflow Assignment
+- **`ops-issue-processing.yml`** – Issue Pipeline · Stage 3 – Deliverable Processing
 
 #### Maintenance & Utilities
-- **`ops-daily-operations.yml`** - Daily maintenance tasks
-- **`ops-weekly-cleanup.yml`** - Weekly cleanup operations
-- **`ops-status-check.yml`** - System status monitoring
-- **`ops-setup-monitoring.yml`** - Initial repository setup
+- **`ops-daily-operations.yml`** – Issue Pipeline Orchestration · Daily Dry-Run (Stages 1-3)
+- **`ops-weekly-cleanup.yml`** – Issue Pipeline Utility · Weekly Cleanup
+- **`ops-status-check.yml`** – Issue Pipeline Utility · Status Check
+- **`ops-setup-monitoring.yml`** – Issue Pipeline Utility · Monitoring Setup
 
 ## Development CI/CD Pipeline (`dev-ci.yml`)
 
@@ -40,7 +40,7 @@ Provides continuous integration and quality assurance for the codebase through:
 - **Push/Pull Request**: On main and develop branches
 - **Manual Dispatch**: For on-demand testing
 
-## Operations - Workflow Assignment (`ops-workflow-assignment.yml`)
+## Issue Pipeline · Stage 2 – Workflow Assignment (`ops-workflow-assignment.yml`)
 
 ### Purpose
 
@@ -78,7 +78,7 @@ Automatically assigns appropriate workflows to unassigned `site-monitor` issues 
 1. **check-assignment-needed**: Determines if unassigned site-monitor issues exist
 2. **assign-workflows**: Processes issues based on trigger and parameters
 
-### Operations - Site Monitoring (`ops-site-monitoring.yml`)
+### Issue Pipeline · Stage 1 – Site Monitoring Intake (`ops-site-monitoring.yml`)
 
 ### Purpose
 
@@ -93,7 +93,7 @@ Performs scheduled monitoring of configured websites and creates issues for new 
 
 - **Manual Dispatch**: For on-demand monitoring with safety options
 
-## Operations - Issue Processing (`ops-issue-processing.yml`)
+## Issue Pipeline · Stage 3 – Deliverable Processing (`ops-issue-processing.yml`)
 
 ### Purpose
 
@@ -109,13 +109,13 @@ Processes site-monitor issues through automated workflows to generate deliverabl
 - **Issue Events**: When issues are labeled or assigned
 - **Manual Dispatch**: For testing and batch processing
 
-## Operations - Daily Maintenance (`ops-daily-operations.yml`)
+## Issue Pipeline Orchestration · Daily Dry-Run (Stages 1-3) (`ops-daily-operations.yml`)
 
 ### Purpose
 
 Performs daily maintenance tasks including system health checks and routine operations.
 
-## Operations - Weekly Cleanup (`ops-weekly-cleanup.yml`)
+## Issue Pipeline Utility · Weekly Cleanup (`ops-weekly-cleanup.yml`)
 
 ### Purpose
 
@@ -140,7 +140,7 @@ Performs weekly cleanup operations to maintain repository health and manage stor
 - **Statistics reporting** before and after processing
 - **No production changes** on scheduled runs without manual override
 
-## Operations - Issue Processing (`ops-issue-processing.yml`)
+## Issue Pipeline · Stage 3 – Deliverable Processing (`ops-issue-processing.yml`)
 
 ### Purpose
 
