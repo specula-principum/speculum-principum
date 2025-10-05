@@ -644,11 +644,27 @@ def load_config_with_env_substitution(config_path: str) -> MonitorConfig:
     
     def replace_env_var(match):
         var_name = match.group(1)
-        default_value = match.group(2) if match.group(2) is not None else ''
-        return os.getenv(var_name, default_value)
+        default_provided = match.group(2) is not None
+        default_value = match.group(2) if default_provided else None
+
+        env_value = os.getenv(var_name)
+
+        # Treat empty strings the same as missing values so YAML does not coerce to null
+        if env_value not in (None, ''):
+            return env_value
+
+        if default_provided:
+            return default_value or ''
+
+        raise ValueError(
+            f"Environment variable '{var_name}' is required but not set for configuration file '{config_path}'."
+        )
     
     # Substitute environment variables
-    content = env_pattern.sub(replace_env_var, content)
+    try:
+        content = env_pattern.sub(replace_env_var, content)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
     
     # Parse the substituted YAML
     try:
