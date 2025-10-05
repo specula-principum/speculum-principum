@@ -243,8 +243,8 @@ search:
         with patch.dict(os.environ, {}, clear=True):
             with patch('builtins.open', mock_open(read_data=config_content)):
                 with patch('os.path.exists', return_value=True):
-                    # Missing environment variable without default should cause validation error
-                    with pytest.raises(ValueError, match="Configuration validation failed"):
+                    # Missing environment variable without default should raise a descriptive error
+                    with pytest.raises(ValueError, match="Environment variable 'MISSING_VAR' is required"):
                         load_config_with_env_substitution('test.yaml')
 
 

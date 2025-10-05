@@ -3,21 +3,21 @@ sites:
     name: Road to VR
     max_results: 5
 github:
-  repository: ${GITHUB_REPOSITORY}
+  repository: "${GITHUB_REPOSITORY:terrence-giggy/speculum-principum}"
   issue_labels:
     - site-monitor
     - automated
     - documentation
   default_assignees:
-    - ${GITHUB_ACTOR}
+    - "${GITHUB_ACTOR:github-actions[bot]}"
 search:
-  api_key: ${GOOGLE_API_KEY}
-  search_engine_id: ${GOOGLE_SEARCH_ENGINE_ID}
+  api_key: "${GOOGLE_API_KEY:dummy-google-api-key}"
+  search_engine_id: "${GOOGLE_SEARCH_ENGINE_ID:dummy-search-engine-id}"
   daily_query_limit: 90
   results_per_query: 10
   date_range_days: 30
 agent:
-  username: ${GITHUB_ACTOR}
+  username: "${GITHUB_ACTOR:github-actions[bot]}"
   workflow_directory: "docs/workflow/deliverables"
   template_directory: "templates"
   output_directory: "study"
@@ -48,7 +48,7 @@ ai:
   # Historical data storage (future enhancement)
   history:
     storage_type: "gist"  # or "repo_file" 
-    # gist_id: ${AI_HISTORY_GIST_ID}  # Uncomment when using gist storage
+    # gist_id: $AI_HISTORY_GIST_ID  # Uncomment and set env when using gist storage
     file_path: ".github/ai_assignment_history.json"
 
 storage_path: processed_urls.json
