@@ -5,8 +5,8 @@ permissions:
   issues: read
 
 on:
-  schedule:
-    - cron: '30 6 * * *'
+  # schedule:
+  #   - cron: '30 6 * * *'
   workflow_dispatch:
     inputs:
       assign_limit:
