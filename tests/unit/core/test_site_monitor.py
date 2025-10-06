@@ -5,6 +5,8 @@ Unit tests for the site monitor service
 import pytest
 import tempfile
 import os
+from types import SimpleNamespace
+from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
@@ -21,8 +23,14 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_service_initialization(self, mock_github_creator, mock_dedup_manager, 
-                                  mock_search_client, sample_config):
+    def test_service_initialization(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
         """Test initializing the SiteMonitorService"""
         mock_github_instance = Mock()
         mock_dedup_instance = Mock()
@@ -54,8 +62,14 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_run_monitoring_cycle_success(self, mock_github_creator, mock_dedup_manager, 
-                                        mock_search_client, sample_config):
+    def test_run_monitoring_cycle_success(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
         """Test successful monitoring cycle"""
         # Setup mocks
         mock_github_instance = Mock()
@@ -124,8 +138,14 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_run_monitoring_cycle_no_new_results(self, mock_github_creator, mock_dedup_manager, 
-                                                mock_search_client, sample_config):
+    def test_run_monitoring_cycle_no_new_results(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
         """Test monitoring cycle with no new results"""
         # Setup mocks
         mock_github_instance = Mock()
@@ -171,8 +191,14 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_run_monitoring_cycle_skip_issues(self, mock_github_creator, mock_dedup_manager, 
-                                            mock_search_client, sample_config):
+    def test_run_monitoring_cycle_skip_issues(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
         """Test monitoring cycle with issue creation disabled"""
         # Setup mocks
         mock_github_instance = Mock()
@@ -213,8 +239,14 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_run_monitoring_cycle_error_handling(self, mock_github_creator, mock_dedup_manager, 
-                                                mock_search_client, sample_config):
+    def test_run_monitoring_cycle_error_handling(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
         """Test monitoring cycle error handling"""
         # Setup mocks
         mock_github_instance = Mock()
@@ -238,6 +270,107 @@ class TestSiteMonitorService:
         assert 'cycle_start' in results
         assert 'cycle_end' in results
 
+    @patch('src.core.site_monitor.GoogleCustomSearchClient')
+    @patch('src.core.site_monitor.DeduplicationManager')
+    @patch('src.core.site_monitor.GitHubIssueCreator')
+    def test_capture_success_emits_telemetry(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
+        mock_github_instance = Mock()
+        mock_dedup_instance = Mock()
+        mock_search_instance = Mock()
+
+        mock_github_creator.return_value = mock_github_instance
+        mock_dedup_manager.return_value = mock_dedup_instance
+        mock_search_client.return_value = mock_search_instance
+
+        result = SearchResult("Title", "https://example.com/page", "Snippet")
+        mock_search_instance.search_all_sites.return_value = {"Example Site": [result]}
+        mock_dedup_instance.filter_new_results.side_effect = lambda results, site: results
+        mock_dedup_instance.get_processed_stats.return_value = {}
+        mock_search_instance.get_rate_limit_status.return_value = {'calls_made_today': 1, 'daily_limit': 10, 'calls_remaining': 9}
+
+        capture_result = SimpleNamespace(
+            status='success',
+            excerpt='Preview excerpt',
+            content_hash='abc123',
+            artifact_dir=Path('/tmp/abc123'),
+            content_path=None,
+            metadata_path=None,
+            metadata={},
+        )
+        mock_page_capture_service.return_value.capture.return_value = capture_result
+
+        issue = Mock()
+        issue.number = 42
+        mock_github_instance.create_individual_result_issue.return_value = issue
+
+        service = SiteMonitorService(sample_config, "token")
+        telemetry_spy = Mock()
+        service._publish_telemetry = telemetry_spy
+
+        service.run_monitoring_cycle()
+
+        telemetry_spy.assert_any_call(
+            'site_monitor.capture.result',
+            {
+                'site': 'Example Site',
+                'url': 'https://example.com/page',
+                'status': 'success',
+                'artifact_path': None,
+                'content_hash': 'abc123',
+            },
+        )
+
+    @patch('src.core.site_monitor.GoogleCustomSearchClient')
+    @patch('src.core.site_monitor.DeduplicationManager')
+    @patch('src.core.site_monitor.GitHubIssueCreator')
+    def test_capture_failure_emits_telemetry(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
+        mock_github_instance = Mock()
+        mock_dedup_instance = Mock()
+        mock_search_instance = Mock()
+
+        mock_github_creator.return_value = mock_github_instance
+        mock_dedup_manager.return_value = mock_dedup_instance
+        mock_search_client.return_value = mock_search_instance
+
+        result = SearchResult("Title", "https://example.com/page", "Snippet")
+        mock_search_instance.search_all_sites.return_value = {"Example Site": [result]}
+        mock_dedup_instance.filter_new_results.side_effect = lambda results, site: results
+        mock_dedup_instance.get_processed_stats.return_value = {}
+        mock_search_instance.get_rate_limit_status.return_value = {'calls_made_today': 1, 'daily_limit': 10, 'calls_remaining': 9}
+
+        mock_page_capture_service.return_value.capture.side_effect = RuntimeError("capture failed")
+
+        issue = Mock()
+        issue.number = 7
+        mock_github_instance.create_individual_result_issue.return_value = issue
+
+        service = SiteMonitorService(sample_config, "token")
+        telemetry_spy = Mock()
+        service._publish_telemetry = telemetry_spy
+
+        service.run_monitoring_cycle()
+
+        capture_calls = [call for call in telemetry_spy.call_args_list if call.args and call.args[0] == 'site_monitor.capture.result']
+        assert capture_calls, "Expected capture telemetry event for failure"
+        payload = capture_calls[0].args[1]
+        assert payload['status'] == 'error'
+        assert payload['artifact_path'] is None
+        assert payload['url'] == 'https://example.com/page'
+
     @patch('src.core.site_monitor.time.sleep', return_value=None)
     @patch('src.core.site_monitor.BatchProcessor')
     @patch('src.core.site_monitor.GitHubIntegratedIssueProcessor')
@@ -253,6 +386,7 @@ class TestSiteMonitorService:
         mock_batch_processor,
         _sleep,
         sample_config_with_agent,
+        mock_page_capture_service,
     ):
         """Ensure Copilot metrics are surfaced when processing existing issues."""
         github_client = Mock()
@@ -320,8 +454,16 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_process_existing_issues_telemetry_emission(self, mock_github_creator, mock_dedup_manager,
-                                                        mock_search_client, mock_issue_processor, _sleep, sample_config_with_agent):
+    def test_process_existing_issues_telemetry_emission(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        mock_issue_processor,
+        _sleep,
+        sample_config_with_agent,
+        mock_page_capture_service,
+    ):
         """Telemetry publishers should receive Copilot SLA details."""
 
         github_client = Mock()
@@ -379,8 +521,14 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_setup_repository(self, mock_github_creator, 
-                            mock_dedup_manager, mock_search_client, sample_config):
+    def test_setup_repository(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
         """Test repository setup"""
         # Setup mocks
         mock_github_instance = Mock()
@@ -404,8 +552,14 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_cleanup_old_data(self, mock_github_creator, mock_dedup_manager, 
-                            mock_search_client, sample_config):
+    def test_cleanup_old_data(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
         """Test cleaning up old data"""
         # Setup mocks
         mock_github_instance = Mock()
@@ -447,8 +601,14 @@ class TestSiteMonitorService:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_get_monitoring_status(self, mock_github_creator, mock_dedup_manager, 
-                                 mock_search_client, sample_config):
+    def test_get_monitoring_status(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+        mock_page_capture_service,
+    ):
         """Test getting monitoring status"""
         # Setup mocks
         mock_github_instance = Mock()
@@ -518,8 +678,13 @@ class TestFilterAndProcessing:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_filter_new_results(self, mock_github_creator, mock_dedup_manager, 
-                              mock_search_client, sample_config):
+    def test_filter_new_results(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+    ):
         """Test filtering new results"""
         # Setup mocks
         mock_github_instance = Mock()
@@ -563,8 +728,13 @@ class TestFilterAndProcessing:
     @patch('src.core.site_monitor.GoogleCustomSearchClient')
     @patch('src.core.site_monitor.DeduplicationManager')
     @patch('src.core.site_monitor.GitHubIssueCreator')
-    def test_mark_results_processed(self, mock_github_creator, mock_dedup_manager, 
-                                  mock_search_client, sample_config):
+    def test_mark_results_processed(
+        self,
+        mock_github_creator,
+        mock_dedup_manager,
+        mock_search_client,
+        sample_config,
+    ):
         """Test marking results as processed"""
         # Setup mocks
         mock_github_instance = Mock()

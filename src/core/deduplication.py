@@ -7,8 +7,10 @@ import json
 import logging
 import hashlib
 import os
+import shutil
+from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List, Set, Optional, Any
+from typing import Dict, List, Set, Optional, Any, Union
 from pathlib import Path
 
 from ..clients.search_client import SearchResult, normalize_url
@@ -20,8 +22,16 @@ logger = logging.getLogger(__name__)
 class ProcessedEntry:
     """Represents a processed search result entry"""
     
-    def __init__(self, url: str, title: str, site_name: str, 
-                 issue_number: Optional[int] = None, processed_at: Optional[datetime] = None):
+    def __init__(
+        self,
+        url: str,
+        title: str,
+        site_name: str,
+        issue_number: Optional[int] = None,
+        processed_at: Optional[datetime] = None,
+        artifact_path: Optional[str] = None,
+        capture_status: Optional[str] = None,
+    ):
         self.url = url
         self.normalized_url = normalize_url(url)
         self.title = title
@@ -29,6 +39,8 @@ class ProcessedEntry:
         self.issue_number = issue_number
         self.processed_at = processed_at or datetime.utcnow()
         self.content_hash = self._generate_content_hash()
+        self.artifact_path = artifact_path
+        self.capture_status = capture_status
     
     def _generate_content_hash(self) -> str:
         """Generate hash from URL and title for deduplication"""
@@ -44,7 +56,9 @@ class ProcessedEntry:
             'site_name': self.site_name,
             'issue_number': self.issue_number,
             'processed_at': self.processed_at.isoformat(),
-            'content_hash': self.content_hash
+            'content_hash': self.content_hash,
+            'artifact_path': self.artifact_path,
+            'capture_status': self.capture_status,
         }
     
     @classmethod
@@ -55,7 +69,9 @@ class ProcessedEntry:
             title=data['title'],
             site_name=data['site_name'],
             issue_number=data.get('issue_number'),
-            processed_at=datetime.fromisoformat(data['processed_at'])
+            processed_at=datetime.fromisoformat(data['processed_at']),
+            artifact_path=data.get('artifact_path'),
+            capture_status=data.get('capture_status'),
         )
         # Use stored hash if available, otherwise regenerate
         if 'content_hash' in data:
@@ -79,9 +95,26 @@ class DeduplicationManager:
         self.processed_entries: Dict[str, ProcessedEntry] = {}
         self.url_to_hash: Dict[str, str] = {}  # Maps normalized URLs to content hashes
         self.title_hashes: Set[str] = set()  # Track similar titles
+        self.artifacts_base_dir: Optional[Path] = None
         
         self._load_processed_entries()
         logger.info(f"Initialized deduplication manager with {len(self.processed_entries)} entries")
+
+    def set_artifacts_base_dir(self, artifacts_dir: Optional[Union[str, Path]]) -> None:
+        """Set the base directory for stored capture artifacts."""
+
+        if not artifacts_dir:
+            self.artifacts_base_dir = None
+            return
+
+        try:
+            base_path = Path(artifacts_dir).resolve()
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.warning("Failed to resolve artifacts directory %s: %s", artifacts_dir, exc)
+            self.artifacts_base_dir = None
+            return
+
+        self.artifacts_base_dir = base_path
     
     def _load_processed_entries(self) -> None:
         """Load processed entries from storage file"""
@@ -130,9 +163,45 @@ class DeduplicationManager:
             entry = self.processed_entries.pop(content_hash)
             self.url_to_hash.pop(entry.normalized_url, None)
             self.title_hashes.discard(content_hash)
+            self._remove_capture_artifacts(entry.artifact_path)
         
         if old_hashes:
             logger.info(f"Cleaned up {len(old_hashes)} old entries (older than {self.retention_days} days)")
+    
+    def _remove_capture_artifacts(self, artifact_path: Optional[str]) -> None:
+        """Delete stored capture artifacts associated with a processed entry."""
+
+        if not artifact_path or not self.artifacts_base_dir:
+            return
+
+        target_path = Path(artifact_path)
+        candidates = []
+
+        if target_path.is_absolute():
+            candidates.append(target_path)
+        else:
+            candidates.append(self.artifacts_base_dir / target_path.name)
+            candidates.append(self.artifacts_base_dir / target_path)
+
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+            except (OSError, RuntimeError):  # pragma: no cover - filesystem failures
+                continue
+
+            try:
+                resolved.relative_to(self.artifacts_base_dir)
+            except ValueError:
+                continue
+
+            if resolved.exists() and resolved.is_dir():
+                try:
+                    shutil.rmtree(resolved)
+                    logger.debug("Removed capture artifacts at %s", resolved)
+                except OSError as exc:  # pragma: no cover - filesystem edge case
+                    logger.warning("Failed to remove capture artifacts at %s: %s", resolved, exc)
+                finally:
+                    return
     
     def save_processed_entries(self) -> None:
         """Save processed entries to storage file"""
@@ -197,8 +266,14 @@ class DeduplicationManager:
         
         return False
     
-    def mark_result_processed(self, result: SearchResult, site_name: str, 
-                            issue_number: Optional[int] = None) -> ProcessedEntry:
+    def mark_result_processed(
+        self,
+        result: SearchResult,
+        site_name: str,
+        issue_number: Optional[int] = None,
+        artifact_path: Optional[str] = None,
+        capture_status: Optional[str] = None,
+    ) -> ProcessedEntry:
         """
         Mark a search result as processed
         
@@ -214,7 +289,9 @@ class DeduplicationManager:
             url=result.link,
             title=result.title,
             site_name=site_name,
-            issue_number=issue_number
+            issue_number=issue_number,
+            artifact_path=artifact_path,
+            capture_status=capture_status,
         )
         
         # Store the entry
@@ -246,22 +323,50 @@ class DeduplicationManager:
         logger.info(f"Filtered {len(results)} results to {len(new_results)} new results for site '{site_name}'")
         
         return new_results
+
+    def get_entry_by_hash(self, content_hash: str) -> Optional[ProcessedEntry]:
+        """Retrieve a processed entry by its content hash."""
+        return self.processed_entries.get(content_hash)
+
+    def get_entry_by_url(self, url: str) -> Optional[ProcessedEntry]:
+        """Retrieve a processed entry by normalized URL."""
+        if not url:
+            return None
+        normalized = normalize_url(url)
+        existing_hash = self.url_to_hash.get(normalized)
+        if not existing_hash:
+            return None
+        return self.processed_entries.get(existing_hash)
     
     def get_processed_stats(self) -> Dict[str, Any]:
         """Get statistics about processed entries"""
         if not self.processed_entries:
+            empty_capture_summary = {
+                'total_attempts': 0,
+                'success': 0,
+                'failures': 0,
+                'empty': 0,
+                'disabled': 0,
+                'unknown': 0,
+                'persisted_artifacts': 0,
+            }
             return {
                 'total_entries': 0,
                 'entries_by_site': {},
                 'entries_with_issues': 0,
                 'oldest_entry': None,
-                'newest_entry': None
+                'newest_entry': None,
+                'retention_days': self.retention_days,
+                'capture_status_counts': {},
+                'capture_summary': empty_capture_summary,
             }
         
         entries_by_site = {}
         entries_with_issues = 0
         oldest_entry = min(self.processed_entries.values(), key=lambda e: e.processed_at)
         newest_entry = max(self.processed_entries.values(), key=lambda e: e.processed_at)
+        capture_status_counts: Dict[str, int] = defaultdict(int)
+        captures_with_artifacts = 0
         
         for entry in self.processed_entries.values():
             site_name = entry.site_name
@@ -271,6 +376,34 @@ class DeduplicationManager:
             
             if entry.issue_number is not None:
                 entries_with_issues += 1
+
+            status_key = (entry.capture_status or 'unknown').lower()
+            capture_status_counts[status_key] += 1
+
+            if entry.artifact_path:
+                captures_with_artifacts += 1
+
+        non_attempt_statuses = {'unknown', 'disabled', None}
+        failure_statuses = {'failed', 'error'}
+
+        total_attempts = sum(
+            count for status, count in capture_status_counts.items() if status not in non_attempt_statuses
+        )
+        failure_count = sum(capture_status_counts.get(status, 0) for status in failure_statuses)
+
+        capture_summary = {
+            'total_attempts': total_attempts,
+            'success': capture_status_counts.get('success', 0),
+            'failures': failure_count,
+            'empty': capture_status_counts.get('empty', 0),
+            'disabled': capture_status_counts.get('disabled', 0),
+            'unknown': capture_status_counts.get('unknown', 0),
+            'persisted_artifacts': captures_with_artifacts,
+            'failed_breakdown': {
+                'failed': capture_status_counts.get('failed', 0),
+                'error': capture_status_counts.get('error', 0),
+            },
+        }
         
         return {
             'total_entries': len(self.processed_entries),
@@ -278,7 +411,9 @@ class DeduplicationManager:
             'entries_with_issues': entries_with_issues,
             'oldest_entry': oldest_entry.processed_at.isoformat(),
             'newest_entry': newest_entry.processed_at.isoformat(),
-            'retention_days': self.retention_days
+            'retention_days': self.retention_days,
+            'capture_status_counts': dict(capture_status_counts),
+            'capture_summary': capture_summary,
         }
     
 

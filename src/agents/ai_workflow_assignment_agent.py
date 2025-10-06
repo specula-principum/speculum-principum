@@ -21,13 +21,14 @@ from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import re
+from pathlib import Path
 
 import requests
 from github import Github
 
 from ..workflow.workflow_matcher import WorkflowMatcher, WorkflowInfo, WorkflowMatcherError
 from ..clients.github_issue_creator import GitHubIssueCreator
-from ..utils.config_manager import ConfigManager
+from ..utils.config_manager import ConfigManager, SiteMonitorSettings, AIPromptConfig
 from ..utils.logging_config import get_logger, log_exception
 from ..utils.markdown_sections import upsert_section
 from ..workflow.workflow_state_manager import WorkflowState, plan_state_transition
@@ -36,6 +37,7 @@ from ..utils.telemetry import (
     normalize_publishers,
     publish_telemetry_event,
 )
+from ..core.deduplication import DeduplicationManager
 
 
 @dataclass
@@ -77,11 +79,14 @@ class GitHubModelsClient:
             "Accept": "application/json"
         }
         
-    def analyze_issue_content(self, 
-                            title: str, 
-                            body: str,
-                            labels: List[str],
-                            available_workflows: List[WorkflowInfo]) -> ContentAnalysis:
+    def analyze_issue_content(
+        self,
+        title: str,
+        body: str,
+        labels: List[str],
+        available_workflows: List[WorkflowInfo],
+        page_extract: Optional[str] = None,
+    ) -> ContentAnalysis:
         """
         Use GitHub Models to analyze issue content and suggest workflows.
         
@@ -107,7 +112,11 @@ class GitHubModelsClient:
             
             # Construct prompt for issue analysis
             prompt = self._build_analysis_prompt(
-                title, body, labels, workflow_descriptions
+                title,
+                body,
+                labels,
+                workflow_descriptions,
+                page_extract=page_extract,
             )
             
             # Call GitHub Models API
@@ -129,12 +138,19 @@ class GitHubModelsClient:
                 content_type="unknown"
             )
     
-    def _build_analysis_prompt(self, 
-                              title: str, 
-                              body: str,
-                              labels: List[str],
-                              workflow_descriptions: List[str]) -> str:
+    def _build_analysis_prompt(
+        self,
+        title: str,
+        body: str,
+        labels: List[str],
+        workflow_descriptions: List[str],
+        page_extract: Optional[str] = None,
+    ) -> str:
         """Build prompt for GitHub Models API"""
+
+        extract_section = ""
+        if page_extract:
+            extract_section = f"\nPAGE EXTRACT (captured content):\n{page_extract}\n"
         
         return f"""Analyze this GitHub issue and suggest the most appropriate workflow(s).
 
@@ -143,6 +159,8 @@ Title: {title}
 Labels: {', '.join(labels) if labels else 'None'}
 Body:
 {body[:2000] if body else 'No description provided'}
+
+{extract_section}
 
 AVAILABLE WORKFLOWS:
 {chr(10).join(workflow_descriptions)}
@@ -271,6 +289,11 @@ class AIWorkflowAssignmentAgent:
     
     # Skip labels (same as original agent)
     SKIP_LABELS = {'feature', 'needs clarification', 'needs-review'}
+    DISCOVERY_HASH_PATTERN = re.compile(
+        r'Discovery Hash:[^`]*`([a-z0-9\-]{2,64})`',
+        re.IGNORECASE,
+    )
+    URL_PATTERN = re.compile(r'https?://[^\s)`>]+', re.IGNORECASE)
     
     def __init__(self,
                  github_token: str,
@@ -299,6 +322,11 @@ class AIWorkflowAssignmentAgent:
         # Load configuration
         try:
             self.config = ConfigManager.load_config(config_path)
+            self.config_path = config_path
+            self.workspace_root = Path(config_path).parent.resolve()
+            self.site_monitor_settings = getattr(self.config, 'site_monitor', None) or SiteMonitorSettings()
+            storage_path = getattr(self.config, 'storage_path', 'processed_urls.json')
+            self.dedup_manager = DeduplicationManager(storage_path=storage_path)
             # Load AI configuration if available
             ai_config = getattr(self.config, 'ai', None)
             if ai_config:
@@ -306,11 +334,17 @@ class AIWorkflowAssignmentAgent:
                 self.HIGH_CONFIDENCE_THRESHOLD = ai_config.get('confidence_thresholds', {}).get('auto_assign', 0.8)
                 self.MEDIUM_CONFIDENCE_THRESHOLD = ai_config.get('confidence_thresholds', {}).get('request_review', 0.6)
                 ai_model = ai_config.get('model', 'gpt-4o')
+                self.prompts_config = getattr(ai_config, 'prompts', None) or AIPromptConfig()
             else:
                 ai_model = 'gpt-4o'
+                self.prompts_config = AIPromptConfig()
         except Exception as e:
             self.logger.warning(f"Could not load config from {config_path}: {e}")
             ai_model = 'gpt-4o'
+            self.prompts_config = AIPromptConfig()
+            self.site_monitor_settings = SiteMonitorSettings()
+            self.workspace_root = Path('.').resolve()
+            self.dedup_manager = DeduplicationManager()
         
         # Initialize workflow matcher for fallback
         self.workflow_matcher = WorkflowMatcher(workflow_directory)
@@ -420,6 +454,166 @@ class AIWorkflowAssignmentAgent:
         except Exception as e:
             log_exception(self.logger, "Failed to get unassigned site-monitor issues", e)
             return []
+
+    def _load_page_extract(self, issue_data: Dict[str, Any]) -> Optional[str]:
+        prompts_config = getattr(self, 'prompts_config', None)
+        if not prompts_config or not getattr(prompts_config, 'include_page_extract', False):
+            return None
+
+        body = issue_data.get('body') or ""
+        content_hash = self._extract_discovery_hash(body)
+        entry = None
+
+        if content_hash:
+            entry = self.dedup_manager.get_entry_by_hash(content_hash)
+
+        if not entry:
+            primary_url = self._extract_primary_url(body)
+            if primary_url:
+                entry = self.dedup_manager.get_entry_by_url(primary_url)
+                if entry and not content_hash:
+                    content_hash = entry.content_hash
+
+        if not entry:
+            excerpt = self._extract_issue_preview_excerpt(body)
+            if excerpt:
+                max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+                return self._format_page_extract(excerpt, max_chars, content_hash)
+            return None
+
+        artifact_path = entry.artifact_path
+        if not artifact_path and content_hash:
+            artifact_path = str(Path(self.site_monitor_settings.page_capture.artifacts_dir) / content_hash)
+
+        artifact_dir = self._resolve_artifact_path(artifact_path)
+        if not artifact_dir:
+            excerpt = self._extract_issue_preview_excerpt(body)
+            if excerpt:
+                max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+                return self._format_page_extract(excerpt, max_chars, content_hash)
+            return None
+
+        content_file = artifact_dir / "content.md"
+        if not content_file.exists():
+            return None
+
+        try:
+            raw_text = content_file.read_text(encoding="utf-8")
+        except OSError:
+            excerpt = self._extract_issue_preview_excerpt(body)
+            if excerpt:
+                max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+                return self._format_page_extract(excerpt, max_chars, content_hash)
+            return None
+
+        max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+        return self._format_page_extract(raw_text, max_chars, content_hash)
+
+    @staticmethod
+    def _extract_issue_preview_excerpt(body: str) -> Optional[str]:
+        if not body:
+            return None
+
+        details_match = re.search(
+            r"<details>\s*<summary>\s*Preview excerpt\s*</summary>(?P<content>.*?)</details>",
+            body,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not details_match:
+            return None
+
+        block = details_match.group("content")
+        excerpt_lines = []
+        for line in block.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(">"):
+                excerpt_lines.append(stripped.lstrip(">").strip())
+
+        excerpt = " ".join(excerpt_lines).strip()
+        return excerpt or None
+
+    def _resolve_artifact_path(self, artifact_path: Optional[str]) -> Optional[Path]:
+        if not artifact_path:
+            return None
+
+        raw_path = Path(artifact_path)
+        candidate_paths = []
+
+        if raw_path.is_absolute():
+            candidate_paths.append(raw_path)
+        else:
+            candidate_paths.append((self.workspace_root / raw_path).resolve())
+
+            if len(raw_path.parts) == 1:
+                artifacts_dir = getattr(
+                    self.site_monitor_settings.page_capture,
+                    'artifacts_dir',
+                    'artifacts/discoveries',
+                )
+                candidate_paths.append(
+                    (self.workspace_root / artifacts_dir / raw_path).resolve()
+                )
+
+        for candidate in candidate_paths:
+            if candidate.exists():
+                return candidate
+        return None
+
+    def _extract_discovery_hash(self, body: str) -> Optional[str]:
+        if not body:
+            return None
+        match = self.DISCOVERY_HASH_PATTERN.search(body)
+        if match:
+            hash_value = match.group(1).strip()
+            if hash_value.lower() in {"n/a", "na", "none", "unknown"}:
+                return None
+            return hash_value
+        return None
+
+    def _extract_primary_url(self, body: str) -> Optional[str]:
+        if not body:
+            return None
+        link_match = re.search(r'\[[^\]]+\]\((https?://[^)]+)\)', body)
+        if link_match:
+            return link_match.group(1)
+        url_match = self.URL_PATTERN.search(body)
+        if url_match:
+            return url_match.group(0)
+        return None
+
+    def _format_page_extract(self, text: str, max_chars: int, content_hash: Optional[str]) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        paragraphs = lines
+        primary_summary = paragraphs[0] if paragraphs else ""
+
+        headings = [
+            line.lstrip('#').strip()
+            for line in text.splitlines()
+            if line.strip().startswith('#')
+        ]
+        if not headings:
+            headings = paragraphs[1:4]
+
+        truncated_text = text.strip()
+        if max_chars and len(truncated_text) > max_chars:
+            truncated_text = truncated_text[:max_chars].rsplit(' ', 1)[0].strip() + '…'
+
+        parts = []
+        if content_hash:
+            parts.append(f"Discovery Hash: {content_hash}")
+        if primary_summary:
+            summary = primary_summary
+            if len(summary) > 300:
+                summary = summary[:300].rsplit(' ', 1)[0].strip() + '…'
+            parts.append(f"Primary Content Summary: {summary}")
+        if headings:
+            parts.append("Key Sections:\n" + "\n".join(f"- {section}" for section in headings[:5]))
+        parts.append(f"Captured Text:\n{truncated_text}")
+
+        extract = "\n\n".join(parts)
+        if max_chars and len(extract) > max_chars:
+            extract = extract[:max_chars].rsplit(' ', 1)[0].strip() + '…'
+        return extract
     
     def analyze_issue_with_ai(self, 
                              issue_data: Dict[str, Any]) -> Tuple[Optional[WorkflowInfo], ContentAnalysis, str]:
@@ -455,11 +649,13 @@ class AIWorkflowAssignmentAgent:
             )
         
         try:
+            page_extract = self._load_page_extract(issue_data)
             analysis = self.ai_client.analyze_issue_content(
                 title=issue_data.get('title', ''),
                 body=issue_data.get('body', ''),
                 labels=issue_data.get('labels', []),
-                available_workflows=available_workflows
+                available_workflows=available_workflows,
+                page_extract=page_extract,
             )
             
             # Combine AI analysis with label-based validation

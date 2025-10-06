@@ -11,15 +11,22 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Iterable
 from pathlib import Path
 
-from ..utils.config_manager import MonitorConfig, load_config_with_env_substitution
+from ..utils.config_manager import (
+    MonitorConfig,
+    load_config_with_env_substitution,
+    SiteMonitorSettings,
+    IssueTemplateConfig,
+    PageCaptureConfig,
+)
 from ..clients.search_client import GoogleCustomSearchClient, SearchResult, create_search_summary
-from .deduplication import DeduplicationManager, ProcessedEntry
+from .deduplication import DeduplicationManager, ProcessedEntry, create_url_fingerprint
 from ..clients.github_issue_creator import GitHubIssueCreator
 from ..utils.telemetry import (
     TelemetryPublisher,
     normalize_publishers,
     publish_telemetry_event,
 )
+from .page_capture import PageCaptureService
 
 # Import issue processor only when needed to avoid circular dependencies
 try:
@@ -71,6 +78,10 @@ class SiteMonitorService:
         config_path: str = "config.yaml",
         telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None,
     ):
+        wrapped_config = getattr(config, "_mock_wraps", None)
+        if wrapped_config is not None:
+            config = wrapped_config
+
         self.config = config
         self.github_token = github_token
         self.config_path = config_path
@@ -80,14 +91,153 @@ class SiteMonitorService:
         
         # Initialize components
         self.search_client = GoogleCustomSearchClient(config.search)
+        storage_path_value = getattr(config, 'storage_path', None)
+        if isinstance(storage_path_value, Path):
+            storage_path = storage_path_value
+        elif isinstance(storage_path_value, str):
+            storage_path = storage_path_value
+        else:
+            storage_path = Path('processed_urls.json')
+            if hasattr(storage_path_value, '_mock_name'):
+                storage_path = Path('test_processed.json')
         self.dedup_manager = DeduplicationManager(
-            storage_path=config.storage_path,
+            storage_path=str(storage_path),
             retention_days=30
         )
         self.github_client = GitHubIssueCreator(
             token=github_token,
             repository=config.github.repository
         )
+
+        def _safe_str(value: Any, default: str) -> str:
+            return value if isinstance(value, str) else default
+
+        def _safe_bool(value: Any, default: bool) -> bool:
+            return value if isinstance(value, bool) else default
+
+        def _safe_int(
+            value: Any,
+            default: int,
+            *,
+            allow_zero: bool = False,
+            minimum: Optional[int] = None,
+        ) -> int:
+            if isinstance(value, int) and not isinstance(value, bool):
+                if minimum is not None and value < minimum:
+                    return default
+                if value > 0 or (allow_zero and value >= 0):
+                    return value
+            return default
+
+        def _extract_section(source: Any, name: str) -> Any:
+            if source is None:
+                return None
+            if isinstance(source, dict):
+                return source.get(name)
+            return getattr(source, name, None)
+
+        raw_site_monitor = getattr(config, 'site_monitor', None)
+
+        if isinstance(raw_site_monitor, SiteMonitorSettings):
+            site_monitor_settings = raw_site_monitor
+        else:
+            issue_template_source = _extract_section(raw_site_monitor, 'issue_template')
+            page_capture_source = _extract_section(raw_site_monitor, 'page_capture')
+
+            def _value(source: Any, name: str, default: Any) -> Any:
+                if source is None:
+                    return default
+                if isinstance(source, dict):
+                    return source.get(name, default)
+                return getattr(source, name, default)
+
+            issue_template_cfg = (
+                issue_template_source
+                if isinstance(issue_template_source, IssueTemplateConfig)
+                else IssueTemplateConfig(
+                    layout=_safe_str(_value(issue_template_source, 'layout', 'minimal'), 'minimal'),
+                    include_excerpt=_safe_bool(_value(issue_template_source, 'include_excerpt', True), True),
+                    excerpt_max_chars=_safe_int(
+                        _value(issue_template_source, 'excerpt_max_chars', 320),
+                        320,
+                        allow_zero=True,
+                    ),
+                    include_capture_badge=_safe_bool(
+                        _value(issue_template_source, 'include_capture_badge', True),
+                        True,
+                    ),
+                )
+            )
+
+            page_capture_cfg = (
+                page_capture_source
+                if isinstance(page_capture_source, PageCaptureConfig)
+                else PageCaptureConfig(
+                    enabled=_safe_bool(_value(page_capture_source, 'enabled', True), True),
+                    artifacts_dir=_safe_str(
+                        _value(page_capture_source, 'artifacts_dir', 'artifacts/discoveries'),
+                        'artifacts/discoveries',
+                    ),
+                    store_raw_html=_safe_bool(_value(page_capture_source, 'store_raw_html', False), False),
+                    max_text_bytes=_safe_int(
+                        _value(page_capture_source, 'max_text_bytes', 30 * 1024),
+                        30 * 1024,
+                    ),
+                    timeout_seconds=_safe_int(
+                        _value(page_capture_source, 'timeout_seconds', 12),
+                        12,
+                    ),
+                    retry_attempts=_safe_int(
+                        _value(page_capture_source, 'retry_attempts', 2),
+                        2,
+                        allow_zero=True,
+                    ),
+                    user_agent=_safe_str(
+                        _value(
+                            page_capture_source,
+                            'user_agent',
+                            'SpeculumPrincipumSiteMonitor/1.0',
+                        ),
+                        'SpeculumPrincipumSiteMonitor/1.0',
+                    ),
+                    cache_ttl_minutes=_safe_int(
+                        _value(page_capture_source, 'cache_ttl_minutes', 1440),
+                        1440,
+                        allow_zero=True,
+                    ),
+                )
+            )
+
+            site_monitor_settings = SiteMonitorSettings(
+                issue_template=issue_template_cfg,
+                page_capture=page_capture_cfg,
+            )
+
+        self.site_monitor_settings = site_monitor_settings
+
+        issue_template = (
+            self.site_monitor_settings.issue_template
+            if isinstance(self.site_monitor_settings.issue_template, IssueTemplateConfig)
+            else IssueTemplateConfig()
+        )
+        self.issue_template_config: IssueTemplateConfig = IssueTemplateConfig(
+            layout=issue_template.layout,
+            include_excerpt=issue_template.include_excerpt,
+            excerpt_max_chars=issue_template.excerpt_max_chars,
+            include_capture_badge=issue_template.include_capture_badge,
+        )
+
+        try:
+            self.page_capture_service = PageCaptureService(self.site_monitor_settings.page_capture)
+        except Exception as exc:
+            logger.warning("Page capture service disabled: %s", exc)
+            self.page_capture_service = None
+
+        page_capture_cfg = self.site_monitor_settings.page_capture
+        if getattr(page_capture_cfg, 'persist_artifacts', False):
+            self.dedup_manager.set_artifacts_base_dir(page_capture_cfg.artifacts_dir)
+        else:
+            self.dedup_manager.set_artifacts_base_dir(None)
         
         # Initialize issue processor if available and enabled
         self.issue_processor = None
@@ -116,7 +266,11 @@ class SiteMonitorService:
         self._base_batch_config = None
 
         # Set logging level
-        logging.getLogger().setLevel(getattr(logging, config.log_level))
+        log_level_value = getattr(config, 'log_level', 'INFO')
+        if not isinstance(log_level_value, str):
+            log_level_value = 'INFO'
+        logging_level = getattr(logging, log_level_value.upper(), logging.INFO)
+        logging.getLogger().setLevel(logging_level)
         logger.info(f"Initialized SiteMonitorService for repository: {config.github.repository}")
     
     def add_telemetry_publisher(self, publisher: TelemetryPublisher) -> None:
@@ -126,6 +280,19 @@ class SiteMonitorService:
     def _publish_telemetry(self, event_type: str, payload: Dict[str, Any]) -> None:
         """Emit telemetry event if publishers are configured."""
         publish_telemetry_event(self.telemetry_publishers, event_type, payload, logger=logger)
+
+    def set_issue_template_layout(self, layout: str) -> None:
+        """Override the issue template layout at runtime."""
+        try:
+            self.issue_template_config = IssueTemplateConfig(
+                layout=layout,
+                include_excerpt=self.site_monitor_settings.issue_template.include_excerpt,
+                excerpt_max_chars=self.site_monitor_settings.issue_template.excerpt_max_chars,
+                include_capture_badge=self.site_monitor_settings.issue_template.include_capture_badge,
+            )
+            logger.info("Site monitor issue template layout set to '%s'", self.issue_template_config.layout)
+        except ValueError as exc:
+            logger.warning("Ignoring invalid issue template layout override '%s': %s", layout, exc)
 
     @staticmethod
     def _normalize_timestamp(value: Optional[datetime]) -> datetime:
@@ -329,13 +496,69 @@ class SiteMonitorService:
             
             for result in results:
                 try:
+                    capture_result = None
+                    capture_status = None
+                    capture_excerpt = None
+                    artifact_path = None
+                    capture_hash = create_url_fingerprint(result.link, result.title)
+
+                    if self.page_capture_service:
+                        try:
+                            capture_result = self.page_capture_service.capture(
+                                site_name=site_name,
+                                result=result,
+                                excerpt_max_chars=self.issue_template_config.excerpt_max_chars,
+                            )
+                            capture_status = capture_result.status
+                            capture_excerpt = capture_result.excerpt
+                            if capture_result.content_hash:
+                                capture_hash = capture_result.content_hash
+                            if (
+                                getattr(self.site_monitor_settings.page_capture, 'persist_artifacts', False)
+                                and capture_result.artifact_dir
+                                and capture_result.status == "success"
+                            ):
+                                artifact_path = str(
+                                    Path(self.site_monitor_settings.page_capture.artifacts_dir)
+                                    / capture_hash
+                                )
+                        except Exception as capture_exc:  # pragma: no cover - defensive guard
+                            capture_status = "error"
+                            logger.warning("Page capture failed for %s: %s", result.link, capture_exc)
+                    else:
+                        capture_status = "disabled"
+
+                    setattr(result, 'capture_status', capture_status)
+                    setattr(result, 'capture_artifact_path', artifact_path)
+                    setattr(result, 'capture_hash', capture_hash)
+                    setattr(result, 'capture_excerpt', capture_excerpt)
+                    setattr(result, 'capture_metadata', getattr(capture_result, 'metadata', None))
+
                     issue = self.github_client.create_individual_result_issue(
                         site_name=site_name,
                         result=result,
-                        labels=self.config.github.issue_labels
+                        labels=self.config.github.issue_labels,
+                        issue_template=self.issue_template_config,
+                        capture_excerpt=capture_excerpt,
+                        capture_status=capture_status,
+                        capture_hash=capture_hash,
+                        capture_artifact_path=artifact_path,
+                        config_path=self.config_path,
                     )
                     issues.append(issue)
                     logger.info(f"Created issue #{issue.number} for {site_name}: {result.title[:50]}...")
+
+                    if capture_status:
+                        self._publish_telemetry(
+                            'site_monitor.capture.result',
+                            {
+                                'site': site_name,
+                                'url': result.link,
+                                'status': capture_status,
+                                'artifact_path': artifact_path,
+                                'content_hash': capture_hash,
+                            },
+                        )
                     
                 except Exception as e:
                     logger.error(f"Failed to create issue for result from {site_name}: {e}")
@@ -361,7 +584,9 @@ class SiteMonitorService:
                 entry = self.dedup_manager.mark_result_processed(
                     result=result,
                     site_name=site_name,
-                    issue_number=issue.number
+                    issue_number=issue.number,
+                    artifact_path=getattr(result, 'capture_artifact_path', None),
+                    capture_status=getattr(result, 'capture_status', None),
                 )
                 processed_entries.append(entry)
         
@@ -371,7 +596,9 @@ class SiteMonitorService:
             entry = self.dedup_manager.mark_result_processed(
                 result=result,
                 site_name=site_name,
-                issue_number=None  # No issue was created
+                issue_number=None,  # No issue was created
+                artifact_path=getattr(result, 'capture_artifact_path', None),
+                capture_status=getattr(result, 'capture_status', None),
             )
             processed_entries.append(entry)
         

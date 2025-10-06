@@ -9,9 +9,11 @@ from typing import List, Optional, Dict, Any
 from unittest.mock import Mock
 from datetime import datetime, timedelta
 from textwrap import dedent
+from urllib.parse import urlparse
 import logging
 
 from ..workflow.workflow_state_manager import ensure_discovery_labels
+from ..utils.config_manager import IssueTemplateConfig
 
 logger = logging.getLogger(__name__)
 
@@ -214,8 +216,18 @@ class GitHubIssueCreator:
         except Exception as e:
             raise RuntimeError(f"Unexpected error unassigning issue #{issue_number}: {str(e)}") from e
 
-    def create_individual_result_issue(self, site_name: str, result: Any, 
-                                      labels: Optional[List[str]] = None) -> Any:
+    def create_individual_result_issue(
+        self,
+        site_name: str,
+        result: Any,
+        labels: Optional[List[str]] = None,
+        issue_template: Optional[IssueTemplateConfig] = None,
+        capture_excerpt: Optional[str] = None,
+        capture_status: Optional[str] = None,
+        capture_hash: Optional[str] = None,
+        capture_artifact_path: Optional[str] = None,
+        config_path: str = "config.yaml",
+    ) -> Any:
         """
         Create a GitHub issue for a single search result
         
@@ -230,9 +242,19 @@ class GitHubIssueCreator:
         # Build issue title - limit to reasonable length
         title_content = result.title[:100] if len(result.title) <= 100 else result.title[:97] + "..."
         title = f"📄 {site_name}: {title_content}"
-        
-        # Build issue body
-        body = self._build_individual_result_body(site_name, result)
+
+        template_config = issue_template or IssueTemplateConfig()
+
+        body = self._build_issue_body(
+            site_name=site_name,
+            result=result,
+            template_config=template_config,
+            capture_excerpt=capture_excerpt,
+            capture_status=capture_status,
+            capture_hash=capture_hash,
+            capture_artifact_path=capture_artifact_path,
+            config_path=config_path,
+        )
         
         # Combine default and custom labels while preserving order/casing
         default_labels = ['site-monitor', 'automated', 'documentation']
@@ -262,8 +284,33 @@ class GitHubIssueCreator:
         logger.info(f"Created individual result issue #{issue.number} for {site_name}")
         return issue
     
-    def _build_individual_result_body(self, site_name: str, result: Any) -> str:
-        """Build the body content for an individual search result issue"""
+    def _build_issue_body(
+        self,
+        site_name: str,
+        result: Any,
+        template_config: IssueTemplateConfig,
+        capture_excerpt: Optional[str],
+        capture_status: Optional[str],
+        capture_hash: Optional[str],
+        capture_artifact_path: Optional[str],
+        config_path: str,
+    ) -> str:
+        if template_config.layout == "minimal":
+            return self._build_minimal_issue_body(
+                site_name=site_name,
+                result=result,
+                template_config=template_config,
+                capture_excerpt=capture_excerpt,
+                capture_status=capture_status,
+                capture_hash=capture_hash,
+                capture_artifact_path=capture_artifact_path,
+                config_path=config_path,
+            )
+
+        return self._build_full_issue_body(site_name, result)
+
+    def _build_full_issue_body(self, site_name: str, result: Any) -> str:
+        """Render the legacy full discovery template body."""
         timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
         snippet = (result.snippet or "_No preview available._").strip()
         snippet = " ".join(snippet.split())  # Collapse whitespace/newlines
@@ -306,6 +353,110 @@ class GitHubIssueCreator:
         ).strip()
 
         return body
+
+    def _build_minimal_issue_body(
+        self,
+        site_name: str,
+        result: Any,
+        template_config: IssueTemplateConfig,
+        capture_excerpt: Optional[str],
+        capture_status: Optional[str],
+        capture_hash: Optional[str],
+        capture_artifact_path: Optional[str],
+        config_path: str,
+    ) -> str:
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+        display_link = result.display_link or result.link
+        parsed = urlparse(result.link)
+        domain = parsed.netloc or display_link
+
+        badge = self._format_capture_badge(template_config, capture_status, capture_artifact_path)
+        excerpt_block = self._build_excerpt_block(template_config, capture_excerpt)
+
+        checklist = dedent(
+            f"""
+            ### Quick Actions
+            - [ ] `python main.py assign-workflows --config {config_path} --limit 10 --dry-run`
+            - [ ] Review for duplicates or priority adjustments.
+            - [ ] `python main.py process-issues --config {config_path} --dry-run --verbose`
+            """
+        ).strip()
+
+        sections = [
+            dedent(
+                f"""
+                # Discovery Intake · {site_name}
+
+                - **Title:** [{result.title}]({result.link})
+                - **Domain:** {domain}
+                - **Detected:** {timestamp}
+                - **Discovery Hash:** `{capture_hash or 'n/a'}`
+                """
+            ).strip()
+        ]
+
+        if badge:
+            sections.append(badge)
+
+        if excerpt_block:
+            sections.append(excerpt_block)
+
+        sections.append(checklist)
+        sections.append("_This issue was generated automatically by the Site Monitor service._")
+
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def _build_excerpt_block(template_config: IssueTemplateConfig, excerpt: Optional[str]) -> Optional[str]:
+        if not template_config.include_excerpt:
+            return None
+        if not excerpt:
+            return None
+
+        sanitized = excerpt.replace('\n', ' ').replace('<', '&lt;').replace('>', '&gt;').strip()
+        max_chars = template_config.excerpt_max_chars
+        if max_chars and len(sanitized) > max_chars:
+            sanitized = sanitized[:max_chars].rsplit(' ', 1)[0].strip() + '…'
+        if not sanitized:
+            return None
+
+        return dedent(
+            f"""
+            <details>
+            <summary>Preview excerpt</summary>
+
+            > {sanitized}
+            </details>
+            """
+        ).strip()
+
+    @staticmethod
+    def _format_capture_badge(
+        template_config: IssueTemplateConfig,
+        capture_status: Optional[str],
+        capture_artifact_path: Optional[str],
+    ) -> Optional[str]:
+        if not template_config.include_capture_badge or not capture_status:
+            return None
+
+        status_text = str(capture_status)
+        status_clean = status_text.replace('_', ' ')
+        emoji_map = {
+            'success': '✅',
+            'failed': '⚠️',
+            'empty': '⚠️',
+            'disabled': '⏸️',
+            'error': '⚠️',
+        }
+        emoji = emoji_map.get(status_text.lower(), 'ℹ️')
+
+        storage_detail = ''
+        if status_text.lower() == 'success' and capture_artifact_path:
+            storage_detail = f" stored at `{capture_artifact_path}`"
+        elif status_text.lower() not in {'success', 'disabled'} and capture_artifact_path:
+            storage_detail = f" (artifact target `{capture_artifact_path}`)"
+
+        return f"> {emoji} Page capture: {status_clean}{storage_detail}"
 
     def close_old_monitoring_issues(self, days_old: int = 7, 
                                   dry_run: bool = True) -> List[int]:
