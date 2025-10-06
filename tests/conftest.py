@@ -6,13 +6,19 @@ import subprocess
 import warnings
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, patch
 from pathlib import Path
 from github import Github
 from github.Repository import Repository
 from github.Issue import Issue
 from github.GithubException import GithubException
-from src.utils.config_manager import MonitorConfig, SiteConfig, GitHubConfig, SearchConfig
+from src.utils.config_manager import (
+    MonitorConfig,
+    SiteConfig,
+    GitHubConfig,
+    SearchConfig,
+    SiteMonitorSettings,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -190,6 +196,8 @@ def sample_config_with_agent():
     config.agent.workflow_dir = "docs/workflow/deliverables"
     config.agent.output_dir = "study"
     config.agent.enable_git = True
+
+    config.site_monitor = SiteMonitorSettings()
     
     return config
 
@@ -291,8 +299,16 @@ def sample_config():
         github=github,
         search=search,
         storage_path="test_processed.json",
-        log_level="INFO"
+        log_level="INFO",
+        site_monitor=SiteMonitorSettings(),
     )
+
+
+@pytest.fixture
+def mock_page_capture_service():
+    """Patch PageCaptureService to avoid network and filesystem interactions."""
+    with patch('src.core.site_monitor.PageCaptureService') as mock_service:
+        yield mock_service
 
 
 # E2E Test Fixtures

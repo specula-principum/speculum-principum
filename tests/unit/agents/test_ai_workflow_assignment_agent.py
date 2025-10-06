@@ -8,6 +8,7 @@ external API calls to ensure reliable testing.
 import os
 import pytest
 from unittest.mock import Mock, patch, MagicMock
+from types import SimpleNamespace
 from typing import Dict, Any
 
 from src.agents.ai_workflow_assignment_agent import (
@@ -127,13 +128,17 @@ class TestGitHubModelsClient:
             title="Test Issue",
             body="Test body",
             labels=["test"],
-            available_workflows=sample_workflows
+            available_workflows=sample_workflows,
+            page_extract="Primary Content Summary: Sample"
         )
         
         # Verify API was called
         mock_post.assert_called_once()
         call_args = mock_post.call_args
         assert call_args[0][0] == f"{client.BASE_URL}/v1/chat/completions"
+        prompt_payload = call_args[1]['json']['messages'][1]['content']
+        assert "PAGE EXTRACT" in prompt_payload
+        assert "Primary Content Summary: Sample" in prompt_payload
         
         # Verify response parsing
         assert isinstance(result, ContentAnalysis)
@@ -202,7 +207,118 @@ class TestAIWorkflowAssignmentAgent:
         assert agent.enable_ai is True
         assert agent.ai_client is not None
         assert isinstance(agent.ai_client, GitHubModelsClient)
+
+    @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
+    @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')
+    def test_load_page_extract_reads_artifact(self, mock_matcher, mock_github, mock_github_token, mock_repo_name, tmp_path):
+        mock_matcher.return_value.get_available_workflows.return_value = []
+
+        agent = AIWorkflowAssignmentAgent(
+            github_token=mock_github_token,
+            repo_name=mock_repo_name,
+            enable_ai=True
+        )
+
+        agent.prompts_config.include_page_extract = True
+        agent.prompts_config.page_extract_max_chars = 120
+        agent.workspace_root = tmp_path
+        agent.site_monitor_settings.page_capture.artifacts_dir = 'artifacts/discoveries'
+
+        artifact_dir = tmp_path / 'artifacts' / 'discoveries' / 'abc123'
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / 'content.md').write_text(
+            "# Headline\n\nThis is the leading paragraph.\n\n## Section One\n\nMore detail here.",
+            encoding='utf-8'
+        )
+
+        entry = SimpleNamespace(content_hash='abc123', artifact_path='artifacts/discoveries/abc123')
+        agent.dedup_manager = Mock()
+        agent.dedup_manager.get_entry_by_hash.return_value = entry
+        agent.dedup_manager.get_entry_by_url.return_value = None
+
+        issue_data = {'body': '- **Discovery Hash:** `abc123`'}
+        extract = agent._load_page_extract(issue_data)
+
+        assert extract is not None
+        assert 'Primary Content Summary' in extract
+        assert 'Key Sections' in extract
+        assert 'Captured Text' in extract
     
+    @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
+    @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')
+    def test_load_page_extract_hash_only_path(
+        self,
+        mock_matcher,
+        mock_github,
+        mock_github_token,
+        mock_repo_name,
+        tmp_path,
+    ):
+        mock_matcher.return_value.get_available_workflows.return_value = []
+
+        agent = AIWorkflowAssignmentAgent(
+            github_token=mock_github_token,
+            repo_name=mock_repo_name,
+            enable_ai=True,
+        )
+
+        agent.prompts_config.include_page_extract = True
+        agent.prompts_config.page_extract_max_chars = 120
+        agent.workspace_root = tmp_path
+        agent.site_monitor_settings.page_capture.artifacts_dir = 'artifacts/discoveries'
+
+        artifact_dir = tmp_path / 'artifacts' / 'discoveries' / 'def456'
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / 'content.md').write_text("Just a quick summary", encoding='utf-8')
+
+        entry = SimpleNamespace(content_hash='def456', artifact_path='def456')
+        agent.dedup_manager = Mock()
+        agent.dedup_manager.get_entry_by_hash.return_value = entry
+        agent.dedup_manager.get_entry_by_url.return_value = None
+
+        issue_data = {'body': '- **Discovery Hash:** `def456`'}
+        extract = agent._load_page_extract(issue_data)
+
+        assert extract is not None
+        assert 'def456' in extract
+
+    @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
+    @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')
+    def test_load_page_extract_fallback_to_issue_excerpt(
+        self,
+        mock_matcher,
+        mock_github,
+        mock_github_token,
+        mock_repo_name,
+    ):
+        mock_matcher.return_value.get_available_workflows.return_value = []
+
+        agent = AIWorkflowAssignmentAgent(
+            github_token=mock_github_token,
+            repo_name=mock_repo_name,
+            enable_ai=True,
+        )
+
+        agent.prompts_config.include_page_extract = True
+        agent.prompts_config.page_extract_max_chars = 180
+        agent.dedup_manager = Mock()
+        agent.dedup_manager.get_entry_by_hash.return_value = None
+        agent.dedup_manager.get_entry_by_url.return_value = None
+
+        issue_body = (
+            "# Discovery Intake\n\n"
+            "<details>\n"
+            "<summary>Preview excerpt</summary>\n\n"
+            "> This is a captured preview with meaningful context.\n"
+            "</details>\n"
+        )
+
+        extract = agent._load_page_extract({'body': issue_body})
+
+        assert extract is not None
+        assert 'Primary Content Summary' in extract
+        assert 'meaningful context' in extract
+
     @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
     @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher') 
     def test_agent_initialization_ai_disabled(self, mock_matcher, mock_github, mock_github_token, mock_repo_name):
@@ -234,6 +350,8 @@ class TestAIWorkflowAssignmentAgent:
             repo_name=mock_repo_name,
             enable_ai=True
         )
+        agent.prompts_config.include_page_extract = True
+        agent.prompts_config.page_extract_max_chars = 200
 
         # Mock AI client response
         mock_analysis = ContentAnalysis(
@@ -246,8 +364,12 @@ class TestAIWorkflowAssignmentAgent:
             content_type=mock_ai_response["content_type"]
         )
 
-        with patch.object(agent.ai_client, 'analyze_issue_content', return_value=mock_analysis):
-            workflow, analysis, message = agent.analyze_issue_with_ai(sample_issue_data)        # Verify high confidence workflow assignment
+        with patch.object(agent, '_load_page_extract', return_value='Primary summary block'):
+            with patch.object(agent.ai_client, 'analyze_issue_content', return_value=mock_analysis) as mock_analyze:
+                workflow, analysis, message = agent.analyze_issue_with_ai(sample_issue_data)
+
+        mock_analyze.assert_called_once()
+        assert mock_analyze.call_args.kwargs.get('page_extract') == 'Primary summary block'
         assert workflow is not None
         assert workflow.name == "Research Analysis"
         assert analysis.summary == mock_ai_response["summary"]

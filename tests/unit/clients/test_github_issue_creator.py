@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from src.clients.github_issue_creator import GitHubIssueCreator
 from src.clients.search_client import SearchResult
+from src.utils.config_manager import IssueTemplateConfig
 from tests.conftest import MockGitHubException
 
 
@@ -158,8 +159,8 @@ class TestGitHubIssueCreator:
         with pytest.raises(RuntimeError, match="Unexpected error creating issue: Unexpected error"):
             creator.create_issue(title="Test Issue")
 
-    def test_create_individual_result_issue_applies_discovery_template(self, mock_github_token, mock_repository_name, mock_github_issue):
-        """Ensure individual issues include discovery template and required labels."""
+    def test_create_individual_result_issue_uses_minimal_template_by_default(self, mock_github_token, mock_repository_name, mock_github_issue):
+        """Individual issues should render minimal template when no override is provided."""
         with patch('src.clients.github_issue_creator.Github') as mock_github_class, \
              patch('src.clients.github_issue_creator.Auth') as mock_auth_class:
             mock_github_instance = Mock()
@@ -205,15 +206,52 @@ class TestGitHubIssueCreator:
             assert 'state::discovery' in labels
 
             body = kwargs['body']
+            assert body.startswith('# Discovery Intake · Example Site')
+            assert '- **Title:** [Example Discovery](https://example.com/article)' in body
+            assert '- **Discovery Hash:** `n/a`' in body
+            assert '### Quick Actions' in body
+            assert 'assign-workflows' in body
+            assert 'process-issues' in body
+            assert 'Example snippet' not in body  # minimal template omits snippet
+
+            assert issue == mock_github_issue
+
+    def test_create_individual_result_issue_full_template_override(self, mock_github_token, mock_repository_name, mock_github_issue):
+        """Full template should be used when explicitly requested."""
+        with patch('src.clients.github_issue_creator.Github') as mock_github_class, \
+             patch('src.clients.github_issue_creator.Auth') as mock_auth_class:
+            mock_github_instance = Mock()
+            mock_repo = Mock()
+            mock_github_class.return_value = mock_github_instance
+            mock_github_instance.get_repo.return_value = mock_repo
+            mock_repo.create_issue.return_value = mock_github_issue
+            mock_repo.get_labels.return_value = [
+                Mock(name='site-monitor'),
+                Mock(name='automated'),
+                Mock(name='documentation'),
+            ]
+            mock_auth_class.Token.return_value = Mock()
+
+            creator = GitHubIssueCreator(mock_github_token, mock_repository_name)
+            search_result = SearchResult(
+                title="Example Discovery",
+                link="https://example.com/article",
+                snippet="Example snippet detailing the discovery.",
+                display_link="example.com"
+            )
+
+            creator.create_individual_result_issue(
+                site_name="Example Site",
+                result=search_result,
+                issue_template=IssueTemplateConfig(layout='full'),
+            )
+
+            _, kwargs = mock_repo.create_issue.call_args
+            body = kwargs['body']
             assert body.startswith('# Workflow Intake: Example Site')
             assert '## Discovery' in body
             assert 'Example snippet detailing the discovery.' in body
             assert '## AI Assessment' in body
-            assert 'Pending automated assignment' in body
-            assert '## Specialist Guidance' in body
-            assert '## Copilot Assignment' in body
-
-            assert issue == mock_github_issue
 
     def test_create_monitoring_labels_includes_state_labels(self, mock_github_token, mock_repository_name):
         """Default monitoring labels should include workflow state entries."""

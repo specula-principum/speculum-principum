@@ -12,6 +12,11 @@ This agent implements the missing step in the processing pipeline:
 
 ## Core Functionality
 
+### Discovery Context Enrichment
+- Minimal "Discovery Intake" issues surface canonical URL, capture status, and quick actions without overwhelming the assignment prompt.
+- Page capture extracts are embedded directly into the issue body for immediate reuse; optional persisted artifacts under `artifacts/discoveries/<hash>/` can be enabled via `persist_artifacts` when long-term retention is desired.
+- Prompt enrichment is controlled via `ai.prompts.include_page_extract`, automatically falling back to the inline issue excerpt when no artifact is present, and respects configurable character budgets.
+
 ### Issue Review and Analysis
 - Monitors unassigned issues with `site-monitor` label
 - Analyzes issue labels and content to determine appropriate workflow

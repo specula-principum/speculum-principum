@@ -109,6 +109,11 @@ def setup_monitor_parser(subparsers) -> None:
         action='store_true',
         help='Skip creating individual issues for each search result'
     )
+    monitor_parser.add_argument(
+        '--issue-template',
+        choices=['minimal', 'full'],
+        help='Override the discovery issue template layout for this run'
+    )
 
 
 def setup_setup_parser(subparsers) -> None:
@@ -339,6 +344,9 @@ def handle_monitor_command(args, github_token: str) -> None:
         print(f"❌ Monitoring setup failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    if getattr(args, 'issue_template', None):
+        service.set_issue_template_layout(args.issue_template)
+
     try:
         results = service.run_monitoring_cycle(
             create_individual_issues=not args.no_individual_issues
@@ -425,6 +433,49 @@ def handle_status_command(args, github_token: str) -> None:
     print(f"Rate limit: {rate_status['calls_remaining']}/{rate_status['daily_limit']} calls remaining")
     dedup_stats = status['deduplication_stats']
     print(f"Processed entries: {dedup_stats['total_entries']}")
+
+    capture_counts = dedup_stats.get('capture_status_counts', {}) or {}
+    capture_summary = dedup_stats.get('capture_summary', {}) or {}
+
+    if capture_counts or capture_summary:
+        total_attempts = capture_summary.get('total_attempts')
+        if total_attempts is None:
+            total_attempts = sum(capture_counts.values())
+            total_attempts -= capture_counts.get('unknown', 0)
+            total_attempts -= capture_counts.get('disabled', 0)
+        total_attempts = max(total_attempts, 0)
+
+        success_count = capture_summary.get('success', capture_counts.get('success', 0))
+        failure_count = capture_summary.get(
+            'failures',
+            capture_counts.get('failed', 0) + capture_counts.get('error', 0),
+        )
+        empty_count = capture_summary.get('empty', capture_counts.get('empty', 0))
+        disabled_count = capture_summary.get('disabled', capture_counts.get('disabled', 0))
+        unknown_count = capture_summary.get('unknown', capture_counts.get('unknown', 0))
+        persisted_count = capture_summary.get(
+            'persisted_artifacts',
+            dedup_stats.get('captures_with_artifacts', 0),
+        )
+
+        failed_breakdown = capture_summary.get('failed_breakdown', {}) or {}
+        failed_fail = capture_counts.get('failed', failed_breakdown.get('failed', 0))
+        failed_error = capture_counts.get('error', failed_breakdown.get('error', 0))
+
+        print("Page capture results:")
+        print(
+            f"  ✅ Success: {success_count}" +
+            (f" / {total_attempts} attempts" if total_attempts else "")
+        )
+        print(
+            f"  ❌ Failures: {failure_count}"
+            f" (failed={failed_fail}, error={failed_error})"
+        )
+        print(f"  ◽ Empty extracts: {empty_count}")
+        print(f"  🚫 Disabled: {disabled_count}")
+        if unknown_count:
+            print(f"  ❔ Unknown: {unknown_count}")
+        print(f"  💾 Artifacts persisted: {persisted_count}")
 
 
 def handle_cleanup_command(args, github_token: str) -> None:

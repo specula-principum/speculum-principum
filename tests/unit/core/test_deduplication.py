@@ -6,6 +6,7 @@ import pytest
 import tempfile
 import json
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -179,6 +180,40 @@ class TestDeduplicationManager:
             finally:
                 os.unlink(f.name)
     
+    def test_manager_loads_legacy_entries_without_capture_metadata(self):
+        """Legacy storage files without capture data should still load."""
+        legacy_entry = {
+            'url': "https://example.com/legacy",
+            'title': "Legacy Page",
+            'site_name': "Legacy Site",
+            'processed_at': datetime.utcnow().isoformat(),
+            'content_hash': 'legacyhash123456',
+        }
+        legacy_data = {
+            'metadata': {'last_updated': datetime.utcnow().isoformat(), 'total_entries': 1},
+            'entries': [legacy_entry],
+        }
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as handle:
+            json.dump(legacy_data, handle)
+            temp_path = handle.name
+
+        try:
+            manager = DeduplicationManager(storage_path=temp_path)
+            entry = manager.get_entry_by_hash('legacyhash123456')
+            assert entry is not None
+            assert entry.artifact_path is None
+            assert entry.capture_status is None
+
+            manager.save_processed_entries()
+
+            saved_data = json.loads(Path(temp_path).read_text(encoding='utf-8'))
+            saved_entry = saved_data['entries'][0]
+            assert 'artifact_path' in saved_entry
+            assert 'capture_status' in saved_entry
+        finally:
+            os.unlink(temp_path)
+
     def test_mark_result_processed(self):
         """Test marking a search result as processed"""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -288,6 +323,9 @@ class TestDeduplicationManager:
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_path = os.path.join(temp_dir, "test_processed.json")
             manager = DeduplicationManager(storage_path=storage_path, retention_days=7)
+            artifacts_dir = Path(temp_dir) / "artifacts" / "discoveries"
+            artifacts_dir.mkdir(parents=True)
+            manager.set_artifacts_base_dir(artifacts_dir)
             
             # Create old and new entries
             old_result = SearchResult("Old Page", "https://example.com/old", "Old snippet")
@@ -296,6 +334,8 @@ class TestDeduplicationManager:
             # Mark old result with old timestamp
             old_entry = manager.mark_result_processed(old_result, "Site", issue_number=1)
             old_entry.processed_at = datetime.utcnow() - timedelta(days=10)
+            old_entry.artifact_path = f"{artifacts_dir.name}/{old_entry.content_hash}"
+            (artifacts_dir / old_entry.content_hash).mkdir(parents=True, exist_ok=True)
             manager.processed_entries[old_entry.content_hash] = old_entry
             
             # Mark new result
@@ -311,6 +351,7 @@ class TestDeduplicationManager:
             assert len(manager.processed_entries) == 1
             assert manager.is_result_processed(new_result, "Site") is True
             assert manager.is_result_processed(old_result, "Site") is False
+            assert not (artifacts_dir / old_entry.content_hash).exists()
     
     def test_get_processed_stats(self):
         """Test getting processed statistics"""
@@ -323,9 +364,15 @@ class TestDeduplicationManager:
             result2 = SearchResult("Page 2", "https://example.com/page2", "Snippet 2")
             result3 = SearchResult("Page 3", "https://example.com/page3", "Snippet 3")
             
-            manager.mark_result_processed(result1, "Site A", issue_number=1)
-            manager.mark_result_processed(result2, "Site A", issue_number=2)
-            manager.mark_result_processed(result3, "Site B")  # No issue number
+            entry1 = manager.mark_result_processed(result1, "Site A", issue_number=1)
+            entry1.capture_status = "success"
+            entry1.artifact_path = f"artifacts/discoveries/{entry1.content_hash}"
+
+            entry2 = manager.mark_result_processed(result2, "Site A", issue_number=2)
+            entry2.capture_status = "failed"
+
+            entry3 = manager.mark_result_processed(result3, "Site B")  # No issue number
+            entry3.capture_status = None
             
             stats = manager.get_processed_stats()
             
@@ -335,6 +382,15 @@ class TestDeduplicationManager:
             assert stats['entries_by_site']['Site B'] == 1
             assert 'oldest_entry' in stats
             assert 'newest_entry' in stats
+            assert stats['capture_status_counts']['success'] == 1
+            assert stats['capture_status_counts']['failed'] == 1
+            assert stats['capture_status_counts']['unknown'] == 1
+            summary = stats['capture_summary']
+            assert summary['success'] == 1
+            assert summary['failures'] == 1
+            assert summary['unknown'] == 1
+            assert summary['persisted_artifacts'] == 1
+            assert summary['total_attempts'] == 2
     
 
 
@@ -524,3 +580,7 @@ class TestEdgeCases:
             assert stats['entries_with_issues'] == 0
             assert stats['oldest_entry'] is None
             assert stats['newest_entry'] is None
+            assert stats['capture_status_counts'] == {}
+            assert stats['capture_summary']['total_attempts'] == 0
+            assert stats['capture_summary']['success'] == 0
+            assert stats['capture_summary']['failures'] == 0

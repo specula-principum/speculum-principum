@@ -8,7 +8,7 @@ import os
 import re
 from typing import Dict, List, Optional, Any
 from jsonschema import validate, ValidationError
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -85,6 +85,17 @@ class AIHistoryConfig:
 
 
 @dataclass
+class AIPromptConfig:
+    """AI prompt enrichment configuration"""
+    include_page_extract: bool = False
+    page_extract_max_chars: int = 1200
+
+    def __post_init__(self):
+        if self.page_extract_max_chars < 0:
+            raise ValueError("ai.prompts.page_extract_max_chars must be non-negative")
+
+
+@dataclass
 class AIConfidenceThresholds:
     """AI confidence thresholds for automated processing"""
     auto_assign: float = 0.8
@@ -146,6 +157,7 @@ class AIConfig:
     confidence_thresholds: Optional[AIConfidenceThresholds] = None
     extraction_focus: Optional[AIExtractionFocusConfig] = None
     history: Optional[AIHistoryConfig] = None
+    prompts: Optional[AIPromptConfig] = None
     
     def __post_init__(self):
         """Initialize default values after dataclass creation"""
@@ -159,6 +171,8 @@ class AIConfig:
             self.extraction_focus = AIExtractionFocusConfig()
         if self.history is None:
             self.history = AIHistoryConfig()
+        if self.prompts is None:
+            self.prompts = AIPromptConfig()
 
 
 @dataclass
@@ -216,6 +230,53 @@ class GitConfig:
 
 
 @dataclass
+class IssueTemplateConfig:
+    """Issue template rendering options for site monitoring"""
+    layout: str = "minimal"
+    include_excerpt: bool = True
+    excerpt_max_chars: int = 320
+    include_capture_badge: bool = True
+
+    def __post_init__(self):
+        self.layout = (self.layout or "minimal").lower()
+        if self.layout not in {"minimal", "full"}:
+            raise ValueError("site_monitor.issue_template.layout must be 'minimal' or 'full'")
+        if self.excerpt_max_chars < 0:
+            raise ValueError("site_monitor.issue_template.excerpt_max_chars must be non-negative")
+
+
+@dataclass
+class PageCaptureConfig:
+    """Page capture configuration for site monitoring"""
+    enabled: bool = True
+    artifacts_dir: str = "artifacts/discoveries"
+    store_raw_html: bool = False
+    persist_artifacts: bool = False
+    max_text_bytes: int = 30 * 1024
+    timeout_seconds: int = 12
+    retry_attempts: int = 2
+    user_agent: str = "SpeculumPrincipumSiteMonitor/1.0"
+    cache_ttl_minutes: int = 1440
+
+    def __post_init__(self):
+        if self.max_text_bytes <= 0:
+            raise ValueError("site_monitor.page_capture.max_text_bytes must be positive")
+        if self.timeout_seconds <= 0:
+            raise ValueError("site_monitor.page_capture.timeout_seconds must be positive")
+        if self.retry_attempts < 0:
+            raise ValueError("site_monitor.page_capture.retry_attempts cannot be negative")
+        if self.cache_ttl_minutes < 0:
+            raise ValueError("site_monitor.page_capture.cache_ttl_minutes cannot be negative")
+
+
+@dataclass
+class SiteMonitorSettings:
+    """Site monitor runtime configuration"""
+    issue_template: IssueTemplateConfig = field(default_factory=IssueTemplateConfig)
+    page_capture: PageCaptureConfig = field(default_factory=PageCaptureConfig)
+
+
+@dataclass
 class MonitorConfig:
     """Complete monitoring configuration"""
     sites: List[SiteConfig]
@@ -227,6 +288,7 @@ class MonitorConfig:
     log_level: str = "INFO"
     git: Optional[GitConfig] = None
     workflow: Optional[WorkflowConfig] = None
+    site_monitor: Optional[SiteMonitorSettings] = None
 
 
 class ConfigLoader:
@@ -375,11 +437,67 @@ class ConfigLoader:
                 },
                 "additionalProperties": False
             },
+            "site_monitor": {
+                "type": "object",
+                "properties": {
+                    "issue_template": {
+                        "type": "object",
+                        "properties": {
+                            "layout": {
+                                "type": "string",
+                                "enum": ["minimal", "full"]
+                            },
+                            "include_excerpt": {"type": "boolean"},
+                            "excerpt_max_chars": {"type": "integer", "minimum": 0},
+                            "include_capture_badge": {"type": "boolean"}
+                        },
+                        "additionalProperties": False
+                    },
+                    "page_capture": {
+                        "type": "object",
+                        "properties": {
+                            "enabled": {"type": "boolean"},
+                            "artifacts_dir": {"type": "string"},
+                            "store_raw_html": {"type": "boolean"},
+                            "persist_artifacts": {"type": "boolean"},
+                            "max_text_bytes": {"type": "integer", "minimum": 1},
+                            "timeout_seconds": {"type": "integer", "minimum": 1},
+                            "retry_attempts": {"type": "integer", "minimum": 0},
+                            "user_agent": {"type": "string"},
+                            "cache_ttl_minutes": {"type": "integer", "minimum": 0}
+                        },
+                        "additionalProperties": False
+                    }
+                },
+                "additionalProperties": False
+            },
             "ai": {
                 "type": "object",
                 "properties": {
                     "enabled": {"type": "boolean"},
+                    "provider": {"type": "string"},
                     "model": {"type": "string"},
+                    "models": {
+                        "type": "object",
+                        "properties": {
+                            "content_extraction": {"type": "string"},
+                            "specialist_analysis": {"type": "string"},
+                            "document_generation": {"type": "string"},
+                            "workflow_assignment": {"type": "string"}
+                        },
+                        "additionalProperties": False
+                    },
+                    "settings": {
+                        "type": "object",
+                        "properties": {
+                            "temperature": {"type": "number", "minimum": 0, "maximum": 2},
+                            "max_tokens": {"type": "integer", "minimum": 1},
+                            "timeout_seconds": {"type": "integer", "minimum": 1},
+                            "retry_count": {"type": "integer", "minimum": 0},
+                            "enable_logging": {"type": "boolean"}
+                        },
+                        "additionalProperties": False
+                    },
                     "confidence_thresholds": {
                         "type": "object",
                         "properties": {
@@ -388,14 +506,46 @@ class ConfigLoader:
                         },
                         "additionalProperties": False
                     },
-                    "max_tokens": {"type": "integer", "minimum": 1},
-                    "temperature": {"type": "number", "minimum": 0, "maximum": 2},
+                    "extraction_focus": {
+                        "type": "object",
+                        "properties": {
+                            "default": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "intelligence_analyst": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "osint_researcher": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "target_profiler": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "threat_hunter": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                            }
+                        },
+                        "additionalProperties": False
+                    },
                     "history": {
                         "type": "object",
                         "properties": {
                             "storage_type": {"type": "string", "enum": ["gist", "repo_file"]},
                             "gist_id": {"type": "string"},
                             "file_path": {"type": "string"}
+                        },
+                        "additionalProperties": False
+                    },
+                    "prompts": {
+                        "type": "object",
+                        "properties": {
+                            "include_page_extract": {"type": "boolean"},
+                            "page_extract_max_chars": {"type": "integer", "minimum": 0}
                         },
                         "additionalProperties": False
                     }
@@ -581,6 +731,14 @@ class ConfigLoader:
                     target_profiler=focus_data.get('target_profiler'),
                     threat_hunter=focus_data.get('threat_hunter')
                 )
+
+            prompts = None
+            if 'prompts' in ai_data:
+                prompts_data = ai_data['prompts']
+                prompts = AIPromptConfig(
+                    include_page_extract=prompts_data.get('include_page_extract', False),
+                    page_extract_max_chars=prompts_data.get('page_extract_max_chars', 1200)
+                )
             
             provider_value = ai_data.get('provider', 'github-models')
             if provider_value != 'github-models':
@@ -595,7 +753,38 @@ class ConfigLoader:
                 settings=settings,
                 confidence_thresholds=confidence_thresholds,
                 extraction_focus=extraction_focus,
-                history=history
+                history=history,
+                prompts=prompts
+            )
+        
+        site_monitor = None
+        if 'site_monitor' in config_data:
+            sm_data = config_data['site_monitor']
+            issue_template_data = sm_data.get('issue_template', {})
+            page_capture_data = sm_data.get('page_capture', {})
+
+            issue_template = IssueTemplateConfig(
+                layout=issue_template_data.get('layout', 'minimal'),
+                include_excerpt=issue_template_data.get('include_excerpt', True),
+                excerpt_max_chars=issue_template_data.get('excerpt_max_chars', 320),
+                include_capture_badge=issue_template_data.get('include_capture_badge', True)
+            )
+
+            page_capture = PageCaptureConfig(
+                enabled=page_capture_data.get('enabled', True),
+                artifacts_dir=page_capture_data.get('artifacts_dir', 'artifacts/discoveries'),
+                store_raw_html=page_capture_data.get('store_raw_html', False),
+                persist_artifacts=page_capture_data.get('persist_artifacts', False),
+                max_text_bytes=page_capture_data.get('max_text_bytes', 30 * 1024),
+                timeout_seconds=page_capture_data.get('timeout_seconds', 12),
+                retry_attempts=page_capture_data.get('retry_attempts', 2),
+                user_agent=page_capture_data.get('user_agent', 'SpeculumPrincipumSiteMonitor/1.0'),
+                cache_ttl_minutes=page_capture_data.get('cache_ttl_minutes', 1440)
+            )
+
+            site_monitor = SiteMonitorSettings(
+                issue_template=issue_template,
+                page_capture=page_capture
             )
         
         return MonitorConfig(
@@ -605,7 +794,8 @@ class ConfigLoader:
             agent=agent,
             ai=ai,
             storage_path=config_data.get('storage_path', 'processed_urls.json'),
-            log_level=config_data.get('log_level', 'INFO')
+            log_level=config_data.get('log_level', 'INFO'),
+            site_monitor=site_monitor
         )
     
 
