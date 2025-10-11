@@ -14,6 +14,7 @@ from typing import Dict, Any
 from src.agents.ai_workflow_assignment_agent import (
     AIWorkflowAssignmentAgent,
     GitHubModelsClient,
+    GitHubModelsAPIError,
     ContentAnalysis,
     AssignmentSignals,
 )
@@ -102,7 +103,7 @@ class TestGitHubModelsClient:
         
         assert client.token == mock_github_token
         assert client.model == "gpt-4o"
-        assert client.BASE_URL == "https://models.inference.ai.github.com"
+        assert client.BASE_URL == "https://models.github.ai/inference"
         assert "Authorization" in client.headers
         assert client.headers["Authorization"] == f"Bearer {mock_github_token}"
     
@@ -135,7 +136,7 @@ class TestGitHubModelsClient:
         # Verify API was called
         mock_post.assert_called_once()
         call_args = mock_post.call_args
-        assert call_args[0][0] == f"{client.BASE_URL}/v1/chat/completions"
+        assert call_args[0][0] == f"{client.BASE_URL}/chat/completions"
         prompt_payload = call_args[1]['json']['messages'][1]['content']
         assert "PAGE EXTRACT" in prompt_payload
         assert "Primary Content Summary: Sample" in prompt_payload
@@ -147,25 +148,20 @@ class TestGitHubModelsClient:
         assert result.confidence_scores["Person Entity Profiling"] == 0.85
     
     @patch('requests.post')
-    def test_api_failure_fallback(self, mock_post, mock_github_token, sample_workflows):
-        """Test API failure handling"""
+    def test_api_failure_raises_error(self, mock_post, mock_github_token, sample_workflows):
+        """Test API failure handling now raises an error"""
         # Mock API failure
         mock_post.side_effect = Exception("API Error")
-        
+
         client = GitHubModelsClient(mock_github_token)
-        
-        result = client.analyze_issue_content(
-            title="Test Issue",
-            body="Test body", 
-            labels=["test"],
-            available_workflows=sample_workflows
-        )
-        
-        # Should return fallback analysis
-        assert isinstance(result, ContentAnalysis)
-        assert result.summary == "Failed to analyze with AI"
-        assert result.suggested_workflows == []
-        assert result.confidence_scores == {}
+
+        with pytest.raises(GitHubModelsAPIError):
+            client.analyze_issue_content(
+                title="Test Issue",
+                body="Test body",
+                labels=["test"],
+                available_workflows=sample_workflows
+            )
 
 
 class TestAIWorkflowAssignmentAgent:
