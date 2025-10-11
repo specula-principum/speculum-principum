@@ -53,8 +53,12 @@ ai:
   confidence_thresholds:
     auto_assign: 0.8   # Threshold for automatic assignment
     request_review: 0.6  # Threshold for human review
-  max_tokens: 500
-  temperature: 0.3  # Lower = more consistent analysis
+  settings:
+    max_tokens: 500
+    temperature: 0.3  # Lower = more consistent analysis
+  prompts:
+    include_page_extract: true  # Include captured page content in prompts
+    page_extract_max_chars: 1200  # Max chars from page extract
 ```
 
 ### Advanced Configuration
@@ -65,12 +69,38 @@ ai:
   confidence_thresholds:
     auto_assign: 0.8
     request_review: 0.6
-  max_tokens: 500
-  temperature: 0.3
+  settings:
+    max_tokens: 500
+    temperature: 0.3
+  prompts:
+    include_page_extract: true  # Enable page content enrichment
+    page_extract_max_chars: 1200  # Limit extract size
   history:
     storage_type: "gist"  # or "repo_file"
     file_path: ".github/ai_assignment_history.json"
 ```
+
+### Page Extract Enrichment
+
+The `prompts.include_page_extract` setting controls whether captured page content is included in AI prompts:
+
+**When enabled (recommended)**:
+- AI receives the actual page content from site monitoring
+- Provides rich context for better workflow recommendations
+- Uses either persisted artifacts or inline preview excerpts
+- Automatically truncates to `page_extract_max_chars` to stay within API limits
+
+**When disabled**:
+- AI only receives issue title and description
+- May result in lower confidence scores
+- Suitable for issues without page captures
+
+**Page Extract Sources** (in priority order):
+1. Persisted artifact (`artifacts/discoveries/<hash>/content.md`)
+2. Deduplication entry with artifact path
+3. Inline preview excerpt in issue body (`<details><summary>Preview excerpt</summary>...`)
+
+**Example**: For a site monitoring discovery, enabling page extract provides the AI with the full page content, helping it identify whether the content requires entity profiling, legal research, or other specialized workflows.
 
 ## Usage
 
