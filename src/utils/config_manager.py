@@ -369,7 +369,7 @@ class ConfigLoader:
                     "date_range_days": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 30
+                        "maximum": 1000
                     }
                 },
                 "additionalProperties": False
