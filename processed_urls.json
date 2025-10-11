@@ -1,54 +1,10 @@
 {
   "metadata": {
     "last_updated": "2025-09-25T01:26:25.361794",
-    "total_entries": 5,
+    "total_entries": 0,
     "retention_days": 30
   },
   "entries": [
-    {
-      "url": "https://www.roadtovr.com/",
-      "normalized_url": "https://www.roadtovr.com",
-      "title": "Road to VR – Virtual Reality News",
-      "site_name": "Road to VR",
-      "issue_number": 23,
-      "processed_at": "2025-09-25T01:26:25.361530",
-      "content_hash": "51487e7789e85da5"
-    },
-    {
-      "url": "https://www.roadtovr.com/news/",
-      "normalized_url": "https://www.roadtovr.com/news",
-      "title": "News | Road to VR",
-      "site_name": "Road to VR",
-      "issue_number": 24,
-      "processed_at": "2025-09-25T01:26:25.361575",
-      "content_hash": "b960f78b9fdcdf18"
-    },
-    {
-      "url": "https://www.roadtovr.com/sections/pc-vr-news-reviews/",
-      "normalized_url": "https://www.roadtovr.com/sections/pc-vr-news-reviews",
-      "title": "PC VR News & Reviews | Road to VR",
-      "site_name": "Road to VR",
-      "issue_number": 25,
-      "processed_at": "2025-09-25T01:26:25.361596",
-      "content_hash": "cf9b696d3c9767eb"
-    },
-    {
-      "url": "https://www.roadtovr.com/sections/meta-quest-3-news-reviews/",
-      "normalized_url": "https://www.roadtovr.com/sections/meta-quest-3-news-reviews",
-      "title": "Meta Quest 3 News & Reviews | Road to VR",
-      "site_name": "Road to VR",
-      "issue_number": 26,
-      "processed_at": "2025-09-25T01:26:25.361615",
-      "content_hash": "8681888e8a33d61a"
-    },
-    {
-      "url": "https://www.roadtovr.com/sections/ar-mr-xr-vr-industry-news/",
-      "normalized_url": "https://www.roadtovr.com/sections/ar-mr-xr-vr-industry-news",
-      "title": "XR Industry News | Road to VR",
-      "site_name": "Road to VR",
-      "issue_number": 27,
-      "processed_at": "2025-09-25T01:26:25.361633",
-      "content_hash": "147a961a02ea6bda"
-    }
+    
   ]
 }
