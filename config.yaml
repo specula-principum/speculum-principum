@@ -46,6 +46,10 @@ ai:
   settings:
     max_tokens: 500
     temperature: 0.3  # Lower = more consistent, higher = more creative
+  # Prompt enrichment configuration
+  prompts:
+    include_page_extract: true  # Include captured page content in AI prompts for better context
+    page_extract_max_chars: 1200  # Maximum characters from page extract to include
   # Historical data storage (future enhancement)
   history:
     storage_type: "gist"  # or "repo_file" 

@@ -666,27 +666,42 @@ class AIWorkflowAssignmentAgent:
     def _load_page_extract(self, issue_data: Dict[str, Any]) -> Optional[str]:
         prompts_config = getattr(self, 'prompts_config', None)
         if not prompts_config or not getattr(prompts_config, 'include_page_extract', False):
+            self.logger.debug(
+                f"Page extract disabled for issue #{issue_data.get('number', 'unknown')} "
+                f"(include_page_extract={getattr(prompts_config, 'include_page_extract', False) if prompts_config else False})"
+            )
             return None
 
+        issue_number = issue_data.get('number', 'unknown')
+        self.logger.debug(f"Loading page extract for issue #{issue_number}")
+        
         body = issue_data.get('body') or ""
         content_hash = self._extract_discovery_hash(body)
         entry = None
 
         if content_hash:
+            self.logger.debug(f"Found discovery hash {content_hash} for issue #{issue_number}")
             entry = self.dedup_manager.get_entry_by_hash(content_hash)
 
         if not entry:
             primary_url = self._extract_primary_url(body)
             if primary_url:
+                self.logger.debug(f"Attempting to load page extract by URL: {primary_url}")
                 entry = self.dedup_manager.get_entry_by_url(primary_url)
                 if entry and not content_hash:
                     content_hash = entry.content_hash
 
         if not entry:
+            self.logger.debug(f"No deduplication entry found, checking for preview excerpt in issue #{issue_number}")
             excerpt = self._extract_issue_preview_excerpt(body)
             if excerpt:
                 max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+                self.logger.info(
+                    f"Using inline preview excerpt for issue #{issue_number} "
+                    f"({len(excerpt)} chars, truncating to {max_chars})"
+                )
                 return self._format_page_extract(excerpt, max_chars, content_hash)
+            self.logger.warning(f"No page extract available for issue #{issue_number} (no entry or preview excerpt)")
             return None
 
         artifact_path = entry.artifact_path
@@ -695,23 +710,50 @@ class AIWorkflowAssignmentAgent:
 
         artifact_dir = self._resolve_artifact_path(artifact_path)
         if not artifact_dir:
+            self.logger.debug(f"No artifact directory found for issue #{issue_number}, falling back to preview excerpt")
             excerpt = self._extract_issue_preview_excerpt(body)
             if excerpt:
                 max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+                self.logger.info(
+                    f"Using inline preview excerpt for issue #{issue_number} "
+                    f"({len(excerpt)} chars, truncating to {max_chars})"
+                )
                 return self._format_page_extract(excerpt, max_chars, content_hash)
+            self.logger.warning(f"No page extract available for issue #{issue_number} (no artifact dir or preview excerpt)")
             return None
 
         content_file = artifact_dir / "content.md"
         if not content_file.exists():
+            self.logger.debug(f"Artifact content.md not found for issue #{issue_number}, falling back to preview excerpt")
+            excerpt = self._extract_issue_preview_excerpt(body)
+            if excerpt:
+                max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+                self.logger.info(
+                    f"Using inline preview excerpt for issue #{issue_number} "
+                    f"({len(excerpt)} chars, truncating to {max_chars})"
+                )
+                return self._format_page_extract(excerpt, max_chars, content_hash)
+            self.logger.warning(f"No page extract available for issue #{issue_number} (content.md missing, no preview excerpt)")
             return None
 
         try:
             raw_text = content_file.read_text(encoding="utf-8")
-        except OSError:
+            max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+            self.logger.info(
+                f"Loaded page extract from artifact for issue #{issue_number} "
+                f"(source: {content_file}, {len(raw_text)} chars, truncating to {max_chars})"
+            )
+        except OSError as e:
+            self.logger.warning(f"Failed to read artifact content.md for issue #{issue_number}: {e}")
             excerpt = self._extract_issue_preview_excerpt(body)
             if excerpt:
                 max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
+                self.logger.info(
+                    f"Using inline preview excerpt for issue #{issue_number} after artifact read failure "
+                    f"({len(excerpt)} chars, truncating to {max_chars})"
+                )
                 return self._format_page_extract(excerpt, max_chars, content_hash)
+            self.logger.warning(f"No page extract available for issue #{issue_number} (artifact read failed, no preview excerpt)")
             return None
 
         max_chars = getattr(prompts_config, 'page_extract_max_chars', 1200)
@@ -858,7 +900,18 @@ class AIWorkflowAssignmentAgent:
             )
         
         try:
+            issue_number = issue_data.get('number', 'unknown')
             page_extract = self._load_page_extract(issue_data)
+            
+            if page_extract:
+                self.logger.info(
+                    f"Analyzing issue #{issue_number} with AI (WITH page extract, {len(page_extract)} chars)"
+                )
+            else:
+                self.logger.info(
+                    f"Analyzing issue #{issue_number} with AI (NO page extract - limited context)"
+                )
+            
             analysis = self.ai_client.analyze_issue_content(
                 title=issue_data.get('title', ''),
                 body=issue_data.get('body', ''),
