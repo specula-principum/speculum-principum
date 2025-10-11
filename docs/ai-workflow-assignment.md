@@ -37,7 +37,7 @@ The AI-enhanced workflow assignment agent analyzes GitHub issue content semantic
 - No external AI service dependencies
 
 ### API Usage
-- **Endpoint**: `https://models.inference.ai.github.com/v1/chat/completions`
+- **Endpoint**: `https://models.github.ai/inference/chat/completions`
 - **Authentication**: Uses `GITHUB_TOKEN` (automatically available in Actions)
 - **Models Available**: `gpt-4o`, `llama-3.2`, and others
 - **Rate Limits**: Governed by GitHub Models quotas

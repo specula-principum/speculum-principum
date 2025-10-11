@@ -52,7 +52,7 @@ class GitHubModelsClient:
     - Request/response logging
     """
     
-    BASE_URL = "https://models.inference.ai.github.com"
+    BASE_URL = "https://models.github.ai/inference"
     DEFAULT_TIMEOUT = 30
     DEFAULT_RETRIES = 3
     RETRY_DELAY = 1.0  # Base delay between retries (exponential backoff)
@@ -60,8 +60,8 @@ class GitHubModelsClient:
     def __init__(self, 
                  github_token: str, 
                  model: str = "gpt-4o",
-                 timeout: int = None,
-                 max_retries: int = None,
+                 timeout: Optional[int] = None,
+                 max_retries: Optional[int] = None,
                  enable_logging: bool = True):
         """
         Initialize GitHub Models client.
@@ -83,7 +83,8 @@ class GitHubModelsClient:
         self.headers = {
             "Authorization": f"Bearer {github_token}",
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "Speculum-Principum/1.0"
         }
         
@@ -172,7 +173,7 @@ class GitHubModelsClient:
     
     def simple_completion(self, 
                          prompt: str,
-                         system_message: str = None,
+                         system_message: Optional[str] = None,
                          **kwargs) -> AIResponse:
         """
         Simple completion with a single prompt.
@@ -202,7 +203,7 @@ class GitHubModelsClient:
     
     def _make_request_with_retries(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Make API request with exponential backoff retries"""
-        endpoint = f"{self.BASE_URL}/v1/chat/completions"
+        endpoint = f"{self.BASE_URL}/chat/completions"
         
         last_exception = None
         

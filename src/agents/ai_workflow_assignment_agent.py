@@ -69,6 +69,10 @@ class AssignmentSignals:
     source: str = "heuristic"
 
 
+class GitHubModelsAPIError(RuntimeError):
+    """Raised when a GitHub Models API request fails."""
+
+
 class GitHubModelsClient:
     """
     Client for GitHub Models API
@@ -77,7 +81,7 @@ class GitHubModelsClient:
     perfect for GitHub Actions workflows.
     """
     
-    BASE_URL = "https://models.inference.ai.github.com"
+    BASE_URL = "https://models.github.ai/inference"
     
     def __init__(self, github_token: str, model: str = "gpt-4o"):
         """
@@ -93,7 +97,8 @@ class GitHubModelsClient:
         self.headers = {
             "Authorization": f"Bearer {github_token}",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
         }
         
     def analyze_issue_content(
@@ -126,7 +131,7 @@ class GitHubModelsClient:
                     f"  Trigger labels: {', '.join(wf.trigger_labels)}\n"
                     f"  Deliverables: {', '.join(deliverable_types)}"
                 )
-            
+
             # Construct prompt for issue analysis
             prompt = self._build_analysis_prompt(
                 title,
@@ -135,25 +140,16 @@ class GitHubModelsClient:
                 workflow_descriptions,
                 page_extract=page_extract,
             )
-            
+
             # Call GitHub Models API
             response = self._call_models_api(prompt)
-            
+
             # Parse AI response into structured analysis
             return self._parse_ai_response(response, available_workflows)
-            
+
         except Exception as e:
             log_exception(self.logger, "GitHub Models analysis failed", e)
-            # Return fallback analysis
-            return ContentAnalysis(
-                summary="Failed to analyze with AI",
-                key_topics=[],
-                suggested_workflows=[],
-                confidence_scores={},
-                technical_indicators=[],
-                urgency_level="medium",
-                content_type="unknown"
-            )
+            raise GitHubModelsAPIError(f"GitHub Models API request failed: {e}") from e
     
     def _build_analysis_prompt(
         self,
@@ -209,7 +205,7 @@ Return response as valid JSON only:
         Note: This uses the GitHub Models inference endpoint which is
         available in GitHub Actions with proper authentication.
         """
-        endpoint = f"{self.BASE_URL}/v1/chat/completions"
+        endpoint = f"{self.BASE_URL}/chat/completions"
         
         payload = {
             "model": self.model,
