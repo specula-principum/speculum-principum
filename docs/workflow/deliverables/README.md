@@ -2,6 +2,8 @@
 
 This directory contains workflow definitions for the automated issue processing agent. Each workflow defines how GitHub issues with specific labels should be processed and what deliverables should be generated.
 
+As of October 2025 the repository only includes taxonomy-compliant criminal-law workflows under `criminal-law/`.
+
 ## Workflow File Format
 
 Workflow definitions are YAML files that specify:
@@ -16,42 +18,49 @@ Workflow definitions are YAML files that specify:
 ```yaml
 name: "Workflow Name"
 description: "Brief description of workflow purpose"
-version: "1.0.0"
+workflow_version: "1.0.0"
+category: "entity-foundation" | "legal-research" | "operational-coordination"
+priority: "low" | "medium" | "high" | "critical"
+confidence_threshold: 0.75
 
-# Labels that trigger this workflow (in addition to 'site-monitor')
 trigger_labels:
   - "label1"
   - "label2"
 
-# Output configuration
-output:
-  folder_structure: "study/{issue_number}-workflow-type"
-  file_pattern: "{deliverable_name}.md"
-  branch_pattern: "workflow-type/issue-{issue_number}"
+required_entities:
+  - entity_type: "person"
+    min_count: 1
+    min_confidence: 0.7
 
-# Required deliverables
+deliverable_templates:
+  - "entity_backbone"
+  - "workflow_core_component"
+  - "gao_compliance_appendix"
+
 deliverables:
   - name: "deliverable-name"
     title: "Human Readable Title"
     description: "What this deliverable contains"
     template: "template_file.md"
-    required: true|false
+    required: true
     order: 1
 
-# Processing configuration
-processing:
-  timeout: 60  # minutes
-  require_review: true|false
-  auto_pr: true|false
-  context:
-    focus_areas: []
-    custom_settings: "value"
+audit_trail:
+  required: true
+  fields:
+    - "model_version"
+    - "reason_codes"
+    - "entity_evidence"
 
-# Validation rules
+processing:
+  timeout: 150  # seconds
+  max_retries: 1
+
 validation:
-  min_word_count: 100
-  required_sections: []
-  checks: []
+  min_word_count: 250
+  required_sections:
+    - "Executive Summary"
+    - "GAO Compliance"
 ```
 
 ## Label and State Model
@@ -118,15 +127,20 @@ Templates referenced in the `template` field should be placed in the `templates/
 
 ## Example Workflows
 
-### Research Analysis
-- **Triggers**: `research`, `analysis`, `deep-dive`
-- **Purpose**: Comprehensive research documents
-- **Deliverables**: Overview, background, methodology, findings, recommendations
+### Person Entity Profiling & Risk Flagging
+- **Triggers**: `person-profile`, `risk-flag`, `criminal-law`
+- **Purpose**: Build structured dossiers with conflict and sanctions analysis
+- **Deliverables**: Entity backbone, risk posture core, GAO compliance appendix
 
-### Technical Review
-- **Triggers**: `technical-review`, `code-review`, `architecture`
-- **Purpose**: Technical assessment and recommendations
-- **Deliverables**: Architecture analysis, security assessment, performance review
+### Statutory & Regulatory Research Tracker
+- **Triggers**: `statute-review`, `gao-directive`
+- **Purpose**: Curate applicable statutes, directives, and compliance checks
+- **Deliverables**: Entity backbone, statutory digest core, GAO compliance appendix
+
+### Inter-Agency Coordination Briefs
+- **Triggers**: `coordination`, `gao-brief`
+- **Purpose**: Map agency touchpoints, task decision timelines, and communication plans
+- **Deliverables**: Entity backbone, coordination brief core, GAO compliance appendix
 
 ## Creating New Workflows
 

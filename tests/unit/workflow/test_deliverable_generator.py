@@ -16,6 +16,7 @@ from unittest.mock import Mock
 from src.workflow.deliverable_generator import DeliverableGenerator, DeliverableSpec
 from src.workflow.workflow_matcher import WorkflowInfo
 from src.core.issue_processor import IssueData
+from src.agents.content_extraction_agent import StructuredContent, Entity, Relationship, Event
 
 
 @pytest.fixture
@@ -73,6 +74,71 @@ def deliverable_generator(temp_output_dir):
     return DeliverableGenerator(
         templates_dir=None,
         output_dir=temp_output_dir
+    )
+
+
+@pytest.fixture
+def sample_structured_content():
+    """Create structured content fixture with entities, relationships, and events."""
+    return StructuredContent(
+        summary="Criminal matter involving Alex Doe and financial records in the Eastern District of Virginia.",
+        entities=[
+            Entity(
+                name="Alex Doe",
+                type="person",
+                confidence=0.91,
+                attributes={
+                    "role": "Defendant",
+                    "risk_score": 0.82,
+                    "risk_flags": ["Prior conviction", "Financial fraud"],
+                    "conflicts": ["Potential conflict with GAO analyst"],
+                    "notes": "Primary subject with extensive financial exposure",
+                },
+            ),
+            Entity(
+                name="Eastern District of Virginia",
+                type="place",
+                confidence=0.88,
+                context="Primary venue",
+                attributes={"jurisdiction": "EDVA", "notes": "Rocket docket"},
+            ),
+            Entity(
+                name="Financial Records",
+                type="thing",
+                confidence=0.85,
+                attributes={"role": "Evidence", "notes": "Seized during search"},
+            ),
+            Entity(
+                name="GAO Financial Integrity Office",
+                type="organization",
+                confidence=0.8,
+                attributes={"role": "Oversight agency", "notes": "Primary liaison"},
+            ),
+        ],
+        relationships=[
+            Relationship(
+                entity1="Alex Doe",
+                entity2="Financial Records",
+                relationship="custodian_of",
+                confidence=0.76,
+                context="Financial records seized from office",
+            )
+        ],
+        events=[
+            Event(
+                description="Indictment filed",
+                timestamp="2025-09-12",
+                entities_involved=["Alex Doe", "Eastern District of Virginia"],
+                confidence=0.9,
+                event_type="filing",
+            )
+        ],
+        indicators=[],
+        key_topics=["sentencing", "financial fraud"],
+        urgency_level="high",
+        content_type="legal",
+        confidence_score=0.84,
+        extraction_timestamp="2025-10-06T12:00:00Z",
     )
 
 
@@ -239,6 +305,85 @@ class TestDeliverableGenerator:
 
 class TestContentGeneration:
     """Test content generation for different templates."""
+
+    def test_generate_entity_backbone_with_structured_content(
+        self,
+        deliverable_generator,
+        sample_issue_data,
+        sample_workflow_info,
+        sample_structured_content,
+    ):
+        """Entity backbone template should render entity tables and telemetry."""
+        spec = DeliverableSpec(
+            name="entity-backbone",
+            title="Entity Backbone",
+            description="Shared entity backbone",
+            template="entity_backbone.md",
+        )
+
+        content = deliverable_generator.generate_deliverable(
+            issue_data=sample_issue_data,
+            deliverable_spec=spec,
+            workflow_info=sample_workflow_info,
+            additional_context={"extracted_content": sample_structured_content},
+        )
+
+        assert "Entity Backbone Summary" in content
+        assert "CONFIDENTIAL" in content
+        assert "Alex Doe" in content
+        assert "Eastern District of Virginia" in content
+
+    def test_generate_person_risk_core(
+        self,
+        deliverable_generator,
+        sample_issue_data,
+        sample_workflow_info,
+        sample_structured_content,
+    ):
+        """Person risk core should surface risk flags and conflicts."""
+        spec = DeliverableSpec(
+            name="person-risk",
+            title="Person Risk Core",
+            description="Risk assessment for persons",
+            template="person_risk_core.md",
+        )
+
+        content = deliverable_generator.generate_deliverable(
+            issue_data=sample_issue_data,
+            deliverable_spec=spec,
+            workflow_info=sample_workflow_info,
+            additional_context={"extracted_content": sample_structured_content},
+        )
+
+        assert "Person Risk Posture" in content
+        assert "Prior conviction" in content
+        assert "Potential conflict" in content
+
+    def test_generate_gao_compliance_appendix(
+        self,
+        deliverable_generator,
+        sample_issue_data,
+        sample_workflow_info,
+        sample_structured_content,
+    ):
+        """GAO compliance appendix should include audit tables and metadata."""
+        spec = DeliverableSpec(
+            name="gao-appendix",
+            title="GAO Compliance Appendix",
+            description="Audit appendix",
+            template="gao_compliance_appendix.md",
+        )
+
+        content = deliverable_generator.generate_deliverable(
+            issue_data=sample_issue_data,
+            deliverable_spec=spec,
+            workflow_info=sample_workflow_info,
+            additional_context={"extracted_content": sample_structured_content},
+        )
+
+        assert "GAO Compliance Appendix" in content
+        assert "Audit Snapshot" in content
+        assert "#" + str(sample_issue_data.number) in content
     
     def test_generate_basic_deliverable(self, deliverable_generator, sample_issue_data, sample_workflow_info):
         """Test generating a basic deliverable."""

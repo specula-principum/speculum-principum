@@ -7,6 +7,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Iterable
 
 import pytest
 
@@ -120,75 +121,6 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
         "**Notes**: Collaborate with the specialist if scope shifts.\n"
     )
 
-    class DummyMonitorService:
-        def run_monitoring_cycle(self, *, create_individual_issues: bool) -> dict:
-            pipeline_events.append(("monitor", {"create_individual_issues": create_individual_issues}))
-            return {
-                "success": True,
-                "new_results_found": 2,
-                "individual_issues_created": 0,
-            }
-
-        def process_existing_issues(self, *, limit: int, force_reprocess: bool) -> dict:
-            pipeline_events.append(
-                (
-                    "process_from_monitor",
-                    {"limit": limit, "force_reprocess": force_reprocess},
-                )
-            )
-            due_iso = "2025-10-02T09:00:00Z"
-            return {
-                "success": True,
-                "total_found": 2,
-                "successful_processes": 1,
-                "processed_issues": [
-                    {
-                        "issue_number": 201,
-                        "status": "completed",
-                        "workflow": "Example Workflow",
-                        "deliverables": ["study/example/report.md"],
-                        "error": None,
-                        "copilot_assignee": "github-copilot[bot]",
-                        "copilot_due_at": due_iso,
-                        "handoff_summary": "🚀 Unified handoff summary",
-                        "specialist_guidance": specialist_guidance_block,
-                        "copilot_assignment": copilot_assignment_block,
-                    },
-                    {
-                        "issue_number": 202,
-                        "status": "error",
-                        "workflow": "Example Workflow",
-                        "deliverables": [],
-                        "error": "Failed to fetch additional context",
-                        "copilot_assignee": None,
-                        "copilot_due_at": None,
-                        "handoff_summary": None,
-                        "specialist_guidance": None,
-                        "copilot_assignment": None,
-                    },
-                ],
-                "metrics": {
-                    "total_issues": 2,
-                    "processed_count": 2,
-                    "success_count": 1,
-                    "error_count": 1,
-                    "skipped_count": 0,
-                    "clarification_count": 0,
-                    "duration_seconds": 0.0,
-                    "average_processing_time": 0.0,
-                    "success_rate": 50.0,
-                    "start_time": None,
-                    "end_time": None,
-                    "copilot_assignments": {
-                        "count": 1,
-                        "assignees": ["github-copilot[bot]"],
-                        "due_dates": [due_iso],
-                        "next_due_at": due_iso,
-                    },
-                },
-                "next_copilot_due_at": due_iso,
-            }
-
     class DummyAssignmentAgent:
         def __init__(
             self,
@@ -197,21 +129,136 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
             config_path: str,
             enable_ai: bool,
             telemetry_publishers: list | None = None,
+            allowed_categories: Iterable[str] | None = None,
         ) -> None:
             self.github_token = github_token
             self.repo_name = repo_name
             self.config_path = config_path
             self.enable_ai = enable_ai
             self.telemetry_publishers = telemetry_publishers or []
+            self.allowed_categories = allowed_categories
 
         def process_issues_batch(self, *, limit: int, dry_run: bool) -> dict:
             pipeline_events.append(("assign", {"limit": limit, "dry_run": dry_run}))
+            workflows = [
+                "Case Law Precedent Explorer",
+                "Inter-Agency Coordination Briefs",
+                "Witness & Expert Reliability Assessment",
+            ]
+
+            reason_code_sets = [
+                [
+                    "PERSON_ENTITY_DETECTED",
+                    "PLACE_ENTITY_DETECTED",
+                    "THING_ENTITY_DETECTED",
+                    "HIGH_ENTITY_COVERAGE",
+                    "STATUTE_CITATION_DETECTED",
+                    "AUTO_ASSIGN_THRESHOLD_MET",
+                ],
+                [
+                    "PERSON_ENTITY_DETECTED",
+                    "PLACE_ENTITY_DETECTED",
+                    "PARTIAL_ENTITY_COVERAGE",
+                    "INTERAGENCY_CONTEXT_DETECTED",
+                    "LABEL_TRIGGER_MATCH",
+                ],
+                [
+                    "PERSON_ENTITY_DETECTED",
+                    "THING_ENTITY_MISSING",
+                    "LOW_ENTITY_COVERAGE",
+                    "LEGAL_CONTEXT_NOT_DETECTED",
+                ],
+            ]
+
+            coverage_values = [0.82, 0.55, 0.21]
+            missing_entities = [[], ["thing"], ["place", "thing"]]
+            legal_signals_list = [
+                {
+                    "statutes": 1.0,
+                    "statute_matches": ["18 U.S.C. § 371", "5 C.F.R. § 2635"],
+                    "precedent": 1.0,
+                    "precedent_matches": ["Smith v. Jones"],
+                    "interagency": 0.0,
+                    "interagency_terms": [],
+                },
+                {
+                    "statutes": 0.0,
+                    "statute_matches": [],
+                    "precedent": 0.0,
+                    "precedent_matches": [],
+                    "interagency": 1.0,
+                    "interagency_terms": ["GAO", "FBI"],
+                },
+                {
+                    "statutes": 0.0,
+                    "statute_matches": [],
+                    "precedent": 0.0,
+                    "precedent_matches": [],
+                    "interagency": 0.0,
+                    "interagency_terms": [],
+                },
+            ]
+
+            results: list[dict] = []
+            issue_count = limit if limit is not None else 0
+            for idx in range(issue_count):
+                reason_codes = reason_code_sets[idx % len(reason_code_sets)]
+                workflow_name = workflows[idx % len(workflows)]
+                coverage = coverage_values[idx % len(coverage_values)]
+                missing = missing_entities[idx % len(missing_entities)]
+                legal_signals = legal_signals_list[idx % len(legal_signals_list)]
+                issue_number = 500 + idx
+
+                ai_analysis = {
+                    "summary": f"Analysis for issue {issue_number} focusing on {workflow_name}.",
+                    "key_topics": ["statutes", "jurisdiction"],
+                    "suggested_workflows": [workflow_name],
+                    "confidence_scores": {workflow_name: 0.9 - (idx * 0.1)},
+                    "technical_indicators": ["legal"],
+                    "urgency_level": "medium",
+                    "content_type": "research",
+                    "combined_scores": {workflow_name: max(0.5, 0.85 - idx * 0.1)},
+                    "reason_codes": reason_codes,
+                    "entity_summary": {
+                        "coverage": coverage,
+                        "counts": {"person": 3 - idx, "place": 2 - (idx // 2), "thing": max(0, 1 - idx)},
+                        "present_base_entities": ["person", "place"] if idx < 2 else ["person"],
+                        "missing_base_entities": missing,
+                        "source": "heuristic",
+                    },
+                    "legal_signals": legal_signals,
+                }
+
+                results.append(
+                    {
+                        "issue_number": issue_number,
+                        "action_taken": "auto_assigned",
+                        "assigned_workflow": workflow_name,
+                        "labels_added": [
+                            f"workflow::{workflow_name.lower().replace(' ', '-')}",
+                            "state::assigned",
+                        ],
+                        "labels_removed": [],
+                        "message": f"AI analysis selected {workflow_name}",
+                        "dry_run": dry_run,
+                        "reason_codes": reason_codes,
+                        "ai_analysis": ai_analysis,
+                    }
+                )
+
+            statistics = {
+                "auto_assigned": issue_count,
+                "review_requested": 0,
+                "clarification_requested": 0,
+                "errors": 0,
+            }
+
             return {
-                "total_issues": limit,
-                "processed": limit,
+                "total_issues": issue_count,
+                "processed": issue_count,
                 "duration_seconds": 1.2,
-                "statistics": {"auto_assigned": limit},
-                "results": [],
+                "statistics": statistics,
+                "results": results,
             }
 
         def get_assignment_statistics(self) -> dict:
@@ -238,11 +285,13 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
             repo_name: str,
             config_path: str,
             telemetry_publishers: list | None = None,
+            allowed_categories: Iterable[str] | None = None,
         ) -> None:
             self.github_token = github_token
             self.repo_name = repo_name
             self.config_path = config_path
             self.telemetry_publishers = telemetry_publishers or []
+            self.allowed_categories = allowed_categories
 
         def add_telemetry_publisher(self, publisher) -> None:
             self.telemetry_publishers.append(publisher)
@@ -307,6 +356,141 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
                 },
             }
 
+    class DummyWorkflowInfo:
+        def __init__(self, name: str, *, category: str, threshold: float, legacy: bool = False) -> None:
+            self.name = name
+            self.category = category
+            self.confidence_threshold = threshold
+            self.legacy_mode = legacy
+            self.workflow_version = "1.0.0" if not legacy else None
+
+        def is_taxonomy(self) -> bool:
+            return bool(self.workflow_version and self.category and not self.legacy_mode)
+
+    class DummyWorkflowMatcher:
+        def __init__(self) -> None:
+            self._workflows = {
+                "Example Workflow": DummyWorkflowInfo(
+                    "Example Workflow",
+                    category="entity-foundation",
+                    threshold=0.82,
+                ),
+                "Fallback Workflow": DummyWorkflowInfo(
+                    "Fallback Workflow",
+                    category="legacy",
+                    threshold=0.7,
+                    legacy=True,
+                ),
+                "Case Law Precedent Explorer": DummyWorkflowInfo(
+                    "Case Law Precedent Explorer",
+                    category="legal-research",
+                    threshold=0.8,
+                ),
+                "Inter-Agency Coordination Briefs": DummyWorkflowInfo(
+                    "Inter-Agency Coordination Briefs",
+                    category="operational-coordination",
+                    threshold=0.75,
+                ),
+                "Witness & Expert Reliability Assessment": DummyWorkflowInfo(
+                    "Witness & Expert Reliability Assessment",
+                    category="entity-foundation",
+                    threshold=0.65,
+                ),
+            }
+
+        def get_workflow_by_name(self, workflow_name: str):
+            return self._workflows.get(workflow_name)
+
+    class DummyMonitorService:
+        def __init__(self) -> None:
+            matcher = DummyWorkflowMatcher()
+            self.issue_processor = SimpleNamespace(workflow_matcher=matcher)
+
+        def run_monitoring_cycle(self, *, create_individual_issues: bool) -> dict:
+            pipeline_events.append(("monitor", {"create_individual_issues": create_individual_issues}))
+            return {
+                "success": True,
+                "new_results_found": 2,
+                "individual_issues_created": 0,
+                "issue_processing_results": [
+                    {
+                        "issue_number": 211,
+                        "status": "completed",
+                        "workflow": "Example Workflow",
+                        "deliverables": ["study/example/report.md"],
+                        "error": None,
+                    },
+                    {
+                        "issue_number": 212,
+                        "status": "needs_clarification",
+                        "workflow": "Witness & Expert Reliability Assessment",
+                        "deliverables": [],
+                        "error": None,
+                    },
+                ],
+            }
+
+        def process_existing_issues(self, *, limit: int, force_reprocess: bool) -> dict:
+            pipeline_events.append(
+                (
+                    "process_from_monitor",
+                    {"limit": limit, "force_reprocess": force_reprocess},
+                )
+            )
+            due_iso = "2025-10-02T09:00:00Z"
+            return {
+                "success": True,
+                "total_found": 2,
+                "successful_processes": 1,
+                "processed_issues": [
+                    {
+                        "issue_number": 201,
+                        "status": "completed",
+                        "workflow": "Example Workflow",
+                        "deliverables": ["study/example/report.md"],
+                        "error": None,
+                        "copilot_assignee": "github-copilot[bot]",
+                        "copilot_due_at": due_iso,
+                        "handoff_summary": "🚀 Unified handoff summary",
+                        "specialist_guidance": specialist_guidance_block,
+                        "copilot_assignment": copilot_assignment_block,
+                    },
+                    {
+                        "issue_number": 202,
+                        "status": "error",
+                        "workflow": "Example Workflow",
+                        "deliverables": [],
+                        "error": "Failed to fetch additional context",
+                        "copilot_assignee": None,
+                        "copilot_due_at": None,
+                        "handoff_summary": None,
+                        "specialist_guidance": None,
+                        "copilot_assignment": None,
+                    },
+                ],
+                "metrics": {
+                    "total_issues": 2,
+                    "processed_count": 2,
+                    "success_count": 1,
+                    "error_count": 1,
+                    "skipped_count": 0,
+                    "clarification_count": 0,
+                    "duration_seconds": 0.0,
+                    "average_processing_time": 0.0,
+                    "success_rate": 50.0,
+                    "start_time": None,
+                    "end_time": None,
+                    "copilot_assignments": {
+                        "count": 1,
+                        "assignees": ["github-copilot[bot]"],
+                        "due_dates": [due_iso],
+                        "next_due_at": due_iso,
+                    },
+                },
+                "next_copilot_due_at": due_iso,
+            }
+
+
     class DummyGitHubClient:
         def __init__(self) -> None:
             self.call_history: list[int] = []
@@ -328,6 +512,7 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
             self.config_path = config_path
             self.config = SimpleNamespace(workflow_directory=str(workflow_dir))
             self.github = DummyGitHubClient()
+            self.workflow_matcher = DummyWorkflowMatcher()
 
     class DummyOrchestrator:
         def __init__(self, processor: DummyProcessor, **kwargs) -> None:
@@ -340,7 +525,8 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
             batch_size: int,
             dry_run: bool,
             assignee_filter: str | None,
-            additional_labels: list[str] | None,
+                additional_labels: list[str] | None,
+                workflow_category: list[str] | None = None,
         ):
             pipeline_events.append(
                 (
@@ -350,7 +536,8 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
                         "batch_size": batch_size,
                         "dry_run": dry_run,
                         "assignee_filter": assignee_filter,
-                        "additional_labels": additional_labels,
+                            "additional_labels": additional_labels,
+                            "workflow_category": workflow_category,
                     },
                 )
             )
@@ -488,7 +675,15 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
 
     # Execute the three CLI commands in sequence
     invoke_cli(["monitor", "--config", str(config_path), "--no-individual-issues"])
-    invoke_cli(["assign-workflows", "--config", str(config_path), "--limit", "3", "--dry-run"])
+    invoke_cli([
+        "assign-workflows",
+        "--config",
+        str(config_path),
+        "--limit",
+        "3",
+        "--dry-run",
+        "--verbose",
+    ])
     invoke_cli(["assign-workflows", "--config", str(config_path), "--statistics"])
     invoke_cli([
         "assign-workflows",
@@ -507,7 +702,18 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
     captured = capsys.readouterr()
     combined_output = captured.out + captured.err
     assert "Monitoring completed successfully" in captured.out
+    assert "Taxonomy Adoption" in captured.out
+    assert "Confidence Thresholds" in captured.out
+    assert "Processing Outcomes" in captured.out
     assert "Workflow Assignment Complete" in captured.out
+    assert "Top reason codes:" in captured.out
+    assert "Base entity coverage:" in captured.out
+    assert "Legal signals detected:" in captured.out
+    assert "Statute citations:" in captured.out
+    assert "Precedent references:" in captured.out
+    assert "Inter-agency terms:" in captured.out
+    assert "Reason Codes:" in captured.out
+    assert "Entity Coverage:" in captured.out
     assert "Label-based (fallback)" in captured.out
     assert "Assignment mode: AI-enhanced [ai]" in captured.out
     assert "Assignment mode: Label-based (fallback) [fallback]" in captured.out
@@ -557,6 +763,7 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
                 "dry_run": True,
                 "assignee_filter": None,
                 "additional_labels": None,
+                "workflow_category": None,
             },
         ),
         ("process_from_monitor", {"limit": 2, "force_reprocess": False}),

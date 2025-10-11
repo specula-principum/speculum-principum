@@ -71,6 +71,8 @@ class TemplateEngine:
         metadata_cache: Cache of template metadata
     """
     
+    DEFAULT_TEMPLATE_ALIASES: Dict[str, str] = {}
+
     def __init__(self, templates_dir: Union[str, Path] = "templates"):
         """
         Initialize the template engine.
@@ -81,6 +83,14 @@ class TemplateEngine:
         self.templates_dir = Path(templates_dir)
         self.template_cache: Dict[str, str] = {}
         self.metadata_cache: Dict[str, TemplateMetadata] = {}
+        self._alias_map: Dict[str, str] = {}
+        self.template_aliases: Dict[str, str] = {}
+
+        # Register default alias mappings (normalized for consistent lookups)
+        for alias, target in self.DEFAULT_TEMPLATE_ALIASES.items():
+            normalized_alias = self._normalize_template_key(alias)
+            normalized_target = self._normalize_template_key(target)
+            self.template_aliases[normalized_alias] = normalized_target
         
         # Create templates directory if it doesn't exist
         self.templates_dir.mkdir(parents=True, exist_ok=True)
@@ -91,6 +101,58 @@ class TemplateEngine:
         self.loop_pattern = re.compile(r'\{%\s*for\s+(\w+)\s+in\s+([^%]+)\s*%\}(.*?)\{%\s*endfor\s*%\}', re.DOTALL)
         self.section_pattern = re.compile(r'\{%\s*section\s+([^%]+)\s*%\}(.*?)\{%\s*endsection\s*%\}', re.DOTALL)
         self.include_pattern = re.compile(r'\{%\s*include\s+([^%]+)\s*%\}')
+
+    def _normalize_template_key(self, template_name: str) -> str:
+        """Normalize template name for cache lookups."""
+        normalized = template_name.strip().replace('\\', '/').lstrip('./')
+        if normalized.endswith('.md'):
+            normalized = normalized[:-3]
+        return normalized.strip('/')
+
+    def _candidate_template_names(self, template_name: str) -> List[str]:
+        """Generate fallback candidate names for resolving template paths."""
+        cleaned = template_name.strip().replace('\\', '/').lstrip('./')
+        candidates = [cleaned]
+
+        if cleaned.endswith('.md'):
+            without_ext = cleaned[:-3]
+            if without_ext:
+                candidates.append(without_ext)
+        else:
+            with_ext = f"{cleaned}.md"
+            candidates.append(with_ext)
+
+        # Ensure uniqueness while preserving order
+        seen: set[str] = set()
+        ordered: List[str] = []
+        for candidate in candidates:
+            if candidate not in seen and candidate:
+                seen.add(candidate)
+                ordered.append(candidate)
+
+        return ordered
+
+    def _resolve_template_alias(self, template_name: str) -> Optional[str]:
+        """Resolve template aliases to their canonical target names."""
+        variants: List[str] = [template_name]
+        normalized = self._normalize_template_key(template_name)
+        variants.append(normalized)
+
+        if template_name.endswith('.md'):
+            without_ext = template_name[:-3]
+            variants.append(without_ext)
+            variants.append(self._normalize_template_key(without_ext))
+        else:
+            with_ext = f"{template_name}.md"
+            variants.append(with_ext)
+            variants.append(self._normalize_template_key(with_ext))
+
+        for variant in variants:
+            key = self._normalize_template_key(variant)
+            if key in self.template_aliases:
+                return self.template_aliases[key]
+
+        return None
     
     def load_template(self, template_name: str, force_reload: bool = False) -> str:
         """
@@ -107,12 +169,25 @@ class TemplateEngine:
             FileNotFoundError: If template file doesn't exist
             ValueError: If template is invalid
         """
-        # Check cache first
-        if not force_reload and template_name in self.template_cache:
-            return self.template_cache[template_name]
-        
-        # Find template file
+        original_name = template_name
+
+        alias_target = self._resolve_template_alias(template_name)
+        if alias_target:
+            template_name = alias_target
+
+        cache_key = self._normalize_template_key(template_name)
+        if not force_reload and cache_key in self.template_cache:
+            self._alias_map[original_name] = cache_key
+            self._alias_map[template_name] = cache_key
+            return self.template_cache[cache_key]
+
+        # Find template file (considering .md aliases)
         template_path = self._find_template_file(template_name)
+        if not template_path:
+            # Try normalized key as fallback
+            template_path = self._find_template_file(cache_key)
+        if not template_path and alias_target:
+            template_path = self._find_template_file(alias_target)
         if not template_path:
             raise FileNotFoundError(f"Template not found: {template_name}")
         
@@ -125,8 +200,11 @@ class TemplateEngine:
             metadata, template_content = self._parse_template(content)
             
             # Cache template and metadata
-            self.template_cache[template_name] = template_content
-            self.metadata_cache[template_name] = metadata
+            self.template_cache[cache_key] = template_content
+            self.metadata_cache[cache_key] = metadata
+            self._alias_map[original_name] = cache_key
+            self._alias_map[template_name] = cache_key
+            self._alias_map[cache_key] = cache_key
             
             return template_content
             
@@ -154,10 +232,11 @@ class TemplateEngine:
         """
         # Load template
         template_content = self.load_template(template_name)
-        
+        cache_key = self._normalize_template_key(template_name)
+
         # Handle template inheritance
-        if template_name in self.metadata_cache:
-            metadata = self.metadata_cache[template_name]
+        metadata = self.metadata_cache.get(cache_key)
+        if metadata:
             if metadata.extends:
                 parent_content = self.load_template(metadata.extends)
                 template_content = self._merge_templates(parent_content, template_content)
@@ -188,11 +267,14 @@ class TemplateEngine:
         """
         # Load template to ensure metadata is cached
         self.load_template(template_name)
-        
-        if template_name not in self.metadata_cache:
+
+        cache_key = self._normalize_template_key(template_name)
+        alias_key = self._alias_map.get(template_name, cache_key)
+
+        if alias_key not in self.metadata_cache:
             raise FileNotFoundError(f"Template metadata not found: {template_name}")
-        
-        return self.metadata_cache[template_name]
+
+        return self.metadata_cache[alias_key]
     
     def list_templates(self) -> List[str]:
         """
@@ -258,17 +340,36 @@ class TemplateEngine:
     
     def _find_template_file(self, template_name: str) -> Optional[Path]:
         """Find the file path for a given template name."""
-        # Try exact match with .md extension
-        template_path = self.templates_dir / f"{template_name}.md"
-        if template_path.exists():
-            return template_path
-        
-        # Try subdirectory search
+        candidates = self._candidate_template_names(template_name)
+
+        alias_target = self._resolve_template_alias(template_name)
+        if alias_target:
+            alias_candidates = self._candidate_template_names(alias_target)
+            for alias_candidate in alias_candidates:
+                if alias_candidate not in candidates:
+                    candidates.insert(0, alias_candidate)
+
+        # First try direct path resolution for each candidate
+        for candidate in candidates:
+            candidate_path = candidate.lstrip('/')
+            path = self.templates_dir / candidate_path
+            if path.exists():
+                return path
+
+            if not candidate.endswith('.md'):
+                path_with_ext = self.templates_dir / f"{candidate_path}.md"
+                if path_with_ext.exists():
+                    return path_with_ext
+
+        # Fall back to recursive search through templates directory
         for template_file in self.templates_dir.rglob("*.md"):
             relative_path = template_file.relative_to(self.templates_dir)
-            if str(relative_path.with_suffix('')) == template_name:
+            relative_str = str(relative_path)
+            relative_no_ext = str(relative_path.with_suffix(''))
+
+            if relative_str in candidates or relative_no_ext in candidates:
                 return template_file
-        
+
         return None
     
     def _parse_template(self, content: str) -> tuple[TemplateMetadata, str]:

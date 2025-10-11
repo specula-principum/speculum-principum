@@ -1,0 +1,97 @@
+# Witness & Expert Reliability Assessment Workflow
+# Evaluates witness and expert credibility, conflicts, and testimony history.
+
+name: "Witness & Expert Reliability Assessment"
+description: "Scores credibility, flags conflicts, and documents testimony history for witnesses and experts in criminal matters."
+workflow_version: "1.0.0"
+category: "legal-research"
+priority: "high"
+confidence_threshold: 0.76
+
+trigger_labels:
+  - "witness"
+  - "expert"
+  - "credibility"
+  - "criminal-law"
+
+required_entities:
+  - entity_type: "person"
+    min_count: 1
+    min_confidence: 0.7
+  - entity_type: "place"
+    min_count: 0
+    min_confidence: 0.6
+  - entity_type: "thing"
+    min_count: 0
+    min_confidence: 0.6
+  - entity_type: "organization"
+    min_count: 0
+    min_confidence: 0.6
+
+deliverable_templates:
+  - "confidentiality_banner"
+  - "shared_entity_tables"
+  - "shared_gao_citation_block"
+  - "entity_backbone"
+  - "witness_reliability_core"
+  - "gao_compliance_appendix"
+
+audit_trail:
+  required: true
+  fields:
+    - "model_version"
+    - "reason_codes"
+    - "entity_evidence"
+    - "credibility_sources"
+    - "citation_sources"
+
+deliverables:
+  - name: "entity-backbone"
+    title: "Entity Backbone"
+    description: "Entity tables highlighting witnesses, experts, and roles."
+    template: "entity_backbone.md"
+    required: true
+    order: 1
+    required_sections:
+      - "Entity Backbone Summary"
+      - "Standardized Entity Tables"
+      - "Relationship Overview"
+      - "Event Timeline"
+      - "Extraction Highlights"
+  - name: "witness-reliability-core"
+    title: "Reliability Assessment Core"
+    description: "Credibility scoring, conflict analysis, and testimony history."
+    template: "witness_reliability_core.md"
+    required: true
+    order: 2
+    required_sections:
+      - "Overview"
+      - "Credibility Index"
+      - "Follow-Up Actions"
+  - name: "gao-compliance-appendix"
+    title: "GAO Compliance Appendix"
+    description: "Audit evidence, reviewer notes, and GAO coordination log."
+    template: "gao_compliance_appendix.md"
+    required: true
+    order: 3
+    required_sections:
+      - "Audit Snapshot"
+      - "Citations & Authorities"
+      - "Evidence & Audit Trail"
+      - "Decision Log"
+      - "Review Sign-Off"
+
+processing:
+  timeout: 150
+  max_retries: 1
+
+validation:
+  min_word_count: 250
+  required_sections:
+    - "Credibility Index"
+    - "Follow-Up Actions"
+
+output:
+  format: "markdown"
+  folder_structure: "artifacts/criminal-law/{issue_number}-witness-reliability"
+  directory: "artifacts/criminal-law"

@@ -225,12 +225,12 @@ class TestCommitOperations:
         commit_info = git_manager.commit_deliverables(
             file_paths=sample_files,
             issue_number=333,
-            workflow_name="research-analysis"
+            workflow_name="person-entity-profiling"
         )
         
         assert isinstance(commit_info, CommitInfo)
         assert len(commit_info.hash) == 40  # Full git hash
-        assert "research-analysis" in commit_info.message
+        assert "person-entity-profiling" in commit_info.message
         assert "issue #333" in commit_info.message
         assert len(commit_info.files_changed) == len(sample_files)
     

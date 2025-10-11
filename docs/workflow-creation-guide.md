@@ -291,7 +291,7 @@ issue:
 
 # Workflow context
 workflow:
-  name: "Research Analysis"
+  name: "Person Entity Profiling"
   version: "1.0.0"
   description: "Workflow description"
   
@@ -300,7 +300,7 @@ processing:
   timestamp: "2023-01-01T12:00:00Z"
   date: "2023-01-01"
   agent: "github-actions[bot]"
-  branch: "research-analysis-123"
+  branch: "person-entity-profiling-123"
   
 # Repository context
 repository:

@@ -75,7 +75,8 @@ class ProcessingOrchestrator:
                                        batch_size: int = 10,
                                        dry_run: bool = False,
                                        assignee_filter: Optional[str] = None,
-                                       additional_labels: Optional[List[str]] = None) -> Tuple[Any, List[Any]]:
+                                       additional_labels: Optional[List[str]] = None,
+                                       workflow_category: Optional[List[str]] = None) -> Tuple[Any, List[Any]]:
         """
         Process all open issues with site-monitor label.
         
@@ -94,6 +95,8 @@ class ProcessingOrchestrator:
             filters['assignee'] = assignee_filter
         if additional_labels:
             filters['additional_labels'] = additional_labels
+        if workflow_category:
+            filters['workflow_category'] = workflow_category
         
         # Configure batch processing
         batch_config = BatchConfig(

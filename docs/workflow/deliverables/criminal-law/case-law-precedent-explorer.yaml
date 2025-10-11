@@ -1,0 +1,99 @@
+# Case Law Precedent Explorer Workflow
+# Prioritizes relevant precedents and articulates jurisdictional fit.
+
+name: "Case Law Precedent Explorer"
+description: "Surfaces influential precedents, jurisdictional fit, and argument summaries for criminal advisory teams."
+workflow_version: "1.0.0"
+category: "legal-research"
+priority: "medium"
+confidence_threshold: 0.73
+
+trigger_labels:
+  - "precedent"
+  - "case-law"
+  - "criminal-law"
+
+required_entities:
+  - entity_type: "person"
+    min_count: 1
+    min_confidence: 0.65
+  - entity_type: "place"
+    min_count: 1
+    min_confidence: 0.65
+  - entity_type: "thing"
+    min_count: 0
+    min_confidence: 0.6
+  - entity_type: "case"
+    min_count: 1
+    min_confidence: 0.7
+
+deliverable_templates:
+  - "confidentiality_banner"
+  - "shared_entity_tables"
+  - "shared_gao_citation_block"
+  - "entity_backbone"
+  - "precedent_explorer_core"
+  - "gao_compliance_appendix"
+
+audit_trail:
+  required: true
+  fields:
+    - "model_version"
+    - "reason_codes"
+    - "entity_evidence"
+    - "precedent_sources"
+    - "citation_sources"
+
+deliverables:
+  - name: "entity-backbone"
+    title: "Entity Backbone"
+    description: "Entity tables highlighting litigants, jurisdictions, and related assets."
+    template: "entity_backbone.md"
+    required: true
+    order: 1
+    required_sections:
+      - "Entity Backbone Summary"
+      - "Standardized Entity Tables"
+      - "Relationship Overview"
+      - "Event Timeline"
+      - "Extraction Highlights"
+  - name: "precedent-explorer-core"
+    title: "Precedent Explorer Core"
+    description: "Precedent matrix, jurisdiction heatmap, and arguments summary."
+    template: "precedent_explorer_core.md"
+    required: true
+    order: 2
+    required_sections:
+      - "Overview"
+      - "Precedent Matrix"
+      - "Jurisdiction Heatmap Notes"
+      - "Argument Development"
+      - "Analyst Notes"
+  - name: "gao-compliance-appendix"
+    title: "GAO Compliance Appendix"
+    description: "Citations, decision logs, and model rationale for GAO review."
+    template: "gao_compliance_appendix.md"
+    required: true
+    order: 3
+    required_sections:
+      - "Audit Snapshot"
+      - "Citations & Authorities"
+      - "Evidence & Audit Trail"
+      - "Decision Log"
+      - "Review Sign-Off"
+
+processing:
+  timeout: 160
+  max_retries: 1
+
+validation:
+  min_word_count: 260
+  required_sections:
+    - "Precedent Matrix"
+    - "Jurisdiction Heatmap Notes"
+    - "Argument Development"
+
+output:
+  format: "markdown"
+  folder_structure: "artifacts/criminal-law/{issue_number}-case-law-precedent"
+  directory: "artifacts/criminal-law"

@@ -2,7 +2,41 @@
 Unit tests for WorkflowSchemaValidator module
 """
 
+from copy import deepcopy
+
+import pytest
+
 from src.workflow.workflow_schemas import WorkflowSchemaValidator
+
+
+@pytest.fixture(autouse=True)
+def reset_schema_validator_state():
+    """Ensure schema validator mutations don't leak between tests."""
+
+    original_profiles = deepcopy(WorkflowSchemaValidator.SCHEMA_PROFILES)
+    original_default = WorkflowSchemaValidator.DEFAULT_SCHEMA_PROFILE
+    original_initialized = WorkflowSchemaValidator.PROFILES_INITIALIZED
+    original_categories = set(WorkflowSchemaValidator.TAXONOMY_CATEGORIES)
+    original_priorities = set(WorkflowSchemaValidator.PRIORITY_LEVELS)
+    original_properties = deepcopy(WorkflowSchemaValidator.WORKFLOW_SCHEMA["properties"])
+
+    WorkflowSchemaValidator.SCHEMA_PROFILES = deepcopy(original_profiles)
+    WorkflowSchemaValidator.DEFAULT_SCHEMA_PROFILE = original_default
+    WorkflowSchemaValidator.PROFILES_INITIALIZED = False
+    WorkflowSchemaValidator.TAXONOMY_CATEGORIES = set(original_categories)
+    WorkflowSchemaValidator.PRIORITY_LEVELS = set(original_priorities)
+    WorkflowSchemaValidator.WORKFLOW_SCHEMA["properties"] = deepcopy(original_properties)
+    WorkflowSchemaValidator._refresh_schema_enums()
+
+    yield
+
+    WorkflowSchemaValidator.SCHEMA_PROFILES = original_profiles
+    WorkflowSchemaValidator.DEFAULT_SCHEMA_PROFILE = original_default
+    WorkflowSchemaValidator.PROFILES_INITIALIZED = original_initialized
+    WorkflowSchemaValidator.TAXONOMY_CATEGORIES = original_categories
+    WorkflowSchemaValidator.PRIORITY_LEVELS = original_priorities
+    WorkflowSchemaValidator.WORKFLOW_SCHEMA["properties"] = original_properties
+    WorkflowSchemaValidator._refresh_schema_enums()
 
 
 class TestWorkflowSchemaValidator:

@@ -15,8 +15,9 @@ import json
 import logging
 import time
 import os
-from typing import Any, Dict, Iterable, List, Optional, Tuple
-from dataclasses import dataclass, asdict
+from collections import Counter
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from enum import Enum
 import hashlib
@@ -50,6 +51,22 @@ class ContentAnalysis:
     technical_indicators: List[str]
     urgency_level: str  # low, medium, high, critical
     content_type: str  # research, bug, feature, security, documentation
+    combined_scores: Dict[str, float] = field(default_factory=dict)
+    reason_codes: List[str] = field(default_factory=list)
+    entity_summary: Dict[str, Any] = field(default_factory=dict)
+    legal_signals: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class AssignmentSignals:
+    """Derived scoring signals used to evaluate workflow alignment."""
+
+    entity_score: float
+    base_counts: Dict[str, int]
+    missing_entities: List[str]
+    legal_signals: Dict[str, Any]
+    reason_codes: List[str]
+    source: str = "heuristic"
 
 
 class GitHubModelsClient:
@@ -286,6 +303,82 @@ class AIWorkflowAssignmentAgent:
     # Confidence thresholds for automatic assignment
     HIGH_CONFIDENCE_THRESHOLD = 0.8
     MEDIUM_CONFIDENCE_THRESHOLD = 0.6
+    LEGACY_HIGH_CONFIDENCE_THRESHOLD = 0.8
+    LEGACY_REVIEW_THRESHOLD = 0.6
+
+    # Signal detection patterns
+    STATUTE_PATTERN = re.compile(
+        r"""
+        (?:(?:\d+\s+U\.?\s*S\.?\s*C\.?|\d+\s+C\.?\s*F\.?\s*R\.?)\s*(?:§+\s*[\w().-]+)?)
+        |
+        (?:§+\s*[\dA-Za-z().-]+)
+        |
+        (?:Fed\.?\s+R\.?\s+(?:Crim|Civ|App|Evid|Bankr)\.?\s+P\.?\s*[\dA-Za-z().-]+)
+        |
+        (?:Sentencing\s+Guidelines?\s+§+\s*[\dA-Za-z().-]+)
+        """,
+        re.IGNORECASE | re.VERBOSE,
+    )
+    PRECEDENT_PATTERN = re.compile(r"\b[A-Z][A-Za-z\-]+\s+v\.?\s+[A-Z][A-Za-z\-]+\b")
+    PERSON_NAME_PATTERN = re.compile(r"\b([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b")
+    INTERAGENCY_KEYWORDS = {
+        "gao",
+        "department of justice",
+        "doj",
+        "fbi",
+        "dea",
+        "atf",
+        "dhs",
+        "oig",
+        "u.s. attorney",
+        "us attorney",
+        "federal defender",
+        "probation",
+        "marshal service",
+        "bureau of prisons",
+    }
+    PERSON_KEYWORDS = {
+        "defendant",
+        "suspect",
+        "witness",
+        "victim",
+        "attorney",
+        "counsel",
+        "agent",
+        "informant",
+        "officer",
+        "judge",
+        "probation officer",
+        "parole",
+    }
+    PLACE_KEYWORDS = {
+        "district court",
+        "county",
+        "parish",
+        "washington",
+        "virginia",
+        "federal courthouse",
+        "detention center",
+        "correctional",
+        "facility",
+        "jurisdiction",
+        "circuit",
+        "state of",
+    }
+    THING_KEYWORDS = {
+        "evidence",
+        "asset",
+        "document",
+        "record",
+        "ledger",
+        "weapon",
+        "firearm",
+        "phone",
+        "laptop",
+        "data",
+        "chain of custody",
+        "mitigation",
+    }
     
     # Skip labels (same as original agent)
     SKIP_LABELS = {'feature', 'needs clarification', 'needs-review'}
@@ -301,6 +394,7 @@ class AIWorkflowAssignmentAgent:
                  config_path: str = "config.yaml",
                  workflow_directory: str = "docs/workflow/deliverables",
                  enable_ai: bool = True,
+                 allowed_categories: Optional[Iterable[str]] = None,
                  telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None):
         """
         Initialize AI-enhanced workflow assignment agent.
@@ -318,6 +412,11 @@ class AIWorkflowAssignmentAgent:
         self.repo_name = repo_name
         self.enable_ai = enable_ai
         self.telemetry_publishers = normalize_publishers(telemetry_publishers)
+        self.allowed_categories = (
+            sorted({category.lower() for category in allowed_categories})
+            if allowed_categories
+            else None
+        )
         
         # Load configuration
         try:
@@ -346,8 +445,21 @@ class AIWorkflowAssignmentAgent:
             self.workspace_root = Path('.').resolve()
             self.dedup_manager = DeduplicationManager()
         
+        self.model_identifier = ai_model if self.enable_ai else "ai-disabled"
+
         # Initialize workflow matcher for fallback
         self.workflow_matcher = WorkflowMatcher(workflow_directory)
+        if self.allowed_categories:
+            available_count = len(
+                self.workflow_matcher.get_available_workflows(categories=self.allowed_categories)
+            )
+        else:
+            available_count = len(self.workflow_matcher.get_available_workflows())
+        self.logger.info(
+            "Workflow matcher initialised with %d workflows (category filter=%s)",
+            available_count,
+            ",".join(self.allowed_categories or []) or "none",
+        )
         
         # Initialize AI client if enabled
         if self.enable_ai:
@@ -398,8 +510,104 @@ class AIWorkflowAssignmentAgent:
             'suggested_workflows': suggested,
             'confidence_scores': {name: confidence_scores.get(name) for name in suggested},
             'error': result.get('message') if result.get('action_taken') == 'error' else None,
+            'reason_codes': list(result.get('reason_codes') or []),
             'assignment_mode': 'ai',
         }
+
+        entity_summary = analysis.get('entity_summary') if isinstance(analysis, dict) else {}
+        legal_signals = analysis.get('legal_signals') if isinstance(analysis, dict) else {}
+        if isinstance(entity_summary, dict):
+            payload['entity_coverage'] = entity_summary.get('coverage')
+            payload['entity_counts'] = entity_summary.get('counts')
+            payload['missing_base_entities'] = entity_summary.get('missing_base_entities')
+        else:
+            payload['entity_coverage'] = None
+            payload['entity_counts'] = None
+            payload['missing_base_entities'] = None
+
+        payload['legal_signals'] = legal_signals if isinstance(legal_signals, dict) else None
+
+        statute_references: List[Tuple[str, int]] = []
+        precedent_references: List[Tuple[str, int]] = []
+        interagency_references: List[Tuple[str, int]] = []
+        if isinstance(legal_signals, dict):
+            statute_counter: Counter[str] = Counter()
+            for citation in legal_signals.get('statute_matches') or []:
+                normalised = self._normalize_legal_reference(citation)
+                if normalised:
+                    statute_counter[normalised] += 1
+            precedent_counter: Counter[str] = Counter()
+            for precedent in legal_signals.get('precedent_matches') or []:
+                cleaned = self._normalize_legal_reference(precedent)
+                if cleaned:
+                    precedent_counter[cleaned] += 1
+            interagency_counter: Counter[str] = Counter()
+            for agency in legal_signals.get('interagency_terms') or []:
+                if isinstance(agency, str) and agency.strip():
+                    interagency_counter[agency.strip().lower()] += 1
+
+            statute_references = statute_counter.most_common(5)
+            precedent_references = precedent_counter.most_common(5)
+            interagency_references = interagency_counter.most_common(5)
+
+        payload['statute_references'] = statute_references
+        payload['precedent_references'] = precedent_references
+        payload['interagency_terms'] = interagency_references
+
+        assigned_workflow_name = result.get('assigned_workflow')
+        workflow_info: Optional[WorkflowInfo] = None
+        if assigned_workflow_name:
+            try:
+                workflow_info = self.workflow_matcher.get_workflow_by_name(assigned_workflow_name)
+            except Exception as exc:  # noqa: BLE001
+                log_exception(
+                    self.logger,
+                    f"Unable to resolve workflow '{assigned_workflow_name}' for audit telemetry",
+                    exc,
+                )
+
+        if workflow_info and isinstance(workflow_info.audit_trail, dict):
+            audit_config = workflow_info.audit_trail
+            audit_required = bool(audit_config.get('required'))
+            required_fields = list(audit_config.get('fields') or [])
+
+            if audit_required and required_fields:
+                audit_data: Dict[str, Any] = {}
+                for field_name in required_fields:
+                    identifier = (field_name or "").strip().lower()
+                    if identifier == 'model_version':
+                        audit_data[field_name] = self.model_identifier
+                    elif identifier == 'reason_codes':
+                        audit_data[field_name] = list(payload.get('reason_codes') or [])
+                    elif identifier == 'entity_evidence':
+                        audit_data[field_name] = {
+                            'coverage': entity_summary.get('coverage') if isinstance(entity_summary, dict) else None,
+                            'counts': entity_summary.get('counts') if isinstance(entity_summary, dict) else None,
+                            'missing_base_entities': entity_summary.get('missing_base_entities') if isinstance(entity_summary, dict) else None,
+                        }
+                    elif identifier == 'citation_sources':
+                        citations: List[Any] = []
+                        if isinstance(legal_signals, dict):
+                            citations.extend(list(legal_signals.get('statute_matches') or []))
+                            citations.extend(list(legal_signals.get('precedent_matches') or []))
+                        audit_data[field_name] = citations
+                    elif identifier == 'entity_evidence_details':
+                        audit_data[field_name] = entity_summary if isinstance(entity_summary, dict) else None
+                    else:
+                        value = None
+                        if isinstance(analysis, dict):
+                            value = analysis.get(field_name)
+                        if value is None:
+                            value = result.get(field_name)
+                        audit_data[field_name] = value
+
+                payload['audit_trail'] = {
+                    'required': True,
+                    'fields': required_fields,
+                    'workflow_version': workflow_info.workflow_version,
+                    'workflow_category': workflow_info.category,
+                    'data': audit_data,
+                }
 
         self._publish_telemetry("workflow_assignment.issue_result", payload)
 
@@ -521,9 +729,8 @@ class AIWorkflowAssignmentAgent:
         )
         if not details_match:
             return None
-
         block = details_match.group("content")
-        excerpt_lines = []
+        excerpt_lines: List[str] = []
         for line in block.splitlines():
             stripped = line.strip()
             if stripped.startswith(">"):
@@ -629,7 +836,9 @@ class AIWorkflowAssignmentAgent:
         Raises:
             RuntimeError: If AI is required but unavailable
         """
-        available_workflows = self.workflow_matcher.get_available_workflows()
+        available_workflows = self.workflow_matcher.get_available_workflows(
+            categories=self.allowed_categories
+        )
         
         # Check if we're in GitHub Actions environment
         is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
@@ -660,7 +869,10 @@ class AIWorkflowAssignmentAgent:
             
             # Combine AI analysis with label-based validation
             return self._combine_ai_and_label_analysis(
-                issue_data, analysis, available_workflows
+                issue_data,
+                analysis,
+                available_workflows,
+                page_extract=page_extract,
             )
             
         except Exception as e:
@@ -672,78 +884,353 @@ class AIWorkflowAssignmentAgent:
                 f"This feature requires a working connection to GitHub Models API."
             ) from e
     
+    def _compute_assignment_signals(
+        self,
+        issue_data: Dict[str, Any],
+        ai_analysis: ContentAnalysis,
+        *,
+        page_extract: Optional[str] = None,
+    ) -> AssignmentSignals:
+        """Derive heuristic signals about entities and legal context."""
+
+        text_segments: List[str] = [issue_data.get('title', ''), issue_data.get('body', '')]
+        if page_extract:
+            text_segments.append(page_extract)
+        if ai_analysis.summary:
+            text_segments.append(ai_analysis.summary)
+
+        combined_text = "\n".join(segment for segment in text_segments if segment)
+        lower_text = combined_text.lower()
+
+        base_counts = self._estimate_entity_counts(combined_text, lower_text)
+        present = [entity for entity, count in base_counts.items() if count > 0]
+        missing = [entity for entity in ('person', 'place', 'thing') if base_counts.get(entity, 0) <= 0]
+
+        coverage = sum(1 for entity in ('person', 'place', 'thing') if base_counts.get(entity, 0) > 0) / 3.0
+
+        legal_signals = self._detect_legal_signals(combined_text, lower_text)
+
+        reason_codes: List[str] = []
+        for entity in ('person', 'place', 'thing'):
+            if base_counts.get(entity, 0) > 0:
+                reason_codes.append(f"{entity.upper()}_ENTITY_DETECTED")
+            else:
+                reason_codes.append(f"{entity.upper()}_ENTITY_MISSING")
+
+        if coverage >= 0.67:
+            reason_codes.append("HIGH_ENTITY_COVERAGE")
+        elif coverage >= 0.34:
+            reason_codes.append("PARTIAL_ENTITY_COVERAGE")
+        else:
+            reason_codes.append("LOW_ENTITY_COVERAGE")
+
+        if legal_signals.get('statutes'):
+            reason_codes.append("STATUTE_CITATION_DETECTED")
+        if legal_signals.get('precedent'):
+            reason_codes.append("PRECEDENT_REFERENCE_DETECTED")
+        if legal_signals.get('interagency'):
+            reason_codes.append("INTERAGENCY_CONTEXT_DETECTED")
+
+        reason_codes = list(dict.fromkeys(reason_codes))
+
+        ai_analysis.entity_summary = {
+            'coverage': round(coverage, 3),
+            'counts': base_counts,
+            'present_base_entities': present,
+            'missing_base_entities': missing,
+            'source': 'heuristic',
+        }
+        ai_analysis.legal_signals = legal_signals
+        ai_analysis.reason_codes = reason_codes
+
+        return AssignmentSignals(
+            entity_score=coverage,
+            base_counts=base_counts,
+            missing_entities=missing,
+            legal_signals=legal_signals,
+            reason_codes=reason_codes,
+            source='heuristic',
+        )
+
+    @classmethod
+    def _estimate_entity_counts(
+        cls,
+        text: str,
+        lower_text: Optional[str] = None,
+    ) -> Dict[str, int]:
+        """Approximate entity counts using lightweight heuristics."""
+
+        lower_text = lower_text if lower_text is not None else text.lower()
+
+        counts = {entity: 0 for entity in ('person', 'place', 'thing')}
+
+        person_keywords = {kw for kw in cls.PERSON_KEYWORDS if kw in lower_text}
+        name_matches = {
+            match
+            for match in cls.PERSON_NAME_PATTERN.findall(text)
+            if len(match.split()) >= 2
+        }
+        counts['person'] = min(5, len(person_keywords) + len(name_matches))
+
+        place_hits = {kw for kw in cls.PLACE_KEYWORDS if kw in lower_text}
+        geographic_patterns = re.findall(r"\b[A-Z][a-z]+\s+(County|District|Parish)\b", text)
+        counts['place'] = min(5, len(place_hits) + len(geographic_patterns))
+
+        thing_hits = {kw for kw in cls.THING_KEYWORDS if kw in lower_text}
+        counts['thing'] = min(5, len(thing_hits))
+
+        return counts
+
+    @classmethod
+    def _normalize_legal_reference(cls, value: str) -> str:
+        """Normalize legal citation references for consistent telemetry reporting."""
+
+        if not isinstance(value, str):
+            return ""
+
+        cleaned = re.sub(r"\s+", " ", value.strip())
+        cleaned = cleaned.strip('"\'')
+        cleaned = cleaned.lstrip("(")
+        cleaned = cleaned.rstrip(";,)")
+        if cleaned.endswith('.') and not re.search(r"[A-Za-z]\.\Z", cleaned):
+            cleaned = cleaned[:-1]
+        cleaned = cleaned.rstrip(":")
+
+        # Ensure section symbols maintain a single leading space.
+        cleaned = re.sub(r"\s*§", " §", cleaned)
+        cleaned = cleaned.strip()
+
+        return cleaned
+
+    @classmethod
+    def _detect_legal_signals(
+        cls,
+        text: str,
+        lower_text: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Identify legal research signals from text content."""
+
+        lower_text = lower_text if lower_text is not None else text.lower()
+
+        statute_matches: List[str] = []
+        statute_seen: Set[str] = set()
+        for match in cls.STATUTE_PATTERN.finditer(text):
+            raw_citation = match.group(0)
+            citation = cls._normalize_legal_reference(raw_citation)
+            if not citation:
+                continue
+
+            upper_citation = citation.upper()
+            if "§" in citation and (
+                "U.S.C" in upper_citation
+                or "C.F.R" in upper_citation
+                or "GUIDELINE" in upper_citation
+            ):
+                section_match = re.search(r"(§\s*[\dA-Za-z().-]+)", citation)
+                if section_match:
+                    section_fragment = cls._normalize_legal_reference(section_match.group(1))
+                    code_fragment = cls._normalize_legal_reference(
+                        citation[: section_match.start()]
+                    )
+                    for fragment in (code_fragment, section_fragment):
+                        if fragment and fragment not in statute_seen:
+                            statute_seen.add(fragment)
+                            statute_matches.append(fragment)
+                    continue
+
+            if citation not in statute_seen:
+                statute_seen.add(citation)
+                statute_matches.append(citation)
+
+        precedent_matches: List[str] = []
+        precedent_seen: Set[str] = set()
+        for match in cls.PRECEDENT_PATTERN.finditer(text):
+            citation = cls._normalize_legal_reference(match.group(0))
+            if citation and citation not in precedent_seen:
+                precedent_seen.add(citation)
+                precedent_matches.append(citation)
+
+        interagency_terms: List[str] = []
+        interagency_seen: Set[str] = set()
+        for keyword in cls.INTERAGENCY_KEYWORDS:
+            if keyword in lower_text:
+                normalised = keyword.strip().lower()
+                if normalised not in interagency_seen:
+                    interagency_seen.add(normalised)
+                    interagency_terms.append(normalised)
+
+        statute_signal = 1.0 if statute_matches else 0.0
+        precedent_signal = 1.0 if precedent_matches else 0.0
+        interagency_signal = 1.0 if interagency_terms else 0.0
+
+        return {
+            'statutes': statute_signal,
+            'statute_matches': statute_matches,
+            'precedent': precedent_signal,
+            'precedent_matches': precedent_matches,
+            'interagency': interagency_signal,
+            'interagency_terms': interagency_terms,
+        }
+
+    def _is_taxonomy_workflow(self, workflow: WorkflowInfo) -> bool:
+        """Determine whether a workflow adheres to the modern criminal-law taxonomy."""
+
+        try:
+            return workflow.is_taxonomy()  # type: ignore[attr-defined]
+        except AttributeError:
+            return False
+
+    def _calculate_combined_score(
+        self,
+        *,
+        workflow: WorkflowInfo,
+        ai_confidence: float,
+        label_signal: float,
+        historical_signal: float,
+        signals: AssignmentSignals,
+    ) -> Tuple[float, Optional[str]]:
+        """Compute combined score for a workflow and return optional reason code."""
+
+        reason_code: Optional[str] = None
+
+        if self._is_taxonomy_workflow(workflow):
+            score = (
+                signals.entity_score * 0.4
+                + ai_confidence * 0.35
+                + label_signal * 0.08
+                + historical_signal * 0.07
+                + signals.legal_signals.get('statutes', 0.0) * 0.05
+                + signals.legal_signals.get('precedent', 0.0) * 0.03
+                + signals.legal_signals.get('interagency', 0.0) * 0.02
+            )
+            return score, reason_code
+
+        # Legacy workflows rely more heavily on AI confidence and label agreement.
+        score = (
+            ai_confidence * 0.6
+            + label_signal * 0.25
+            + historical_signal * 0.15
+        )
+
+        if ai_confidence >= self.LEGACY_HIGH_CONFIDENCE_THRESHOLD and (
+            label_signal > 0 or historical_signal >= 0.7
+        ):
+            score = max(score, ai_confidence)
+            reason_code = "LEGACY_HIGH_CONFIDENCE_OVERRIDE"
+
+        return score, reason_code
+
+    def _resolve_confidence_threshold(self, workflow: WorkflowInfo) -> float:
+        """Resolve the confidence threshold required for automatic assignment."""
+
+        workflow_threshold = getattr(workflow, "confidence_threshold", None)
+        if isinstance(workflow_threshold, (int, float)):
+            return max(0.0, min(1.0, float(workflow_threshold)))
+
+        if self._is_taxonomy_workflow(workflow):
+            return self.HIGH_CONFIDENCE_THRESHOLD
+
+        return self.LEGACY_HIGH_CONFIDENCE_THRESHOLD
+
+    def _resolve_review_threshold(self, workflow: WorkflowInfo, high_threshold: float) -> float:
+        """Determine the threshold that should trigger a human review."""
+
+        if self._is_taxonomy_workflow(workflow):
+            candidate = min(self.MEDIUM_CONFIDENCE_THRESHOLD, max(high_threshold - 0.1, 0.5))
+            return min(candidate, high_threshold)
+
+        review_threshold = min(self.LEGACY_REVIEW_THRESHOLD, high_threshold)
+        if review_threshold >= high_threshold:
+            review_threshold = max(high_threshold - 0.05, 0.5)
+        return review_threshold
+
     def _combine_ai_and_label_analysis(self,
                                       issue_data: Dict[str, Any],
                                       ai_analysis: ContentAnalysis,
-                                      available_workflows: List[WorkflowInfo]) -> Tuple[Optional[WorkflowInfo], ContentAnalysis, str]:
-        """
-        Combine AI content analysis with label-based matching for best results.
-        
-        Uses a weighted scoring system:
-        - AI confidence: 70% weight
-        - Label matching: 20% weight  
-        - Historical success: 10% weight
-        """
-        combined_scores = {}
-        
-        # Get label-based matches
+                                      available_workflows: List[WorkflowInfo],
+                                      *,
+                                      page_extract: Optional[str] = None) -> Tuple[Optional[WorkflowInfo], ContentAnalysis, str]:
+        """Combine AI analysis with taxonomy-aware scoring signals."""
+
+        combined_scores: Dict[str, float] = {}
+
+        # Determine label alignment and heuristic signals
         label_matches = self.workflow_matcher.find_matching_workflows(
             issue_data.get('labels', [])
         )
         label_match_names = {wf.name for wf in label_matches}
-        
+        signals = self._compute_assignment_signals(
+            issue_data,
+            ai_analysis,
+            page_extract=page_extract,
+        )
+
+        if label_match_names:
+            ai_analysis.reason_codes.append("LABEL_TRIGGER_MATCH")
+        else:
+            ai_analysis.reason_codes.append("LABEL_TRIGGER_GAP")
+
+        if not any(signals.legal_signals.values()):
+            ai_analysis.reason_codes.append("LEGAL_CONTEXT_NOT_DETECTED")
+
+        score_reason_codes: List[str] = []
+
         for workflow in available_workflows:
-            score = 0.0
-            
-            # AI confidence score (70% weight)
-            if workflow.name in ai_analysis.confidence_scores:
-                score += ai_analysis.confidence_scores[workflow.name] * 0.7
-            
-            # Label matching bonus (20% weight)
-            if workflow.name in label_match_names:
-                score += 0.2
-            
-            # Historical success rate (10% weight)
-            historical_score = self._get_historical_success_rate(
-                workflow.name, 
-                ai_analysis.content_type
+            ai_confidence = ai_analysis.confidence_scores.get(workflow.name, 0.0)
+            label_signal = 1.0 if workflow.name in label_match_names else 0.0
+            historical_signal = self._get_historical_success_rate(
+                workflow.name,
+                ai_analysis.content_type,
             )
-            score += historical_score * 0.1
-            
+
+            score, score_reason = self._calculate_combined_score(
+                workflow=workflow,
+                ai_confidence=ai_confidence,
+                label_signal=label_signal,
+                historical_signal=historical_signal,
+                signals=signals,
+            )
+
+            if score_reason:
+                score_reason_codes.append(score_reason)
+
             if score > 0:
                 combined_scores[workflow.name] = score
-        
-        # Find best workflow
+
+        if score_reason_codes:
+            ai_analysis.reason_codes.extend(score_reason_codes)
+
+        ai_analysis.combined_scores = combined_scores
+        ai_analysis.reason_codes = list(dict.fromkeys(ai_analysis.reason_codes))
+
         if combined_scores:
-            best_workflow_name = max(combined_scores.keys(), key=lambda x: combined_scores[x])
+            best_workflow_name = max(
+                combined_scores.keys(), key=lambda name: combined_scores[name]
+            )
             best_score = combined_scores[best_workflow_name]
-            
-            if best_score >= self.HIGH_CONFIDENCE_THRESHOLD:
-                best_workflow = next(
-                    wf for wf in available_workflows 
-                    if wf.name == best_workflow_name
-                )
+            best_workflow = next(
+                wf for wf in available_workflows if wf.name == best_workflow_name
+            )
+
+            high_threshold = self._resolve_confidence_threshold(best_workflow)
+            review_threshold = self._resolve_review_threshold(best_workflow, high_threshold)
+
+            if best_score >= high_threshold:
+                ai_analysis.reason_codes.append("AUTO_ASSIGN_THRESHOLD_MET")
+                ai_analysis.reason_codes = list(dict.fromkeys(ai_analysis.reason_codes))
                 message = (
                     f"AI analysis selected '{best_workflow_name}' "
-                    f"(confidence: {best_score:.2f}, "
-                    f"content type: {ai_analysis.content_type})"
+                    f"(score: {best_score:.2f}, threshold: {high_threshold:.2f}, content type: {ai_analysis.content_type})"
                 )
-                
-                # Update AI analysis with combined scores
-                ai_analysis.confidence_scores = combined_scores
-                
                 return best_workflow, ai_analysis, message
-            
-            elif best_score >= self.MEDIUM_CONFIDENCE_THRESHOLD:
-                # Medium confidence - suggest but request confirmation
+
+            if best_score >= review_threshold:
                 message = (
                     f"AI suggests '{best_workflow_name}' "
-                    f"(confidence: {best_score:.2f}) but recommends human review"
+                    f"(score: {best_score:.2f}, threshold: {review_threshold:.2f}) but recommends human review"
                 )
-                ai_analysis.confidence_scores = combined_scores
                 return None, ai_analysis, message
-        
-        # Low confidence
+
         message = "AI analysis inconclusive - no workflow has sufficient confidence"
         return None, ai_analysis, message
     
@@ -758,9 +1245,9 @@ class AIWorkflowAssignmentAgent:
         """
         # This would query historical assignment data stored in GitHub
         # For now, return a default value based on content type matching
-        if workflow_name == "Research Analysis" and content_type in ["research", "analysis"]:
+        if workflow_name == "Person Entity Profiling" and content_type in ["investigative", "profiling", "entity-analysis"]:
             return 0.8
-        elif workflow_name == "Technical Review" and content_type in ["technical", "code", "security"]:
+        elif workflow_name == "Witness Expert Reliability Assessment" and content_type in ["trial-prep", "witness", "expert"]:
             return 0.8
         else:
             return 0.5
@@ -946,6 +1433,12 @@ class AIWorkflowAssignmentAgent:
         lines.append(f"- Urgency: {urgency}")
         lines.append(f"- Content Type: {content_type}")
 
+        if analysis.reason_codes:
+            lines.append("")
+            lines.append("**Reason Codes**")
+            for code in analysis.reason_codes[:12]:
+                lines.append(f"- {code}")
+
         return "\n".join(lines).strip()
     
     def process_issue_with_ai(self,
@@ -973,10 +1466,19 @@ class AIWorkflowAssignmentAgent:
             'action_taken': None,
             'assigned_workflow': None,
             'labels_added': [],
-            'dry_run': dry_run
+            'dry_run': dry_run,
+            'reason_codes': list(ai_analysis.reason_codes),
         }
         
-        if workflow and ai_analysis.confidence_scores.get(workflow.name, 0) >= self.HIGH_CONFIDENCE_THRESHOLD:
+        best_score = None
+        threshold = None
+        if workflow:
+            threshold = self._resolve_confidence_threshold(workflow)
+            best_score = ai_analysis.combined_scores.get(workflow.name)
+            if best_score is None:
+                best_score = ai_analysis.confidence_scores.get(workflow.name)
+
+        if workflow and threshold is not None and (best_score is not None and best_score >= threshold):
             # High confidence - assign automatically
             labels_added = self._assign_workflow_with_ai_context(
                 issue_number, workflow, ai_analysis, dry_run
@@ -1043,14 +1545,18 @@ class AIWorkflowAssignmentAgent:
                 edit_kwargs["body"] = updated_body
             issue.edit(**edit_kwargs)
 
-            confidence = analysis.confidence_scores.get(workflow.name, 0)
+            combined_score = analysis.combined_scores.get(workflow.name, 0.0)
+            reason_codes_text = (
+                ", ".join(analysis.reason_codes) if analysis.reason_codes else "None recorded"
+            )
             comment = f"""🤖 **AI Workflow Assignment**
 
 **Assigned Workflow:** {workflow.name}
-**Confidence:** {confidence:.0%}
+**Confidence:** {combined_score:.0%}
 **Content Type:** {analysis.content_type}
 **Urgency:** {analysis.urgency_level}
 **Labels Applied:** {', '.join(sorted(labels_added)) if labels_added else 'None (labels already present)'}
+**Reason Codes:** {reason_codes_text}
 
 AI assessment details have been recorded in the issue body under `## AI Assessment`.
 
@@ -1091,8 +1597,20 @@ AI assessment details have been recorded in the issue body under `## AI Assessme
 
             suggestions = []
             for workflow_name in analysis.suggested_workflows[:3]:  # Top 3
+                combined = analysis.combined_scores.get(workflow_name)
                 confidence = analysis.confidence_scores.get(workflow_name, 0)
-                suggestions.append(f"- **{workflow_name}** (confidence: {confidence:.0%})")
+                if combined is not None:
+                    suggestions.append(
+                        f"- **{workflow_name}** (score: {combined:.0%}, AI confidence: {confidence:.0%})"
+                    )
+                else:
+                    suggestions.append(
+                        f"- **{workflow_name}** (AI confidence: {confidence:.0%})"
+                    )
+
+            reason_codes_text = (
+                ", ".join(analysis.reason_codes) if analysis.reason_codes else "None recorded"
+            )
 
             comment = f"""🤖 **Human Review Requested**
 
@@ -1104,6 +1622,7 @@ The AI analysis suggests these workflows but confidence is moderate:
 
 **Content Type:** {analysis.content_type}
 **Urgency:** {analysis.urgency_level}
+**Reason Codes:** {reason_codes_text}
 
 The AI assessment details have been recorded in the issue body under `## AI Assessment`.
 
@@ -1141,6 +1660,9 @@ Please review and either:
             if updated_body != (issue.body or ""):
                 issue.edit(body=updated_body)
 
+            reason_codes_text = (
+                ", ".join(analysis.reason_codes) if analysis.reason_codes else "None recorded"
+            )
             comment = f"""🤖 **Additional Information Needed**
 
 The AI couldn't confidently match this issue to a workflow.
@@ -1149,17 +1671,17 @@ The AI couldn't confidently match this issue to a workflow.
 {analysis.summary if analysis.summary else "Unable to determine issue purpose"}
 
 **Topics identified:** {', '.join(analysis.key_topics) if analysis.key_topics else 'None'}
+**Reason Codes:** {reason_codes_text}
 
 To help with assignment, please:
 1. Add more descriptive labels
 2. Clarify the issue's purpose in the description
 3. Specify the type of deliverable needed
 
-Available workflow types:
-- `research` / `analysis` - For in-depth research
-- `technical-review` / `code-review` - For technical assessments
-- `security` - For security analysis
-- `documentation` - For documentation tasks
+Available workflow families:
+- `entity-profiling` - Person dossiers, evidence catalogues, and risk posture analysis
+- `legal-research` - Statutory digests, precedent exploration, and sentencing scenarios
+- `operational-coordination` - Coordination briefs, remediation monitoring, and lead development
 
 The AI assessment details have been recorded under `## AI Assessment` for reference.
 
@@ -1217,7 +1739,6 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                     {
                         'total_issues': candidate_count,
                         'processed': 0,
-                        'statistics': statistics,
                         'duration_seconds': duration,
                         'dry_run': dry_run,
                         'status': 'empty',
@@ -1242,6 +1763,17 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                 'errors': 0,
             }
 
+            reason_counter: Counter[str] = Counter()
+            coverage_values: List[float] = []
+            high_coverage = 0
+            partial_coverage = 0
+            low_coverage = 0
+            missing_entity_issues = 0
+            legal_signal_counts: Counter[str] = Counter()
+            statute_reference_counter: Counter[str] = Counter()
+            precedent_reference_counter: Counter[str] = Counter()
+            interagency_reference_counter: Counter[str] = Counter()
+
             for issue_data in issues:
                 issue_start = time.time()
                 try:
@@ -1253,6 +1785,48 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                         statistics[action] += 1
                     else:
                         statistics['errors'] += 1
+
+                    reason_counter.update(result.get('reason_codes') or [])
+
+                    ai_analysis = result.get('ai_analysis') or {}
+                    if isinstance(ai_analysis, dict):
+                        entity_summary = ai_analysis.get('entity_summary') or {}
+                        if isinstance(entity_summary, dict):
+                            coverage_value = entity_summary.get('coverage')
+                            if isinstance(coverage_value, (int, float)):
+                                coverage_float = float(coverage_value)
+                                coverage_values.append(coverage_float)
+                                if coverage_float >= 0.67:
+                                    high_coverage += 1
+                                elif coverage_float >= 0.34:
+                                    partial_coverage += 1
+                                else:
+                                    low_coverage += 1
+                            missing_entities = entity_summary.get('missing_base_entities') or []
+                            if missing_entities:
+                                missing_entity_issues += 1
+
+                        legal_signals = ai_analysis.get('legal_signals') or {}
+                        if isinstance(legal_signals, dict):
+                            for signal_name, signal_value in legal_signals.items():
+                                try:
+                                    numeric_value = float(signal_value)
+                                except (TypeError, ValueError):
+                                    continue
+                                if numeric_value > 0:
+                                    legal_signal_counts[signal_name] += 1
+
+                            for citation in legal_signals.get('statute_matches') or []:
+                                normalised_citation = self._normalize_legal_reference(citation)
+                                if normalised_citation:
+                                    statute_reference_counter[normalised_citation] += 1
+                            for precedent in legal_signals.get('precedent_matches') or []:
+                                if isinstance(precedent, str) and precedent.strip():
+                                    cleaned_precedent = self._normalize_legal_reference(precedent)
+                                    precedent_reference_counter[cleaned_precedent] += 1
+                            for agency in legal_signals.get('interagency_terms') or []:
+                                if isinstance(agency, str) and agency.strip():
+                                    interagency_reference_counter[agency.strip().lower()] += 1
 
                     self._emit_issue_result_telemetry(result, time.time() - issue_start)
 
@@ -1294,6 +1868,34 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
             elif statistics['errors']:
                 status = 'partial'
 
+            average_coverage = (
+                sum(coverage_values) / len(coverage_values)
+                if coverage_values
+                else None
+            )
+            coverage_distribution = {
+                'high': high_coverage,
+                'partial': partial_coverage,
+                'low': low_coverage,
+            }
+            top_reason_codes = [
+                {'code': code, 'count': count}
+                for code, count in reason_counter.most_common(5)
+            ]
+            top_statutes = statute_reference_counter.most_common(5)
+            top_precedents = precedent_reference_counter.most_common(5)
+            top_interagency = interagency_reference_counter.most_common(5)
+            explainability_summary = {
+                'average_entity_coverage': average_coverage,
+                'entity_coverage_distribution': coverage_distribution,
+                'issues_with_missing_entities': missing_entity_issues,
+                'top_reason_codes': {code: count for code, count in reason_counter.items()},
+                'legal_signal_counts': dict(legal_signal_counts),
+                'statute_references': top_statutes,
+                'precedent_references': top_precedents,
+                'interagency_terms': top_interagency,
+            }
+
             self._publish_telemetry(
                 "workflow_assignment.batch_summary",
                 {
@@ -1306,6 +1908,14 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                     'issue_numbers': [r.get('issue_number') for r in results],
                     'error_count': statistics.get('errors', 0),
                     'assignment_mode': 'ai',
+                    'average_entity_coverage': average_coverage,
+                    'entity_coverage_distribution': coverage_distribution,
+                    'issues_with_missing_entities': missing_entity_issues,
+                    'top_reason_codes': top_reason_codes,
+                    'legal_signal_counts': dict(legal_signal_counts),
+                    'statute_references': top_statutes,
+                    'precedent_references': top_precedents,
+                    'interagency_terms': top_interagency,
                 },
             )
 
@@ -1315,6 +1925,7 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                 'results': results,
                 'statistics': statistics,
                 'duration_seconds': duration,
+                'explainability_summary': explainability_summary,
             }
 
         except Exception as e:  # noqa: BLE001
@@ -1337,6 +1948,11 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                     'issue_numbers': [],
                     'error_message': str(e),
                     'error_count': 1,
+                    'average_entity_coverage': None,
+                    'entity_coverage_distribution': None,
+                    'issues_with_missing_entities': None,
+                    'top_reason_codes': [],
+                    'legal_signal_counts': {},
                 },
             )
             log_exception(self.logger, "AI batch processing failed", e)
@@ -1347,6 +1963,7 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                 'statistics': error_stats,
                 'duration_seconds': duration,
                 'error': str(e),
+                'explainability_summary': None,
             }
     
     def get_assignment_statistics(self) -> Dict[str, Any]:
@@ -1390,7 +2007,9 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                     stats['feature_labeled'] += 1
                 
                 # Count workflow assignments
-                workflows = self.workflow_matcher.get_available_workflows()
+                workflows = self.workflow_matcher.get_available_workflows(
+                    categories=self.allowed_categories
+                )
                 for workflow in workflows:
                     workflow_labels = set(workflow.trigger_labels)
                     if workflow_labels.intersection(issue_labels):

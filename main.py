@@ -7,6 +7,7 @@ Main entry point for the application with site monitoring capabilities
 import os
 import sys
 import argparse
+from collections import Counter
 from typing import Optional, Any
 from datetime import datetime
 from dotenv import load_dotenv
@@ -42,6 +43,10 @@ from src.utils.specialist_config_cli import (
     handle_specialist_config_command
 )
 from src.utils.logging_config import setup_logging
+from src.workflow.workflow_schemas import WorkflowSchemaValidator
+
+
+TAXONOMY_CATEGORIES = sorted(WorkflowSchemaValidator.TAXONOMY_CATEGORIES)
 
 
 def setup_argument_parser() -> argparse.ArgumentParser:
@@ -81,6 +86,183 @@ def attach_static_fields(publishers, static_fields):
     return attach_cli_static_fields(publishers, **static_fields)
 
 
+DEFAULT_AUTO_CONFIDENCE = getattr(AIWorkflowAssignmentAgent, "HIGH_CONFIDENCE_THRESHOLD", 0.8)
+DEFAULT_REVIEW_CONFIDENCE = getattr(AIWorkflowAssignmentAgent, "MEDIUM_CONFIDENCE_THRESHOLD", 0.6)
+
+
+def summarize_workflow_outcomes(
+    matcher,
+    results: list[dict[str, Any]],
+    *,
+    workflow_key: str = "workflow",
+    status_key: str = "status",
+    filter_applied: bool = False,
+    auto_threshold: float = DEFAULT_AUTO_CONFIDENCE,
+    review_threshold: float = DEFAULT_REVIEW_CONFIDENCE,
+) -> tuple[dict[str, Any], dict[str, list[str]]]:
+    """Aggregate taxonomy adoption, confidence thresholds, and status counts."""
+
+    taxonomy_assigned = 0
+    legacy_assigned = 0
+    unknown_workflows = 0
+    total_with_workflow = 0
+    thresholds: list[float] = []
+    threshold_buckets: Counter[str] = Counter()
+    category_counter: Counter[str] = Counter()
+    status_counter: Counter[str] = Counter()
+
+    for entry in results:
+        status_value = entry.get(status_key)
+        if isinstance(status_value, str) and status_value:
+            status_counter[status_value] += 1
+
+        workflow_name = entry.get(workflow_key)
+        if not workflow_name:
+            continue
+
+        workflow_info = matcher.get_workflow_by_name(workflow_name) if matcher else None
+
+        if workflow_info is None:
+            unknown_workflows += 1
+            continue
+
+        total_with_workflow += 1
+        if workflow_info.is_taxonomy():
+            taxonomy_assigned += 1
+        else:
+            legacy_assigned += 1
+
+        category_value = workflow_info.category or ("legacy" if not workflow_info.is_taxonomy() else None)
+        if category_value:
+            category_counter[category_value] += 1
+
+        threshold = getattr(workflow_info, "confidence_threshold", None)
+        if isinstance(threshold, (int, float)):
+            threshold_value = float(threshold)
+        else:
+            threshold_value = None
+
+        if threshold_value is not None:
+            thresholds.append(threshold_value)
+            if threshold_value >= auto_threshold:
+                threshold_buckets["auto_assignment"] += 1
+            elif threshold_value >= review_threshold:
+                threshold_buckets["review_gate"] += 1
+            else:
+                threshold_buckets["manual_review"] += 1
+        else:
+            threshold_buckets["unspecified"] += 1
+
+    taxonomy_metrics: dict[str, Any] | None = None
+    if total_with_workflow or unknown_workflows:
+        taxonomy_rate = (
+            taxonomy_assigned / total_with_workflow
+            if total_with_workflow
+            else 0.0
+        )
+        taxonomy_metrics = {
+            "total_with_workflow": total_with_workflow,
+            "taxonomy_assigned": taxonomy_assigned,
+            "legacy_assigned": legacy_assigned,
+            "unknown_workflows": unknown_workflows,
+            "category_breakdown": dict(category_counter),
+            "taxonomy_rate": taxonomy_rate,
+            "filter_applied": filter_applied,
+        }
+
+    threshold_metrics: dict[str, Any] | None = None
+    clean_thresholds = [value for value in thresholds if isinstance(value, float)]
+    if threshold_buckets or clean_thresholds:
+        average_threshold = (
+            sum(clean_thresholds) / len(clean_thresholds)
+            if clean_thresholds
+            else None
+        )
+        min_threshold = min(clean_thresholds) if clean_thresholds else None
+        max_threshold = max(clean_thresholds) if clean_thresholds else None
+        threshold_metrics = {
+            "bucket_counts": dict(threshold_buckets),
+            "average_threshold": average_threshold,
+            "min_threshold": min_threshold,
+            "max_threshold": max_threshold,
+            "auto_threshold": auto_threshold,
+            "review_threshold": review_threshold,
+        }
+
+    status_metrics = dict(status_counter) if status_counter else None
+
+    taxonomy_lines: list[str] = []
+    if taxonomy_metrics:
+        denominator_text = (
+            str(taxonomy_metrics["total_with_workflow"])
+            if taxonomy_metrics["total_with_workflow"]
+            else "0"
+        )
+        taxonomy_lines.append(
+            f"  Taxonomy workflows: {taxonomy_metrics['taxonomy_assigned']}/{denominator_text}"
+            f" ({taxonomy_metrics['taxonomy_rate']:.0%})"
+        )
+        if taxonomy_metrics["legacy_assigned"]:
+            taxonomy_lines.append(
+                f"  Legacy workflows: {taxonomy_metrics['legacy_assigned']}"
+            )
+        if taxonomy_metrics["unknown_workflows"]:
+            taxonomy_lines.append(
+                f"  Unknown workflows: {taxonomy_metrics['unknown_workflows']}"
+            )
+        for category, count in sorted(taxonomy_metrics["category_breakdown"].items()):
+            friendly = category.replace('-', ' ').title()
+            taxonomy_lines.append(f"  {friendly}: {count}")
+
+    threshold_lines: list[str] = []
+    if threshold_metrics:
+        bucket_counts = threshold_metrics["bucket_counts"]
+        if threshold_metrics["average_threshold"] is not None:
+            threshold_lines.append(
+                f"  Avg confidence threshold: {threshold_metrics['average_threshold']:.0%}"
+            )
+        if threshold_metrics["min_threshold"] is not None and threshold_metrics["max_threshold"] is not None:
+            threshold_lines.append(
+                f"  Threshold range: {threshold_metrics['min_threshold']:.0%}–{threshold_metrics['max_threshold']:.0%}"
+            )
+        if bucket_counts:
+            auto_count = bucket_counts.get("auto_assignment", 0)
+            review_count = bucket_counts.get("review_gate", 0)
+            manual_count = bucket_counts.get("manual_review", 0)
+            unspecified_count = bucket_counts.get("unspecified", 0)
+            threshold_lines.append(
+                f"  ≥{auto_threshold:.0%} (auto-assign ready): {auto_count}"
+            )
+            threshold_lines.append(
+                f"  ≥{review_threshold:.0%} review gate: {review_count}"
+            )
+            threshold_lines.append(
+                f"  Below review gate: {manual_count}"
+            )
+            if unspecified_count:
+                threshold_lines.append(
+                    f"  Unspecified thresholds: {unspecified_count}"
+                )
+
+    status_lines: list[str] = []
+    if status_metrics:
+        for status_name, count in status_counter.most_common():
+            friendly_status = status_name.replace('_', ' ').title()
+            status_lines.append(f"  {friendly_status}: {count}")
+
+    metrics = {
+        "taxonomy_metrics": taxonomy_metrics,
+        "threshold_metrics": threshold_metrics,
+        "status_counts": status_metrics,
+    }
+    lines = {
+        "taxonomy": taxonomy_lines,
+        "thresholds": threshold_lines,
+        "statuses": status_lines,
+    }
+    return metrics, lines
+
+
 def setup_create_issue_parser(subparsers) -> None:
     """Set up create-issue command parser."""
     issue_parser = subparsers.add_parser(
@@ -113,6 +295,11 @@ def setup_monitor_parser(subparsers) -> None:
         '--issue-template',
         choices=['minimal', 'full'],
         help='Override the discovery issue template layout for this run'
+    )
+    monitor_parser.add_argument(
+        '--show-taxonomy-metrics',
+        action='store_true',
+        help='Include workflow taxonomy and confidence metrics when monitor triggers processing'
     )
 
 
@@ -208,6 +395,17 @@ def setup_process_issues_parser(subparsers) -> None:
         help='Additional labels to filter issues (beyond site-monitor)'
     )
     process_parser.add_argument(
+        '--workflow-category',
+        choices=TAXONOMY_CATEGORIES,
+        nargs='+',
+        help='Filter issues to workflows within these taxonomy categories'
+    )
+    process_parser.add_argument(
+        '--show-taxonomy-metrics',
+        action='store_true',
+        help='Include workflow taxonomy adoption metrics in the output summary'
+    )
+    process_parser.add_argument(
         '--verbose', '-v', 
         action='store_true', 
         help='Show detailed progress information'
@@ -265,6 +463,17 @@ def setup_assign_workflows_parser(subparsers) -> None:
         action='store_true', 
         help='Disable AI analysis and use label-based matching only (fallback mode)'
     )
+    assign_parser.add_argument(
+        '--workflow-category',
+        choices=TAXONOMY_CATEGORIES,
+        nargs='+',
+        help='Restrict recommendations to workflows within these taxonomy categories'
+    )
+    assign_parser.add_argument(
+        '--show-taxonomy-metrics',
+        action='store_true',
+        help='Include workflow taxonomy adoption metrics in the output summary'
+    )
 
 
 def validate_environment() -> tuple[str, str]:
@@ -311,6 +520,7 @@ def handle_monitor_command(args, github_token: str) -> None:
         "monitor",
         extra_static_fields={
             "no_individual_issues": args.no_individual_issues,
+            "show_taxonomy_metrics": getattr(args, 'show_taxonomy_metrics', False),
         },
         static_fields={
             "workflow_stage": "monitoring",
@@ -371,6 +581,24 @@ def handle_monitor_command(args, github_token: str) -> None:
         print(f"❌ Monitoring failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    processing_results = list(results.get('issue_processing_results') or [])
+    matcher = getattr(getattr(service, 'issue_processor', None), 'workflow_matcher', None)
+    metrics_summary: dict[str, Any] = {
+        'taxonomy_metrics': None,
+        'threshold_metrics': None,
+        'status_counts': None,
+    }
+    metrics_lines: dict[str, list[str]] = {
+        'taxonomy': [],
+        'thresholds': [],
+        'statuses': [],
+    }
+    if processing_results:
+        metrics_summary, metrics_lines = summarize_workflow_outcomes(
+            matcher,
+            processing_results,
+        )
+
     monitoring_success = bool(results.get('success'))
     summary_result = CliResult(
         success=monitoring_success,
@@ -385,6 +613,9 @@ def handle_monitor_command(args, github_token: str) -> None:
             "cycle_start": results.get('cycle_start'),
             "cycle_end": results.get('cycle_end'),
             "error": results.get('error'),
+            "workflow_metrics": metrics_summary.get('taxonomy_metrics'),
+            "confidence_metrics": metrics_summary.get('threshold_metrics'),
+            "status_counts": metrics_summary.get('status_counts'),
         },
         error_code=0 if monitoring_success else 1,
     )
@@ -394,12 +625,40 @@ def handle_monitor_command(args, github_token: str) -> None:
         "site_monitor.cli_summary",
         summary_result,
         phase="monitoring_cycle",
+        extra={
+            "workflow_metrics": metrics_summary.get('taxonomy_metrics'),
+            "confidence_metrics": metrics_summary.get('threshold_metrics'),
+            "status_counts": metrics_summary.get('status_counts'),
+        },
     )
     
     if results.get('success'):
         print("✅ Monitoring completed successfully")
         print(f"📊 Found {results.get('new_results_found')} new results")
         print(f"📝 Created {results.get('individual_issues_created')} individual issues")
+
+        display_metrics = (
+            getattr(args, 'show_taxonomy_metrics', False)
+            or any(metrics_lines.values())
+        )
+
+        if display_metrics and any(metrics_lines.values()):
+            print("\n📈 Taxonomy Adoption:")
+            adoption_lines = metrics_lines.get('taxonomy') or ["  No workflow data yet"]
+            for line in adoption_lines:
+                print(line)
+
+            threshold_lines = metrics_lines.get('thresholds') or []
+            if threshold_lines:
+                print("\n🎯 Confidence Thresholds:")
+                for line in threshold_lines:
+                    print(line)
+
+            status_lines = metrics_lines.get('statuses') or []
+            if status_lines:
+                print("\n🛠 Processing Outcomes:")
+                for line in status_lines:
+                    print(line)
     else:
         print(f"❌ Monitoring failed: {results.get('error')}", file=sys.stderr)
         sys.exit(1)
@@ -533,6 +792,8 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                 "batch_size": args.batch_size,
                 "find_issues_only": args.find_issues_only,
                 "assignee_filter": args.assignee_filter,
+                "workflow_category": args.workflow_category,
+                "show_taxonomy_metrics": args.show_taxonomy_metrics,
             },
             static_fields={
                 "workflow_stage": "issue-processing",
@@ -625,6 +886,8 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         filters['assignee'] = args.assignee_filter
                     if args.label_filter:
                         filters['additional_labels'] = args.label_filter
+                    if args.workflow_category:
+                        filters['workflow_category'] = args.workflow_category
                     
                     # Find issues
                     discovery = batch_processor.find_site_monitor_issues(
@@ -702,7 +965,7 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         extra={"issues_found": len(issues_data)},
                         structured=True,
                     )
-                    
+
                 except Exception as e:
                     reporter.complete_operation(False)
                     result = CliResult(
@@ -918,7 +1181,8 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                             batch_size=args.batch_size,
                             dry_run=args.dry_run,
                             assignee_filter=args.assignee_filter,
-                            additional_labels=args.label_filter
+                            additional_labels=args.label_filter,
+                            workflow_category=args.workflow_category,
                         )
                     
                     reporter.complete_operation(True, f"Batch processing complete")
@@ -963,6 +1227,29 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                     # Format batch results
                     formatted_results = IssueResultFormatter.format_batch_results(results)
 
+                    matcher = getattr(processor, "workflow_matcher", None)
+                    metrics_input = [
+                        {
+                            "workflow": item.get("workflow"),
+                            "status": item.get("status"),
+                        }
+                        for item in results
+                    ]
+                    metrics_summary, metrics_lines = summarize_workflow_outcomes(
+                        matcher,
+                        metrics_input,
+                        filter_applied=bool(args.workflow_category),
+                    )
+                    taxonomy_metrics = metrics_summary.get("taxonomy_metrics") or {}
+                    threshold_metrics = metrics_summary.get("threshold_metrics") or {}
+                    status_counts = metrics_summary.get("status_counts") or {}
+
+                    show_metrics = (
+                        args.show_taxonomy_metrics
+                        or args.verbose
+                        or args.dry_run
+                    )
+
                     copilot_summary_lines: list[str] = []
                     if batch_metrics.copilot_assignment_count:
                         copilot_summary_lines.append(
@@ -974,10 +1261,23 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                                 f"⏰ Next Copilot due at: {next_due}"
                             )
 
-                    if copilot_summary_lines:
-                        formatted_results = "\n\n".join(
-                            [formatted_results, "\n".join(copilot_summary_lines)]
+                    summary_sections = [formatted_results]
+                    if show_metrics and metrics_lines.get("taxonomy"):
+                        summary_sections.append(
+                            "\n".join(["**Taxonomy Adoption:**", *metrics_lines["taxonomy"]])
                         )
+                    if show_metrics and metrics_lines.get("thresholds"):
+                        summary_sections.append(
+                            "\n".join(["**Confidence Thresholds:**", *metrics_lines["thresholds"]])
+                        )
+                    if show_metrics and metrics_lines.get("statuses"):
+                        summary_sections.append(
+                            "\n".join(["**Processing Outcomes:**", *metrics_lines["statuses"]])
+                        )
+                    if copilot_summary_lines:
+                        summary_sections.append("\n".join(copilot_summary_lines))
+
+                    formatted_results = "\n\n".join(summary_sections)
                     
                     # Check for errors
                     error_count = batch_metrics.error_count
@@ -992,6 +1292,9 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                             'metrics': batch_metrics.to_dict(),
                             'copilot_assignment_count': batch_metrics.copilot_assignment_count,
                             'next_copilot_due_at': batch_metrics.next_copilot_due_at,
+                            'taxonomy_metrics': taxonomy_metrics or None,
+                            'confidence_metrics': threshold_metrics or None,
+                            'status_counts': status_counts or None,
                         }
                     )
                     return emit_summary(
@@ -1001,6 +1304,9 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                             "processed_count": batch_metrics.processed_count,
                             "total_issues": batch_metrics.total_issues,
                             "error_count": error_count,
+                            "taxonomy_metrics": taxonomy_metrics or None,
+                            "confidence_metrics": threshold_metrics or None,
+                            "status_counts": status_counts or None,
                         },
                     )
                     
@@ -1047,6 +1353,8 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                 "limit": args.limit,
                 "statistics": args.statistics,
                 "disable_ai": args.disable_ai,
+                "workflow_category": args.workflow_category,
+                "show_taxonomy_metrics": args.show_taxonomy_metrics,
             },
             static_fields={
                 "workflow_stage": "workflow-assignment",
@@ -1097,6 +1405,7 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                     config_path=args.config,
                     enable_ai=True,
                     telemetry_publishers=telemetry_publishers,
+                    allowed_categories=args.workflow_category,
                 )
                 agent_type = "AI-enhanced"
             else:
@@ -1113,6 +1422,7 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                     repo_name=repo_name,
                     config_path=args.config,
                     telemetry_publishers=telemetry_publishers,
+                    allowed_categories=args.workflow_category,
                 )
                 agent_type = "Label-based (fallback)"
             
@@ -1237,14 +1547,201 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                         if count > 0:
                             action_name = action.replace('_', ' ').title()
                             result_lines.append(f"  {action_name}: {count}")
+
+                results_list = result.get('results') or []
+
+                adoption_lines: list[str] = []
+                taxonomy_metrics: dict[str, Any] = {}
+                matcher = getattr(agent, "workflow_matcher", None)
+                if matcher and results_list:
+                    category_counter: Counter[str] = Counter()
+                    taxonomy_assigned = 0
+                    legacy_assigned = 0
+                    unknown_workflows = 0
+                    total_assigned = 0
+
+                    for issue_result in results_list:
+                        assigned_name = issue_result.get('assigned_workflow')
+                        if not assigned_name:
+                            continue
+                        info = matcher.get_workflow_by_name(assigned_name)
+                        if info is None:
+                            unknown_workflows += 1
+                            continue
+
+                        total_assigned += 1
+                        if info.is_taxonomy():
+                            taxonomy_assigned += 1
+                        else:
+                            legacy_assigned += 1
+
+                        if info.category:
+                            category_counter[info.category] += 1
+                        else:
+                            category_counter['legacy'] += 1
+
+                    if total_assigned or category_counter or unknown_workflows:
+                        taxonomy_rate = (
+                            taxonomy_assigned / total_assigned
+                            if total_assigned
+                            else 0.0
+                        )
+                        taxonomy_metrics = {
+                            "total_assigned": total_assigned,
+                            "taxonomy_assigned": taxonomy_assigned,
+                            "legacy_assigned": legacy_assigned,
+                            "unknown_workflows": unknown_workflows,
+                            "category_breakdown": dict(category_counter),
+                            "taxonomy_rate": taxonomy_rate,
+                            "filter_applied": bool(args.workflow_category),
+                        }
+
+                        if args.show_taxonomy_metrics or args.verbose:
+                            denominator_text = str(total_assigned) if total_assigned else "0"
+                            adoption_lines.append(
+                                f"  Taxonomy workflows: {taxonomy_assigned}/{denominator_text}"
+                                f" ({taxonomy_rate:.0%})"
+                            )
+                            if legacy_assigned:
+                                adoption_lines.append(
+                                    f"  Legacy workflows: {legacy_assigned}"
+                                )
+                            if unknown_workflows:
+                                adoption_lines.append(
+                                    f"  Unknown workflows: {unknown_workflows}"
+                                )
+                            for category, count in sorted(category_counter.items()):
+                                friendly = category.replace('-', ' ').title()
+                                adoption_lines.append(f"  {friendly}: {count}")
+
+                explainability_lines: list[str] = []
+                if ai_enabled and results_list:
+                    reason_counter: Counter[str] = Counter()
+                    coverage_values: list[float] = []
+                    high_coverage = 0
+                    partial_coverage = 0
+                    missing_entity_issues = 0
+                    legal_counts: Counter[str] = Counter()
+                    statute_citations: Counter[str] = Counter()
+                    precedent_citations: Counter[str] = Counter()
+                    interagency_terms: Counter[str] = Counter()
+
+                    for issue_result in results_list:
+                        reason_counter.update(issue_result.get('reason_codes') or [])
+
+                        ai_analysis = issue_result.get('ai_analysis') or {}
+                        if isinstance(ai_analysis, dict) and ai_analysis:
+                            entity_summary = ai_analysis.get('entity_summary') or {}
+                            if isinstance(entity_summary, dict):
+                                coverage = entity_summary.get('coverage')
+                                if isinstance(coverage, (int, float)):
+                                    coverage_values.append(float(coverage))
+                                    if coverage >= 0.67:
+                                        high_coverage += 1
+                                    elif coverage >= 0.34:
+                                        partial_coverage += 1
+                                if entity_summary.get('missing_base_entities'):
+                                    missing_entity_issues += 1
+
+                            legal_signals = ai_analysis.get('legal_signals') or {}
+                            if isinstance(legal_signals, dict):
+                                for signal_name, value in legal_signals.items():
+                                    try:
+                                        numeric_value = float(value)
+                                    except (TypeError, ValueError):
+                                        continue
+                                    if numeric_value > 0:
+                                        legal_counts[signal_name] += 1
+
+                                for citation in legal_signals.get('statute_matches') or []:
+                                    if isinstance(citation, str) and citation.strip():
+                                        statute_citations[citation.strip()] += 1
+                                for precedent in legal_signals.get('precedent_matches') or []:
+                                    if isinstance(precedent, str) and precedent.strip():
+                                        precedent_citations[precedent.strip()] += 1
+                                for agency in legal_signals.get('interagency_terms') or []:
+                                    if isinstance(agency, str) and agency.strip():
+                                        interagency_terms[agency.strip().lower()] += 1
+
+                    if reason_counter:
+                        top_codes = reason_counter.most_common(5)
+                        explainability_lines.append(
+                            "  Top reason codes: "
+                            + ", ".join(f"{code} ({count})" for code, count in top_codes)
+                        )
+
+                    if coverage_values:
+                        avg_coverage = sum(coverage_values) / len(coverage_values)
+                        coverage_fragments: list[str] = []
+                        if high_coverage:
+                            coverage_fragments.append(f"{high_coverage} high")
+                        if partial_coverage:
+                            coverage_fragments.append(f"{partial_coverage} partial")
+                        low_count = len(coverage_values) - high_coverage - partial_coverage
+                        if low_count:
+                            coverage_fragments.append(f"{low_count} low")
+
+                        coverage_line = f"  Base entity coverage: {avg_coverage:.0%} avg"
+                        if coverage_fragments:
+                            coverage_line += f" ({', '.join(coverage_fragments)})"
+                        explainability_lines.append(coverage_line)
+
+                        if missing_entity_issues:
+                            explainability_lines.append(
+                                f"  Missing base entities flagged in {missing_entity_issues} issue(s)"
+                            )
+
+                    if legal_counts:
+                        friendly_names = {
+                            'statutes': 'Statutes',
+                            'precedent': 'Precedent',
+                            'interagency': 'Inter-Agency',
+                        }
+                        explainability_lines.append(
+                            "  Legal signals detected: "
+                            + ", ".join(
+                                f"{friendly_names.get(signal, signal.replace('_', ' ').title())} ({count})"
+                                for signal, count in sorted(legal_counts.items())
+                            )
+                        )
+
+                    if statute_citations:
+                        top_statutes = [citation for citation, _ in statute_citations.most_common(5)]
+                        explainability_lines.append(
+                            "  Statute citations: " + ", ".join(top_statutes)
+                        )
+                    if precedent_citations:
+                        top_precedents = [case for case, _ in precedent_citations.most_common(5)]
+                        explainability_lines.append(
+                            "  Precedent references: " + ", ".join(top_precedents)
+                        )
+                    if interagency_terms:
+                        top_agencies = [agency.upper() for agency, _ in interagency_terms.most_common(5)]
+                        explainability_lines.append(
+                            "  Inter-agency terms: " + ", ".join(top_agencies)
+                        )
+
+                if explainability_lines:
+                    result_lines.extend([
+                        f"",
+                        f"**Explainability Signals:**",
+                        *explainability_lines,
+                    ])
+
+                if adoption_lines:
+                    result_lines.extend([
+                        f"",
+                        f"**Taxonomy Adoption:**",
+                        *adoption_lines,
+                    ])
                 
                 # Add details if verbose
-                if args.verbose and result['results']:
+                if args.verbose and results_list:
                     result_lines.extend([
                         f"",
                         f"**Issue Details:**"
                     ])
-                    for issue_result in result['results']:
+                    for issue_result in results_list:
                         # All results are now from AI agent (dictionary format)
                         action = issue_result.get('action_taken', 'unknown').replace('_', ' ').title()
                         result_lines.append(f"  Issue #{issue_result['issue_number']}: {action}")
@@ -1254,6 +1751,9 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                             result_lines.append(f"    Labels added: {', '.join(issue_result['labels_added'])}")
                         if issue_result.get('message'):
                             result_lines.append(f"    Note: {issue_result['message']}")
+                        reason_codes = issue_result.get('reason_codes') or []
+                        if reason_codes:
+                            result_lines.append(f"    Reason Codes: {', '.join(reason_codes)}")
                         # Add AI-specific information
                         if ai_enabled and 'ai_analysis' in issue_result:
                             ai_analysis = issue_result['ai_analysis']
@@ -1263,8 +1763,90 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                                 result_lines.append(f"    Content Type: {ai_analysis['content_type']}")
                             if ai_analysis.get('urgency_level'):
                                 result_lines.append(f"    Urgency: {ai_analysis['urgency_level']}")
+                            combined_scores = ai_analysis.get('combined_scores') or {}
+                            if isinstance(combined_scores, dict) and combined_scores:
+                                top_scores = sorted(
+                                    combined_scores.items(),
+                                    key=lambda item: item[1],
+                                    reverse=True,
+                                )[:3]
+                                scores_text = ", ".join(
+                                    f"{name} {score:.0%}" for name, score in top_scores
+                                )
+                                result_lines.append(f"    Combined Scores: {scores_text}")
+                            entity_summary = ai_analysis.get('entity_summary') or {}
+                            if isinstance(entity_summary, dict) and entity_summary:
+                                coverage = entity_summary.get('coverage')
+                                counts = entity_summary.get('counts') or {}
+                                if isinstance(coverage, (int, float)):
+                                    counts_text = ", ".join(
+                                        f"{key}={counts.get(key, 0)}"
+                                        for key in sorted(counts)
+                                    ) or "no counts"
+                                    result_lines.append(
+                                        f"    Entity Coverage: {coverage:.0%} ({counts_text})"
+                                    )
+                                missing_entities = entity_summary.get('missing_base_entities') or []
+                                if missing_entities:
+                                    result_lines.append(
+                                        f"    Missing Entities: {', '.join(missing_entities)}"
+                                    )
+                            legal_signals = ai_analysis.get('legal_signals') or {}
+                            if isinstance(legal_signals, dict) and legal_signals:
+                                signal_parts = []
+                                for signal_name, value in legal_signals.items():
+                                    try:
+                                        numeric_value = float(value)
+                                    except (TypeError, ValueError):
+                                        continue
+                                    icon = "✔" if numeric_value > 0 else "✖"
+                                    friendly = {
+                                        'statutes': 'Statutes',
+                                        'precedent': 'Precedent',
+                                        'interagency': 'Inter-Agency',
+                                    }.get(signal_name, signal_name.replace('_', ' ').title())
+                                    signal_parts.append(f"{friendly} {icon}")
+                                if signal_parts:
+                                    result_lines.append(
+                                        f"    Legal Signals: {', '.join(signal_parts)}"
+                                    )
+
+                                statute_matches = [
+                                    citation.strip()
+                                    for citation in (legal_signals.get('statute_matches') or [])
+                                    if isinstance(citation, str) and citation.strip()
+                                ]
+                                if statute_matches:
+                                    result_lines.append(
+                                        "    Statute Citations: "
+                                        + ", ".join(statute_matches[:5])
+                                    )
+
+                                precedent_matches = [
+                                    case.strip()
+                                    for case in (legal_signals.get('precedent_matches') or [])
+                                    if isinstance(case, str) and case.strip()
+                                ]
+                                if precedent_matches:
+                                    result_lines.append(
+                                        "    Precedent References: "
+                                        + ", ".join(precedent_matches[:5])
+                                    )
+
+                                interagency_matches = [
+                                    agency.strip().upper()
+                                    for agency in (legal_signals.get('interagency_terms') or [])
+                                    if isinstance(agency, str) and agency.strip()
+                                ]
+                                if interagency_matches:
+                                    result_lines.append(
+                                        "    Inter-Agency Terms: "
+                                        + ", ".join(interagency_matches[:5])
+                                    )
                 
                 success = processed > 0 or total == 0
+                if taxonomy_metrics:
+                    result.setdefault('taxonomy_metrics', taxonomy_metrics)
                 return finalize(CliResult(
                     success=success,
                     message="\n".join(result_lines),

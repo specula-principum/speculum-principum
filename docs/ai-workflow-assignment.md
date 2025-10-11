@@ -135,9 +135,9 @@ Labels: [current labels]
 Body: [issue description]
 
 AVAILABLE WORKFLOWS:
-- Research Analysis: Comprehensive research and analysis
-  Trigger labels: research, analysis, deep-dive
-  Deliverables: research-overview, literature-review
+- Person Entity Profiling: Comprehensive witness and subject profiling
+  Trigger labels: person-entity-profiling, investigative, witness
+  Deliverables: entity-profile, credibility-matrix
 
 ...
 
@@ -149,11 +149,11 @@ TASK: Return JSON with workflow suggestions and confidence scores
 {
   "summary": "Brief analysis of issue purpose",
   "key_topics": ["topic1", "topic2"],
-  "suggested_workflows": ["Research Analysis"],
-  "confidence_scores": {"Research Analysis": 0.85},
-  "technical_indicators": ["research", "literature"],
+  "suggested_workflows": ["Person Entity Profiling"],
+  "confidence_scores": {"Person Entity Profiling": 0.85},
+  "technical_indicators": ["entity", "credibility"],
   "urgency_level": "medium",
-  "content_type": "research"
+  "content_type": "investigative"
 }
 ```
 
@@ -168,19 +168,19 @@ TASK: Return JSON with workflow suggestions and confidence scores
 ```text
 🤖 AI Workflow Assignment
 
-Assigned Workflow: Research Analysis
+Assigned Workflow: Person Entity Profiling
 Confidence: 85%
-Content Type: research  
+Content Type: investigative  
 Urgency: medium
 
 AI Analysis Summary:
-This issue requests comprehensive analysis of VR headset market trends and competitive landscape for strategic planning.
+This issue requests a comprehensive profile of a cooperating witness, including credibility and association analysis for trial preparation.
 
 Key Topics Identified:
-VR, market analysis, competitive research, strategic planning
+witness background, investigative leads, credibility assessment, associations
 
 Technical Indicators:
-market research, competitive analysis
+entity mapping, reliability scoring
 ```
 
 ### Medium Confidence Review Request
@@ -188,12 +188,12 @@ market research, competitive analysis
 🤖 Human Review Requested  
 
 The AI analysis suggests these workflows but confidence is moderate:
-- Research Analysis (confidence: 65%)
-- Technical Review (confidence: 62%)
+- Person Entity Profiling (confidence: 65%)
+- Witness Expert Reliability Assessment (confidence: 62%)
 
 AI Summary: Mixed technical and research requirements need clarification
 
-Content Type: research
+Content Type: investigative
 Urgency: medium
 
 Please review and either:
@@ -222,13 +222,13 @@ Issues Overview:
   Need review: 1
 
 Workflow Breakdown:
-  Research Analysis: 4
-  Technical Review: 3
+  Person Entity Profiling: 4
+  Witness Expert Reliability Assessment: 3
 
 Label Distribution:
   site-monitor: 15
-  research: 6
-  technical: 4
+  person-entity-profiling: 6
+  witness-expert-reliability-assessment: 4
 ```
 
 ### Log Analysis
