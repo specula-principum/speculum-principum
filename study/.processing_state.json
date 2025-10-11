@@ -9,7 +9,7 @@
       "site-monitor",
       "automated"
     ],
-    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #23**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable workflows:\n- `Research Analysis`: Comprehensive research and analysis workflow for detailed investigation\n- `Technical Review`: Structured technical review and assessment workflow\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #23**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   },
   "24": {
     "status": "needs_clarification",
@@ -21,7 +21,7 @@
       "site-monitor",
       "automated"
     ],
-    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #24**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable workflows:\n- `Research Analysis`: Comprehensive research and analysis workflow for detailed investigation\n- `Technical Review`: Structured technical review and assessment workflow\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #24**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   },
   "25": {
     "status": "needs_clarification",
@@ -33,7 +33,7 @@
       "site-monitor",
       "automated"
     ],
-    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #25**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable workflows:\n- `Research Analysis`: Comprehensive research and analysis workflow for detailed investigation\n- `Technical Review`: Structured technical review and assessment workflow\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #25**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Witness & Expert Reliability Assessment`: Scores credibility and flags conflicts for key testimony\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   },
   "26": {
     "status": "needs_clarification",
@@ -45,7 +45,7 @@
       "site-monitor",
       "automated"
     ],
-    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #26**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable workflows:\n- `Research Analysis`: Comprehensive research and analysis workflow for detailed investigation\n- `Technical Review`: Structured technical review and assessment workflow\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #26**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Place Intelligence Mapping`: Reviews venues, jurisdictional nuances, and inter-agency considerations\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   },
   "27": {
     "status": "needs_clarification",
@@ -57,6 +57,6 @@
       "site-monitor",
       "automated"
     ],
-    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #27**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable workflows:\n- `Research Analysis`: Comprehensive research and analysis workflow for detailed investigation\n- `Technical Review`: Structured technical review and assessment workflow\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #27**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n- `Inter-Agency Coordination Briefs`: Summarizes coordination touchpoints, contact hierarchies, and decision timelines\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   }
 }

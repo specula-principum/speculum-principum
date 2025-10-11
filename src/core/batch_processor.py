@@ -37,6 +37,7 @@ from ..utils.telemetry import (
     normalize_publishers,
     publish_telemetry_event,
 )
+from ..workflow.workflow_state_manager import WORKFLOW_LABEL_PREFIX
 
 
 @dataclass
@@ -469,6 +470,45 @@ class BatchProcessor:
         if filters.get('additional_labels'):
             issue_labels = [label.name for label in getattr(issue, 'labels', [])]
             if not any(label in issue_labels for label in filters['additional_labels']):
+                return True
+
+        if filters.get('workflow_category'):
+            if not self._issue_matches_workflow_category(issue, filters['workflow_category']):
+                return True
+
+        return False
+
+    def _issue_matches_workflow_category(self, issue: Any, categories: Iterable[str]) -> bool:
+        """Return True if issue has a workflow label matching any category."""
+
+        matcher = getattr(self.issue_processor, 'workflow_matcher', None)
+        if matcher is None:
+            return False
+
+        categories_set = {category.lower() for category in categories if isinstance(category, str)}
+        if not categories_set:
+            return False
+
+        issue_labels: List[str] = []
+        for label in getattr(issue, 'labels', []) or []:
+            if isinstance(label, str):
+                issue_labels.append(label.lower())
+            else:
+                name = getattr(label, 'name', None)
+                if isinstance(name, str):
+                    issue_labels.append(name.lower())
+        workflow_slugs = [
+            label[len(WORKFLOW_LABEL_PREFIX):]
+            for label in issue_labels
+            if label.startswith(WORKFLOW_LABEL_PREFIX)
+        ]
+
+        if not workflow_slugs:
+            return False
+
+        for slug in workflow_slugs:
+            workflow = matcher.get_workflow_by_slug(slug)
+            if workflow and workflow.category and workflow.category.lower() in categories_set:
                 return True
 
         return False

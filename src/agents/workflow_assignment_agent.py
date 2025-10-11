@@ -87,6 +87,7 @@ class WorkflowAssignmentAgent:
         repo_name: str,
         config_path: str = "config.yaml",
         workflow_directory: str = "docs/workflow/deliverables",
+        allowed_categories: Optional[Iterable[str]] = None,
         telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None,
     ):
         """
@@ -102,6 +103,11 @@ class WorkflowAssignmentAgent:
         self.github = GitHubIssueCreator(github_token, repo_name)
         self.repo_name = repo_name
         self.telemetry_publishers = normalize_publishers(telemetry_publishers)
+        self.allowed_categories = (
+            sorted({category.lower() for category in allowed_categories})
+            if allowed_categories
+            else None
+        )
         
         # Load configuration
         try:
@@ -114,8 +120,17 @@ class WorkflowAssignmentAgent:
         # Initialize workflow matcher
         try:
             self.workflow_matcher = WorkflowMatcher(workflow_directory)
-            workflow_count = len(self.workflow_matcher.get_available_workflows())
-            self.logger.info(f"Initialized agent with {workflow_count} available workflows")
+            if self.allowed_categories:
+                workflow_count = len(
+                    self.workflow_matcher.get_available_workflows(categories=self.allowed_categories)
+                )
+            else:
+                workflow_count = len(self.workflow_matcher.get_available_workflows())
+            self.logger.info(
+                "Initialized agent with %d available workflows (category filter=%s)",
+                workflow_count,
+                ",".join(self.allowed_categories or []) or "none",
+            )
         except Exception as e:
             self.logger.error(f"Failed to initialize workflow matcher: {e}")
             raise
@@ -220,7 +235,14 @@ class WorkflowAssignmentAgent:
             issue_labels = issue_data.get('labels', [])
             
             # Use workflow matcher to find best match
-            workflow, message = self.workflow_matcher.get_best_workflow_match(issue_labels)
+            matcher_kwargs: Dict[str, Any] = {}
+            if self.allowed_categories:
+                matcher_kwargs['categories'] = self.allowed_categories
+
+            workflow, message = self.workflow_matcher.get_best_workflow_match(
+                issue_labels,
+                **matcher_kwargs,
+            )
             
             if workflow:
                 self.logger.debug(f"Issue #{issue_data['number']}: {message}")
@@ -520,7 +542,10 @@ class WorkflowAssignmentAgent:
                 else:
                     # Get general suggestions
                     current_issue_labels = [label.name for label in current_issue.labels]
-                    general_suggestions = self.workflow_matcher.get_workflow_suggestions(current_issue_labels)
+                    general_suggestions = self.workflow_matcher.get_workflow_suggestions(
+                        current_issue_labels,
+                        categories=self.allowed_categories,
+                    )
                     if general_suggestions:
                         comment_parts.extend([
                             "\n**Available workflow labels:**\n",
@@ -597,7 +622,10 @@ class WorkflowAssignmentAgent:
                 return self.assign_workflow_to_issue(issue_number, workflow, dry_run)
             else:
                 # No clear match - request clarification
-                suggestions = self.workflow_matcher.get_workflow_suggestions(list(issue_labels))
+                suggestions = self.workflow_matcher.get_workflow_suggestions(
+                    list(issue_labels),
+                    categories=self.allowed_categories,
+                )
                 return self.request_clarification_for_issue(
                     issue_number, 
                     analysis_message,
@@ -826,7 +854,9 @@ class WorkflowAssignmentAgent:
                     stats['feature_labeled'] += 1
                 
                 # Count workflow assignments
-                workflows = self.workflow_matcher.get_available_workflows()
+                workflows = self.workflow_matcher.get_available_workflows(
+                    categories=self.allowed_categories
+                )
                 for workflow in workflows:
                     workflow_labels = set(workflow.trigger_labels)
                     if workflow_labels.intersection(issue_labels):

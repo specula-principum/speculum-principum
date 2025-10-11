@@ -151,14 +151,14 @@ class TestIssueResultFormatter:
         result = {
             'status': 'completed',
             'issue': 123,
-            'workflow': 'research-analysis',
+            'workflow': 'person-entity-profiling',
             'files_created': ['analysis.md', 'summary.md']
         }
         
         formatted = IssueResultFormatter.format_single_result(result)
         
         assert "✅ Issue #123: completed" in formatted
-        assert "📋 Workflow: research-analysis" in formatted
+        assert "📋 Workflow: person-entity-profiling" in formatted
         assert "📄 Created 2 file(s)" in formatted
     
     def test_format_error_result(self):

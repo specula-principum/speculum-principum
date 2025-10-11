@@ -124,29 +124,29 @@ agent:
             # Create workflow directory
             workflow_dir = temp_path / "docs" / "workflow" / "deliverables"
             workflow_dir.mkdir(parents=True)
-            
+
             # Create sample workflow
-            workflow_file = workflow_dir / "research.yaml"
+            workflow_file = workflow_dir / "person-entity-profiling.yaml"
             workflow_content = """
-name: "Research Analysis"
-description: "Research and analysis workflow"
+name: "Person Entity Profiling"
+description: "Investigative profiling workflow"
 version: "1.0"
 trigger_labels:
-  - "research"
-  - "analysis"
+    - "person-entity-profiling"
+    - "investigative"
 deliverables:
-  - name: "Initial Research"
-    description: "Basic research document"
-    type: "document"
-    format: "markdown"
-    required_sections: ["overview", "findings"]
+    - name: "Entity Profile"
+        description: "Comprehensive person entity profile"
+        type: "document"
+        format: "markdown"
+        required_sections: ["overview", "associations", "credibility"]
 processing:
-  timeout_minutes: 30
+    timeout_minutes: 30
 validation:
-  min_word_count: 200
+    min_word_count: 200
 output:
-  folder_structure: "issue_{issue_number}"
-  file_pattern: "{deliverable_name}.md"
+    folder_structure: "issue_{issue_number}/person-entity-profiling"
+    file_pattern: "{deliverable_name}.md"
 """
             workflow_file.write_text(workflow_content)
             

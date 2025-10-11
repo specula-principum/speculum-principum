@@ -69,10 +69,17 @@ speculum-principum/
 │   └── workflow/
 │       └── deliverables/            # Workflow definition files
 ├── templates/
-│   ├── base_deliverable.md          # Base template for documents
-│   └── research_analysis.md         # Research-specific template
-├── examples/
-│   └── sample-workflows/            # Example workflow definitions
+│   ├── entity_backbone.md           # Standardized entity backbone section
+│   ├── person_risk_core.md          # Person-centric risk assessment core
+│   ├── place_intelligence_core.md   # Jurisdiction and venue intelligence core
+│   ├── evidence_catalog_core.md     # Asset and evidence cataloguing core
+│   ├── statute_research_core.md     # Statutory and regulatory research stack
+│   ├── precedent_explorer_core.md   # Case law precedent explorer core
+│   ├── lead_development_core.md     # Investigative lead development planner
+│   ├── coordination_brief_core.md   # Inter-agency coordination brief core
+│   ├── compliance_monitoring_core.md # Compliance and remediation scorecard
+│   ├── gao_compliance_appendix.md   # GAO compliance appendix shared block
+│   └── confidentiality_banner.md    # Confidentiality banner include
 ├── study/                           # Generated content output directory
 ├── tests/
 │   ├── unit/                        # Unit tests
@@ -197,27 +204,57 @@ The Issue Processor is an intelligent agent that automatically processes GitHub 
 
 #### 1. Create Workflow Definitions
 
-Create workflow files in `docs/workflow/deliverables/`:
+Create workflow files in `docs/workflow/deliverables/criminal-law/`:
 
 ```yaml
-# docs/workflow/deliverables/research-analysis.yaml
-name: "Research Analysis Workflow"
-description: "Comprehensive research and analysis"
-version: "1.0.0"
+# docs/workflow/deliverables/criminal-law/person-entity-profiling.yaml
+name: "Person Entity Profiling & Risk Flagging"
+description: "Profiles involved individuals, scores risk posture, and identifies conflicts relevant to GAO-aligned criminal matters."
+workflow_version: "1.0.0"
+category: "entity-foundation"
+priority: "high"
+confidence_threshold: 0.75
 
 trigger_labels:
-  - "research"
-  - "analysis"
+  - "person-profile"
+  - "risk-flag"
+  - "criminal-law"
 
-output:
-  folder_structure: "study/{issue_number}/research"
-  file_naming: "{deliverable_name}.md"
+required_entities:
+  - entity_type: "person"
+    min_count: 1
+    min_confidence: 0.7
+  - entity_type: "place"
+    min_count: 0
+    min_confidence: 0.6
+  - entity_type: "thing"
+    min_count: 0
+    min_confidence: 0.6
+
+deliverable_templates:
+  - "entity_backbone"
+  - "person_risk_core"
+  - "gao_compliance_appendix"
 
 deliverables:
-  - name: "research_summary"
-    template: "research_analysis.md"
+  - name: "entity-backbone"
+    title: "Entity Backbone"
+    description: "Standardized person/place/thing tables with confidentiality banner."
+    template: "entity_backbone.md"
     required: true
-    description: "Research findings and analysis"
+    order: 1
+  - name: "person-risk-core"
+    title: "Risk Posture Core"
+    description: "Risk matrix, conflict markers, and sanctions checks for all involved persons."
+    template: "person_risk_core.md"
+    required: true
+    order: 2
+  - name: "gao-compliance-appendix"
+    title: "GAO Compliance Appendix"
+    description: "Citations, audit evidence, and decision log for GAO review."
+    template: "gao_compliance_appendix.md"
+    required: true
+    order: 3
 ```
 
 #### 2. Configure Agent Settings
@@ -247,7 +284,7 @@ python main.py process-issues --issue 123 --dry-run
 
 #### 4. Issue Processing Flow
 
-1. **Label your issue** with `site-monitor` and workflow-specific labels (e.g., `research`)
+1. **Label your issue** with `site-monitor` and workflow-specific labels (e.g., `person-profile`, `criminal-law`)
 2. **Agent assigns itself** and begins processing
 3. **Workflow executes** and generates deliverables in the `study/` directory
 4. **Git branch created** with generated content
@@ -264,12 +301,12 @@ python main.py assign-workflows --statistics           # Show assignment statist
 # Issue processing
 python main.py process-issues --issue 123              # Process specific issue
 python main.py process-issues --batch                  # Process all eligible issues
-python main.py process-issues --workflow research      # Use specific workflow
+python main.py process-issues --workflow-category legal-research  # Filter by taxonomy category
 
 # Workflow management
 python main.py list-workflows                          # Show available workflows
 python main.py validate-workflows                      # Check workflow syntax
-python main.py workflow-stats                          # Show usage statistics
+python main.py workflow-stats                          # Show taxonomy adoption statistics
 
 # Status and monitoring
 python main.py status --show-processing                # Show active processing
@@ -278,12 +315,11 @@ python main.py list-processing                         # List in-progress issues
 
 ### Example Workflows
 
-The repository includes example workflows in `examples/sample-workflows/`:
+Explore the GAO-aligned criminal law workflows under `docs/workflow/deliverables/criminal-law/`:
 
-- **Simple Research** (`simple-research.yaml`): Basic research and investigation
-- **Security Assessment** (`security-assessment.yaml`): Comprehensive security analysis
-- **Code Review** (`code-review.yaml`): Technical code and architecture review
-- **Quick Analysis** (`quick-analysis.yaml`): Fast-turnaround urgent analysis
+- **Person Entity Profiling & Risk Flagging** (`person-entity-profiling.yaml`): Builds entity dossiers and conflict checks.
+- **Statutory & Regulatory Research Tracker** (`statutory-regulatory-research-tracker.yaml`): Compiles statute digests and compliance checklists.
+- **Inter-Agency Coordination Briefs** (`inter-agency-coordination-briefs.yaml`): Generates coordination playbooks for GAO engagements.
 
 ### Documentation
 
@@ -291,7 +327,7 @@ For comprehensive information about creating and using workflows:
 
 - 📖 **[Issue Processor Documentation](docs/issue-processor.md)**: Complete system documentation
 - 🛠️ **[Workflow Creation Guide](docs/workflow-creation-guide.md)**: Step-by-step workflow creation
-- 💡 **[Example Workflows](examples/sample-workflows/)**: Sample workflow definitions
+- 💡 **[Criminal Law Workflows](docs/workflow/deliverables/criminal-law/)**: GAO-aligned workflow definitions
 
 ## 📖 Detailed Configuration
 

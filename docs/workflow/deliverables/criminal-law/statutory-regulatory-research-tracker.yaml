@@ -1,0 +1,99 @@
+# Statutory & Regulatory Research Tracker Workflow
+# Tracks applicable statutes, GAO directives, and compliance tasks.
+
+name: "Statutory & Regulatory Research Tracker"
+description: "Aggregates pertinent statutes, GAO directives, and compliance checkpoints for criminal advisory engagements."
+workflow_version: "1.0.0"
+category: "legal-research"
+priority: "high"
+confidence_threshold: 0.78
+
+trigger_labels:
+  - "statute-review"
+  - "gao-directive"
+  - "criminal-law"
+
+required_entities:
+  - entity_type: "person"
+    min_count: 0
+    min_confidence: 0.65
+  - entity_type: "place"
+    min_count: 0
+    min_confidence: 0.6
+  - entity_type: "thing"
+    min_count: 0
+    min_confidence: 0.6
+  - entity_type: "organization"
+    min_count: 1
+    min_confidence: 0.65
+
+deliverable_templates:
+  - "confidentiality_banner"
+  - "shared_entity_tables"
+  - "shared_gao_citation_block"
+  - "entity_backbone"
+  - "statute_research_core"
+  - "gao_compliance_appendix"
+
+audit_trail:
+  required: true
+  fields:
+    - "model_version"
+    - "reason_codes"
+    - "entity_evidence"
+    - "statutory_sources"
+    - "citation_sources"
+
+deliverables:
+  - name: "entity-backbone"
+    title: "Entity Backbone"
+    description: "Entity tables highlighting statute owners, jurisdictions, and related assets."
+    template: "entity_backbone.md"
+    required: true
+    order: 1
+    required_sections:
+      - "Entity Backbone Summary"
+      - "Standardized Entity Tables"
+      - "Relationship Overview"
+      - "Event Timeline"
+      - "Extraction Highlights"
+  - name: "statute-research-core"
+    title: "Statute Research Core"
+    description: "Digest of applicable statutes, GAO directives, and compliance checklist."
+    template: "statute_research_core.md"
+    required: true
+    order: 2
+    required_sections:
+      - "Summary"
+      - "Statute Digest"
+      - "GAO Directive Alignment"
+      - "Compliance Checklist"
+      - "Referenced Indicators"
+  - name: "gao-compliance-appendix"
+    title: "GAO Compliance Appendix"
+    description: "Update monitor, audit log, and GAO liaison briefing points."
+    template: "gao_compliance_appendix.md"
+    required: true
+    order: 3
+    required_sections:
+      - "Audit Snapshot"
+      - "Citations & Authorities"
+      - "Evidence & Audit Trail"
+      - "Decision Log"
+      - "Review Sign-Off"
+
+processing:
+  timeout: 170
+  max_retries: 1
+
+validation:
+  min_word_count: 270
+  required_sections:
+    - "Statute Digest"
+    - "GAO Directive Alignment"
+    - "Compliance Checklist"
+
+output:
+  format: "markdown"
+  folder_structure: "artifacts/criminal-law/{issue_number}-statute-research"
+  directory: "artifacts/criminal-law"

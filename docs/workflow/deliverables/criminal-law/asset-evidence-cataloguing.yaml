@@ -1,0 +1,99 @@
+# Asset & Evidence Cataloguing Workflow
+# Catalogues evidentiary items, chain-of-custody, and admissibility posture.
+
+name: "Asset & Evidence Cataloguing"
+description: "Maintains a GAO-ready ledger of evidence, chain-of-custody continuity, and admissibility assessments."
+workflow_version: "1.0.0"
+category: "entity-foundation"
+priority: "high"
+confidence_threshold: 0.74
+
+trigger_labels:
+  - "evidence"
+  - "asset-trace"
+  - "criminal-law"
+
+required_entities:
+  - entity_type: "person"
+    min_count: 0
+    min_confidence: 0.65
+  - entity_type: "place"
+    min_count: 0
+    min_confidence: 0.6
+  - entity_type: "thing"
+    min_count: 1
+    min_confidence: 0.7
+  - entity_type: "organization"
+    min_count: 0
+    min_confidence: 0.6
+
+deliverable_templates:
+  - "confidentiality_banner"
+  - "shared_entity_tables"
+  - "shared_gao_citation_block"
+  - "entity_backbone"
+  - "evidence_catalog_core"
+  - "gao_compliance_appendix"
+
+audit_trail:
+  required: true
+  fields:
+    - "model_version"
+    - "reason_codes"
+    - "entity_evidence"
+    - "chain_of_custody_references"
+    - "citation_sources"
+
+deliverables:
+  - name: "entity-backbone"
+    title: "Entity Backbone"
+    description: "Entity tables capturing custodians, locations, and assets."
+    template: "entity_backbone.md"
+    required: true
+    order: 1
+    required_sections:
+      - "Entity Backbone Summary"
+      - "Standardized Entity Tables"
+      - "Relationship Overview"
+      - "Event Timeline"
+      - "Extraction Highlights"
+  - name: "evidence-catalog-core"
+    title: "Evidence Catalog Core"
+    description: "Chain-of-custody ledger, admissibility scoring, and custody gaps."
+    template: "evidence_catalog_core.md"
+    required: true
+    order: 2
+    required_sections:
+      - "Summary"
+      - "Evidence Ledger"
+      - "Chain-of-Custody Checklist"
+      - "Admissibility Assessment"
+      - "Analyst Notes"
+  - name: "gao-compliance-appendix"
+    title: "GAO Compliance Appendix"
+    description: "Audit metadata, evidentiary references, and GAO decision log."
+    template: "gao_compliance_appendix.md"
+    required: true
+    order: 3
+    required_sections:
+      - "Audit Snapshot"
+      - "Citations & Authorities"
+      - "Evidence & Audit Trail"
+      - "Decision Log"
+      - "Review Sign-Off"
+
+processing:
+  timeout: 160
+  max_retries: 1
+
+validation:
+  min_word_count: 260
+  required_sections:
+    - "Evidence Ledger"
+    - "Chain-of-Custody Checklist"
+    - "Admissibility Assessment"
+
+output:
+  format: "markdown"
+  folder_structure: "artifacts/criminal-law/{issue_number}-asset-evidence"
+  directory: "artifacts/criminal-law"

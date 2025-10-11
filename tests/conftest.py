@@ -397,16 +397,16 @@ def e2e_config(e2e_temp_dir):
 
 
 @pytest.fixture
-def mock_research_issue():
-    """Mock GitHub issue for research workflow testing."""
+def mock_profiling_issue():
+    """Mock GitHub issue for person-entity-profiling workflow testing."""
     issue = Mock()
     issue.number = 123
-    issue.title = "Research Analysis Test Issue"
-    issue.body = "This is a test issue for research analysis workflow"
+    issue.title = "Person Entity Profiling Test Issue"
+    issue.body = "This is a test issue for person entity profiling workflow"
     issue.labels = [
         Mock(name="site-monitor"),
-        Mock(name="research"),
-        Mock(name="analysis")
+        Mock(name="person-entity-profiling"),
+        Mock(name="investigative")
     ]
     issue.html_url = "https://github.com/testorg/testrepo/issues/123"
     issue.state = "open"
@@ -437,123 +437,7 @@ def mock_technical_issue():
 
 
 @pytest.fixture
-def research_workflow_data(e2e_temp_dir):
-    """Create research workflow configuration for testing."""
-    import yaml
-    
-    workflow_data = {
-        'name': 'Research Analysis',
-        'description': 'Comprehensive research and analysis workflow for detailed investigation',
-        'version': '1.0.0',
-        'trigger_labels': ['research', 'analysis', 'deep-dive'],
-        'output': {
-            'folder_structure': 'study/{issue_number}-research-analysis',
-            'file_pattern': '{deliverable_name}.md',
-            'branch_pattern': 'research-analysis/issue-{issue_number}'
-        },
-        'deliverables': [
-            {
-                'name': 'research-overview',
-                'title': 'Research Overview',
-                'description': 'High-level overview and scope definition',
-                'template': 'base_deliverable.md',
-                'required': True,
-                'order': 1
-            },
-            {
-                'name': 'background-analysis',
-                'title': 'Background Analysis',
-                'description': 'Historical context and existing knowledge review',
-                'template': 'base_deliverable.md',
-                'required': True,
-                'order': 2
-            },
-            {
-                'name': 'methodology',
-                'title': 'Research Methodology',
-                'description': 'Approach and methods used for investigation',
-                'template': 'base_deliverable.md',
-                'required': True,
-                'order': 3
-            },
-            {
-                'name': 'findings',
-                'title': 'Key Findings',
-                'description': 'Primary research results and discoveries',
-                'template': 'base_deliverable.md',
-                'required': True,
-                'order': 4
-            }
-        ]
-    }
-    
-    workflow_file = e2e_temp_dir / "workflows" / "research-analysis.yaml"
-    with open(workflow_file, 'w') as f:
-        yaml.dump(workflow_data, f)
-    
-    return workflow_data
-
-
-@pytest.fixture
-def technical_workflow_data(e2e_temp_dir):
-    """Create technical review workflow configuration for testing."""
-    import yaml
-    
-    workflow_data = {
-        'name': 'Technical Review',
-        'description': 'Structured technical review and assessment workflow',
-        'version': '1.0.0',
-        'trigger_labels': ['technical-review', 'code-review', 'architecture', 'security-review'],
-        'output': {
-            'folder_structure': 'study/{issue_number}-technical-review',
-            'file_pattern': '{deliverable_name}.md',
-            'branch_pattern': 'technical-review/issue-{issue_number}'
-        },
-        'deliverables': [
-            {
-                'name': 'technical-overview',
-                'title': 'Technical Overview',
-                'description': 'High-level technical assessment and scope',
-                'template': 'base_deliverable.md',
-                'required': True,
-                'order': 1
-            },
-            {
-                'name': 'architecture-analysis',
-                'title': 'Architecture Analysis',
-                'description': 'System architecture review and assessment',
-                'template': 'base_deliverable.md',
-                'required': True,
-                'order': 2
-            },
-            {
-                'name': 'security-assessment',
-                'title': 'Security Assessment',
-                'description': 'Security implications and vulnerability analysis',
-                'template': 'base_deliverable.md',
-                'required': True,
-                'order': 3
-            },
-            {
-                'name': 'performance-analysis',
-                'title': 'Performance Analysis',
-                'description': 'Performance characteristics and optimization opportunities',
-                'template': 'base_deliverable.md',
-                'required': True,
-                'order': 4
-            }
-        ]
-    }
-    
-    workflow_file = e2e_temp_dir / "workflows" / "technical-review.yaml"
-    with open(workflow_file, 'w') as f:
-        yaml.dump(workflow_data, f)
-    
-    return workflow_data
-
-
-@pytest.fixture
-def mock_github_client_e2e(mock_research_issue, mock_technical_issue):
+def mock_github_client_e2e(mock_profiling_issue, mock_technical_issue):
     """Enhanced mock GitHub client for e2e testing."""
     github = Mock()
     repo = Mock()
@@ -567,7 +451,7 @@ def mock_github_client_e2e(mock_research_issue, mock_technical_issue):
     # Setup issue retrieval
     def get_issue(number):
         if number == 123:
-            return mock_research_issue
+            return mock_profiling_issue
         elif number == 456:
             return mock_technical_issue
         else:

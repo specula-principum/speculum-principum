@@ -17,10 +17,11 @@ generation services in the future.
 
 import os
 import re
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict, is_dataclass
 
 from .workflow_matcher import WorkflowInfo
 from .template_engine import TemplateEngine, TemplateMetadata
@@ -109,6 +110,113 @@ class DeliverableGenerator:
         # Backward compatibility alias
         self.content_strategies = self.fallback_strategies
     
+    @staticmethod
+    def _normalize_template_identifier(template_name: str) -> str:
+        """Normalize template identifiers, stripping .md extensions and leading separators."""
+        if not template_name:
+            return template_name
+        normalized = template_name.strip().replace('\\', '/').lstrip('./')
+        if normalized.endswith('.md'):
+            normalized = normalized[:-3]
+        return normalized.strip('/')
+
+    @staticmethod
+    def _get_field(data: Any, field: str, default: Any = None) -> Any:
+        """Safely retrieve an attribute or dictionary key from a data object."""
+        if hasattr(data, field):
+            try:
+                return getattr(data, field)
+            except AttributeError:
+                return default
+        if isinstance(data, dict):
+            return data.get(field, default)
+        return default
+
+    @staticmethod
+    def _format_confidence(value: Optional[Union[int, float]]) -> str:
+        """Format confidence scores into a human-readable string."""
+        if isinstance(value, (int, float)):
+            if value < 0:
+                value = 0
+            if value > 1:
+                value = min(value / 100, 1.0)
+            return f"{value:.2f}"
+        return "—"
+
+    @staticmethod
+    def _format_percentage(value: Optional[Union[int, float]]) -> str:
+        """Format a numeric value as percentage (0-100%)."""
+        if isinstance(value, (int, float)):
+            fraction = value
+            if value > 1:
+                fraction = value / 100
+            if fraction < 0:
+                fraction = 0
+            if fraction > 1:
+                fraction = 1
+            return f"{fraction * 100:.0f}%"
+        return "—"
+
+    @staticmethod
+    def _format_list(values: Any) -> str:
+        """Convert a list-like object to a comma-separated string."""
+        if values is None:
+            return ""
+        if isinstance(values, str):
+            return values
+        if isinstance(values, (list, tuple, set)):
+            filtered = [str(v) for v in values if v not in (None, "")]
+            return ", ".join(filtered)
+        return str(values)
+
+    @staticmethod
+    def _format_entity_label(entity_type: str) -> str:
+        """Provide a human-readable label for an entity type."""
+        mapping = {
+            "person": "Person Entities",
+            "organization": "Organization Entities",
+            "place": "Place Entities",
+            "thing": "Asset / Evidence Entities",
+            "asset": "Asset Records",
+            "evidence": "Evidence Records",
+            "lead": "Investigative Leads",
+            "case": "Case References",
+            "plan": "Remediation Plans",
+            "agency": "Agency Contacts",
+            "witness": "Witness Profiles",
+        }
+        cleaned = entity_type.replace('-', ' ').replace('_', ' ').strip()
+        return mapping.get(entity_type.lower(), cleaned.title() if cleaned else "Entities")
+
+    @staticmethod
+    def _coerce_to_dict(value: Any) -> Dict[str, Any]:
+        """Convert dataclass or object instances to dictionaries when possible."""
+        if isinstance(value, dict):
+            return dict(value)
+        if is_dataclass(value) and not isinstance(value, type):
+            return asdict(value)
+
+        result: Dict[str, Any] = {}
+        for attr in [
+            "name",
+            "type",
+            "confidence",
+            "context",
+            "attributes",
+            "jurisdiction",
+            "role",
+            "event_type",
+            "timestamp",
+            "entities_involved",
+            "description",
+            "relationship",
+            "entity1",
+            "entity2",
+        ]:
+            if hasattr(value, attr):
+                result[attr] = getattr(value, attr)
+        return result
+
     def generate_deliverable(self,
                            issue_data: Any,  # Use Any to avoid type conflicts
                            deliverable_spec: DeliverableSpec,
@@ -155,11 +263,49 @@ class DeliverableGenerator:
     
     def _template_exists(self, template_name: str) -> bool:
         """Check if a template exists."""
-        try:
-            available_templates = self.template_engine.list_templates()
-            return template_name in available_templates
-        except Exception:
+        if not template_name:
             return False
+
+        # Generate candidate identifiers to check including aliases and normalized forms
+        candidates = {
+            template_name,
+            self._normalize_template_identifier(template_name),
+        }
+
+        if template_name.endswith(".md"):
+            without_ext = template_name[:-3]
+            candidates.add(without_ext)
+            candidates.add(self._normalize_template_identifier(without_ext))
+        else:
+            with_ext = f"{template_name}.md"
+            candidates.add(with_ext)
+            candidates.add(self._normalize_template_identifier(with_ext))
+
+        # Include known alias targets so indirect references resolve correctly
+        expanded_candidates = set()
+        for candidate in list(candidates):
+            if not candidate:
+                continue
+            expanded_candidates.add(candidate)
+            alias_target = getattr(self.template_engine, "_resolve_template_alias", lambda _: None)(candidate)
+            if alias_target:
+                expanded_candidates.add(alias_target)
+                expanded_candidates.add(self._normalize_template_identifier(alias_target))
+                expanded_candidates.add(f"{self._normalize_template_identifier(alias_target)}.md")
+
+        for candidate in expanded_candidates:
+            if not candidate:
+                continue
+            try:
+                self.template_engine.load_template(candidate)
+                return True
+            except FileNotFoundError:
+                continue
+            except ValueError:
+                # Template exists but failed validation; treat as present so caller can surface error
+                return True
+
+        return False
     
     def _generate_from_template(self, 
                               template_name: str, 
@@ -178,7 +324,27 @@ class DeliverableGenerator:
         
         # Render template
         content = self.template_engine.render_template(template_name, context, sections)
+        self._validate_rendered_sections(content, deliverable_spec)
         return content
+
+    def _validate_rendered_sections(self, content: str, deliverable_spec: DeliverableSpec) -> None:
+        """Ensure rendered content includes all required section headings."""
+        if not deliverable_spec.sections:
+            return
+
+        missing_sections: List[str] = []
+        for section_name in deliverable_spec.sections:
+            heading_pattern = re.compile(rf"^#+\s*{re.escape(section_name)}\b", re.MULTILINE)
+            if not heading_pattern.search(content):
+                missing_sections.append(section_name)
+
+        if missing_sections:
+            raise ValueError(
+                "Missing required sections in deliverable '"
+                + deliverable_spec.name
+                + "': "
+                + ", ".join(missing_sections)
+            )
     
     def _generate_from_fallback(self, template_name: str, context: Dict[str, Any]) -> str:
         """Generate content using fallback strategies."""
@@ -199,7 +365,12 @@ class DeliverableGenerator:
             
             fallback_context["issue"] = IssueNamespace(issue_dict)
         
-        strategy = self.fallback_strategies.get(template_name, self._generate_basic_content)
+        normalized = self._normalize_template_identifier(template_name)
+        strategy = (
+            self.fallback_strategies.get(template_name)
+            or self.fallback_strategies.get(normalized)
+            or self._generate_basic_content
+        )
         content = strategy(fallback_context)
         return self._format_content(content, fallback_context)
     
@@ -225,7 +396,306 @@ class DeliverableGenerator:
         if additional_context:
             context.update(additional_context)
         
+        extracted_content = context.get('extracted_content')
+        if extracted_content is not None:
+            structured_context = self._build_structured_content_context(extracted_content)
+            context.update(structured_context)
+        else:
+            context.setdefault('entity_groups', [])
+            context.setdefault('entity_index', {})
+
         return context
+
+    def _build_structured_content_context(self, extracted_content: Any) -> Dict[str, Any]:
+        """Create a normalized context payload from structured extraction results."""
+        structured_dict = self._structured_to_dict(extracted_content)
+
+        entity_context = self._build_entity_context(extracted_content, structured_dict)
+        relationship_summary = self._prepare_relationship_summary(extracted_content, structured_dict)
+        event_timeline = self._prepare_event_timeline(extracted_content, structured_dict)
+        extraction_metadata = self._prepare_extraction_metadata(
+            extracted_content,
+            structured_dict,
+            entity_context,
+        )
+
+        return {
+            'extracted_content': extracted_content,
+            'extracted_content_dict': structured_dict,
+            'entity_groups': entity_context['groups'],
+            'entity_index': entity_context['index'],
+            'entity_counts': entity_context['counts'],
+            'entity_summary': entity_context['summary'],
+            'entity_foundation': entity_context['foundation'],
+            'relationship_summary': relationship_summary,
+            'event_timeline': event_timeline,
+            'extraction_metadata': extraction_metadata,
+        }
+
+    def _structured_to_dict(self, extracted_content: Any) -> Dict[str, Any]:
+        """Convert structured content objects into serializable dictionaries."""
+        if extracted_content is None:
+            return {}
+
+        if isinstance(extracted_content, dict):
+            return dict(extracted_content)
+
+        if is_dataclass(extracted_content) and not isinstance(extracted_content, type):
+            return asdict(extracted_content)
+
+        result: Dict[str, Any] = {}
+        for field in [
+            'summary',
+            'entities',
+            'relationships',
+            'events',
+            'indicators',
+            'key_topics',
+            'urgency_level',
+            'content_type',
+            'confidence_score',
+            'extraction_timestamp',
+        ]:
+            value = self._get_field(extracted_content, field)
+            if value is not None:
+                result[field] = value
+        return result
+
+    def _build_entity_context(
+        self,
+        extracted_content: Any,
+        structured_dict: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        entities_source = self._get_field(extracted_content, 'entities')
+        if not entities_source:
+            entities_source = structured_dict.get('entities', [])
+
+        groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+        for raw_entity in entities_source or []:
+            entity_dict = self._coerce_to_dict(raw_entity)
+            if not entity_dict:
+                continue
+
+            name = entity_dict.get('name') or 'Unnamed Entity'
+            entity_type = (entity_dict.get('type') or 'other').lower()
+            safe_type = entity_type.replace(' ', '_').replace('-', '_') or 'other'
+
+            attributes = entity_dict.get('attributes') or {}
+            jurisdiction = attributes.get('jurisdiction') or entity_dict.get('jurisdiction')
+            role = attributes.get('role') or attributes.get('classification') or entity_dict.get('role')
+            risk_score_raw = attributes.get('risk_score') or attributes.get('risk')
+            risk_flags = attributes.get('risk_flags') or attributes.get('flags')
+            conflicts = attributes.get('conflicts') or attributes.get('conflict_markers')
+
+            display_role = (
+                role
+                or entity_dict.get('context')
+                or attributes.get('title')
+                or attributes.get('position')
+            )
+            display_notes = attributes.get('notes') or attributes.get('summary') or ''
+
+            item = {
+                'name': name,
+                'type': entity_type,
+                'role': role,
+                'jurisdiction': jurisdiction,
+                'jurisdiction_display': jurisdiction or '—',
+                'context': entity_dict.get('context') or '',
+                'confidence_raw': entity_dict.get('confidence'),
+                'confidence': self._format_confidence(entity_dict.get('confidence')),
+                'display_role': display_role or '—',
+                'notes': display_notes,
+                'display_notes': display_notes or '—',
+                'risk_score_raw': risk_score_raw,
+                'risk_score': self._format_confidence(risk_score_raw),
+                'risk_flags': self._format_list(risk_flags),
+                'conflicts': self._format_list(conflicts),
+                'attributes': attributes,
+            }
+
+            groups[safe_type].append(item)
+
+        # Ensure base entity keys exist for template access
+        for base in ('person', 'place', 'thing', 'organization'):
+            groups.setdefault(base, [])
+
+        for optional in ('lead', 'case', 'plan', 'witness', 'expert', 'agency', 'asset', 'evidence'):
+            groups.setdefault(optional, [])
+
+        # Create ordered group list and supporting metadata
+        entity_groups = []
+        entity_index: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+
+        for safe_type in sorted(groups.keys()):
+            items = groups[safe_type]
+            entity_groups.append({
+                'type': safe_type,
+                'label': self._format_entity_label(safe_type),
+                'items': items,
+                'count': len(items),
+            })
+            entity_index[safe_type] = items
+            counts[safe_type] = len(items)
+
+        total_entities = sum(counts.values())
+        types_present = [etype for etype, value in counts.items() if value > 0]
+        base_types = {'person', 'place', 'thing'}
+        base_present = sorted([etype for etype in types_present if etype in base_types])
+        missing_base = sorted(list(base_types - set(base_present)))
+
+        summary = {
+            'total_entities': total_entities,
+            'types_present': types_present,
+            'base_present': base_present,
+            'base_missing': missing_base,
+            'has_entities': total_entities > 0,
+            'types_present_display': self._format_list(types_present),
+        }
+
+        foundation = {
+            'ready': not missing_base,
+            'present': base_present,
+            'missing': missing_base,
+            'present_display': self._format_list(base_present),
+            'missing_display': self._format_list(missing_base),
+        }
+
+        return {
+            'groups': entity_groups,
+            'index': entity_index,
+            'counts': counts,
+            'summary': summary,
+            'foundation': foundation,
+        }
+
+    def _prepare_relationship_summary(
+        self,
+        extracted_content: Any,
+        structured_dict: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        relationships_source = self._get_field(extracted_content, 'relationships')
+        if not relationships_source:
+            relationships_source = structured_dict.get('relationships', [])
+
+        summary: List[Dict[str, Any]] = []
+
+        for raw_relationship in relationships_source or []:
+            relationship_dict = self._coerce_to_dict(raw_relationship)
+            if not relationship_dict:
+                continue
+
+            summary.append({
+                'source': relationship_dict.get('entity1') or relationship_dict.get('source') or 'Unknown',
+                'target': relationship_dict.get('entity2') or relationship_dict.get('target') or 'Unknown',
+                'relationship': relationship_dict.get('relationship') or relationship_dict.get('type') or 'related-to',
+                'confidence_raw': relationship_dict.get('confidence'),
+                'confidence': self._format_confidence(relationship_dict.get('confidence')),
+                'context': relationship_dict.get('context') or '',
+                'context_display': relationship_dict.get('context') or '—',
+            })
+
+        return summary
+
+    def _prepare_event_timeline(
+        self,
+        extracted_content: Any,
+        structured_dict: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        events_source = self._get_field(extracted_content, 'events')
+        if not events_source:
+            events_source = structured_dict.get('events', [])
+
+        timeline: List[Dict[str, Any]] = []
+
+        for raw_event in events_source or []:
+            event_dict = self._coerce_to_dict(raw_event)
+            if not event_dict:
+                continue
+
+            entities_involved = event_dict.get('entities_involved') or event_dict.get('entities') or []
+
+            timeline.append({
+                'timestamp': event_dict.get('timestamp') or '',
+                'display_timestamp': event_dict.get('timestamp') or 'Pending',
+                'description': event_dict.get('description') or '',
+                'description_display': event_dict.get('description') or '—',
+                'confidence_raw': event_dict.get('confidence'),
+                'confidence': self._format_confidence(event_dict.get('confidence')),
+                'event_type': event_dict.get('event_type') or '',
+                'entities_involved': entities_involved,
+                'entities_display': self._format_list(entities_involved),
+            })
+
+        return timeline
+
+    def _prepare_extraction_metadata(
+        self,
+        extracted_content: Any,
+        structured_dict: Dict[str, Any],
+        entity_context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        metadata = {
+            'summary': self._get_field(extracted_content, 'summary') or structured_dict.get('summary') or '',
+            'key_topics': self._get_field(extracted_content, 'key_topics') or structured_dict.get('key_topics') or [],
+            'urgency_level': self._get_field(extracted_content, 'urgency_level') or structured_dict.get('urgency_level') or '',
+            'content_type': self._get_field(extracted_content, 'content_type') or structured_dict.get('content_type') or '',
+            'confidence_raw': self._get_field(extracted_content, 'confidence_score') or structured_dict.get('confidence_score'),
+            'extraction_timestamp': self._get_field(extracted_content, 'extraction_timestamp') or structured_dict.get('extraction_timestamp'),
+            'entity_counts': entity_context['counts'],
+            'entity_foundation_ready': entity_context['foundation']['ready'],
+            'missing_base_entities': entity_context['foundation']['missing'],
+            'indicators': [],
+        }
+
+        confidence_value = metadata['confidence_raw']
+        metadata['confidence'] = self._format_confidence(confidence_value)
+        metadata['confidence_percent'] = self._format_percentage(confidence_value)
+
+        key_topics = metadata['key_topics']
+        if isinstance(key_topics, str):
+            key_topics = [key_topics]
+        metadata['key_topics'] = list(key_topics)
+        metadata['key_topics_display'] = self._format_list(metadata['key_topics'])
+
+        timestamp = metadata['extraction_timestamp']
+        if isinstance(timestamp, datetime):
+            metadata['extraction_timestamp_display'] = timestamp.strftime('%Y-%m-%d %H:%M UTC')
+        elif isinstance(timestamp, str):
+            metadata['extraction_timestamp_display'] = timestamp
+        else:
+            metadata['extraction_timestamp_display'] = ''
+
+        metadata['urgency_level_display'] = metadata['urgency_level'] or 'unspecified'
+        metadata['content_type_display'] = metadata['content_type'] or 'unspecified'
+
+        indicators_source = self._get_field(extracted_content, 'indicators')
+        if not indicators_source:
+            indicators_source = structured_dict.get('indicators', [])
+
+        indicators: List[Dict[str, Any]] = []
+        for raw_indicator in indicators_source or []:
+            indicator_dict = self._coerce_to_dict(raw_indicator)
+            if not indicator_dict:
+                continue
+
+            indicators.append({
+                'type': indicator_dict.get('type') or '',
+                'value': indicator_dict.get('value') or '',
+                'confidence_raw': indicator_dict.get('confidence'),
+                'confidence': self._format_confidence(indicator_dict.get('confidence')),
+                'description': indicator_dict.get('description') or '',
+                'source': indicator_dict.get('source') or '',
+            })
+
+        metadata['indicators'] = indicators
+        metadata['has_indicators'] = bool(indicators)
+        metadata['entity_total'] = entity_context['summary']['total_entities']
+        metadata['missing_base_entities_display'] = self._format_list(metadata['missing_base_entities'])
+
+        return metadata
     
     def _normalize_issue_data(self, issue_data: Any) -> Dict[str, Any]:
         """Normalize issue data to a dictionary format for template access."""
@@ -317,18 +787,13 @@ class DeliverableGenerator:
     
     def _generate_basic_content(self, context: Dict[str, Any]) -> str:
         """Generate basic deliverable content."""
-        # Try external template first
-        try:
-            return self.template_engine.render_template("deliverables/basic.md", context)
-        except FileNotFoundError:
-            # Fall back to inline template for backward compatibility
-            issue = context["issue"]
-            deliverable = context["deliverable"]
-            workflow = context["workflow"]
-            timestamp = context["timestamp"]
-            processing_id = context.get('processing_id', 'unknown')
-            
-            content = f"""# {deliverable.title}
+        issue = context["issue"]
+        deliverable = context["deliverable"]
+        workflow = context["workflow"]
+        timestamp = context["timestamp"]
+        processing_id = context.get('processing_id', 'unknown')
+
+        content = f"""# {deliverable.title}
 
 **Issue**: #{issue.number} - {issue.title}
 **Generated**: {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
@@ -370,7 +835,7 @@ Further content development would be handled by AI integration in future version
 *Workflow: {workflow.name}*
 *Processing ID: {processing_id}*
 """
-            return content
+        return content
     
     def _generate_research_overview(self, context: Dict[str, Any]) -> str:
         """Generate research overview deliverable."""
@@ -2119,17 +2584,22 @@ vulnerabilities, and mitigation strategies.
             List of supported template names (from both template engine and fallback strategies)
         """
         # Get templates from template engine
-        engine_templates = []
+        engine_templates: List[str] = []
         try:
             engine_templates = self.template_engine.list_templates()
         except Exception:
-            pass
-        
-        # Get fallback strategy templates
-        fallback_templates = list(self.fallback_strategies.keys())
-        
+            engine_templates = []
+
+        alias_templates = set(engine_templates)
+        alias_templates.update(f"{name}.md" for name in engine_templates)
+        alias_templates.update(self.template_engine.template_aliases.keys())
+
+        # Get fallback strategy templates and provide .md aliases for compatibility
+        fallback_templates = set(self.fallback_strategies.keys())
+        fallback_aliases = {f"{name}.md" for name in fallback_templates}
+
         # Combine and deduplicate
-        all_templates = list(set(engine_templates + fallback_templates))
+        all_templates = alias_templates.union(fallback_templates).union(fallback_aliases)
         return sorted(all_templates)
     
     def validate_deliverable_spec(self, spec: DeliverableSpec) -> List[str]:
@@ -2155,7 +2625,8 @@ vulnerabilities, and mitigation strategies.
         
         # Check if template is supported (either by template engine or fallback)
         supported_templates = self.get_supported_templates()
-        if spec.template not in supported_templates:
+        normalized_template = self._normalize_template_identifier(spec.template)
+        if spec.template not in supported_templates and normalized_template not in supported_templates:
             errors.append(f"Unsupported template: {spec.template}. Available: {', '.join(supported_templates)}")
         
         if spec.order < 1:

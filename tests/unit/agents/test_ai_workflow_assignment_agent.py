@@ -13,8 +13,9 @@ from typing import Dict, Any
 
 from src.agents.ai_workflow_assignment_agent import (
     AIWorkflowAssignmentAgent,
-    GitHubModelsClient, 
-    ContentAnalysis
+    GitHubModelsClient,
+    ContentAnalysis,
+    AssignmentSignals,
 )
 from src.workflow.workflow_matcher import WorkflowInfo
 
@@ -36,23 +37,23 @@ def sample_workflows():
     """Sample workflow definitions for testing"""
     return [
         WorkflowInfo(
-            path="/test/research.yaml",
-            name="Research Analysis", 
-            description="Research workflow",
+            path="/test/person.yaml",
+            name="Person Entity Profiling",
+            description="Entity-focused investigative workflow",
             version="1.0.0",
-            trigger_labels=["research", "analysis"],
-            deliverables=[{"name": "overview"}],
+            trigger_labels=["person-entity-profiling", "investigative"],
+            deliverables=[{"name": "entity-profile"}],
             processing={},
             validation={},
             output={}
         ),
         WorkflowInfo(
-            path="/test/technical.yaml",
-            name="Technical Review",
-            description="Technical workflow", 
+            path="/test/witness.yaml",
+            name="Witness Expert Reliability Assessment",
+            description="Witness reliability evaluation workflow",
             version="1.0.0",
-            trigger_labels=["technical-review", "code-review"],
-            deliverables=[{"name": "review"}],
+            trigger_labels=["witness-expert-reliability-assessment", "trial-prep"],
+            deliverables=[{"name": "reliability-brief"}],
             processing={},
             validation={},
             output={}
@@ -65,12 +66,11 @@ def sample_issue_data():
     """Sample issue data for testing"""
     return {
         'number': 123,
-        'title': 'Analyze VR market trends and competition',
-        'body': '''We need to conduct comprehensive market research on the VR industry, 
-                  including competitor analysis, market size, growth projections, 
-                  and key technology trends. This research will inform our 
-                  strategic planning for Q2 2025.''',
-        'labels': ['site-monitor', 'research'],
+    'title': 'Compile investigative profile for key witness',
+    'body': '''We need to produce a comprehensive background profile for the primary cooperating witness,
+          including prior testimony, professional affiliations, known associates, and potential credibility challenges.
+          This will inform trial preparation for the upcoming evidentiary hearing.''',
+    'labels': ['site-monitor', 'person-entity-profiling'],
         'assignee': None,
         'created_at': '2025-09-25T10:00:00Z',
         'updated_at': '2025-09-25T10:00:00Z',
@@ -83,13 +83,13 @@ def sample_issue_data():
 def mock_ai_response():
     """Mock AI response for testing"""
     return {
-        "summary": "Market research request for VR industry analysis and strategic planning",
-        "key_topics": ["VR", "market research", "competitive analysis", "strategic planning"],
-        "suggested_workflows": ["Research Analysis"],
-        "confidence_scores": {"Research Analysis": 0.85},
-        "technical_indicators": ["market analysis", "research methodology"],
+        "summary": "Entity profiling request for a key individual tied to ongoing litigation",
+        "key_topics": ["person of interest", "criminal procedure", "investigative leads", "court strategy"],
+        "suggested_workflows": ["Person Entity Profiling"],
+        "confidence_scores": {"Person Entity Profiling": 0.85},
+        "technical_indicators": ["entity mapping", "legal strategy"],
         "urgency_level": "medium",
-        "content_type": "research"
+        "content_type": "investigative"
     }
 
 
@@ -143,8 +143,8 @@ class TestGitHubModelsClient:
         # Verify response parsing
         assert isinstance(result, ContentAnalysis)
         assert result.summary == mock_ai_response["summary"]
-        assert result.suggested_workflows == ["Research Analysis"]
-        assert result.confidence_scores["Research Analysis"] == 0.85
+        assert result.suggested_workflows == ["Person Entity Profiling"]
+        assert result.confidence_scores["Person Entity Profiling"] == 0.85
     
     @patch('requests.post')
     def test_api_failure_fallback(self, mock_post, mock_github_token, sample_workflows):
@@ -171,25 +171,49 @@ class TestGitHubModelsClient:
 class TestAIWorkflowAssignmentAgent:
     """Test AI workflow assignment agent"""
 
+    def test_detect_legal_signals_returns_matches(self):
+        sample_text = (
+            "Coordinate with GAO and the Department of Justice on violations of 18 U.S.C. § 371 "
+            "as referenced in Smith v. Jones." 
+        )
+
+        signals = AIWorkflowAssignmentAgent._detect_legal_signals(sample_text)
+
+        assert signals['statutes'] == 1.0
+        statute_matches = signals.get('statute_matches') or []
+        assert any(match.strip() for match in statute_matches)
+
+        assert signals['precedent'] == 1.0
+        assert any('Smith v.' in match for match in signals.get('precedent_matches', []))
+
+        assert signals['interagency'] == 1.0
+        terms = {term.lower() for term in signals.get('interagency_terms', [])}
+        assert 'gao' in terms
+        assert 'department of justice' in terms
+
     def test_render_ai_assessment_section_includes_rationale(self):
         analysis = ContentAnalysis(
             summary="Synthesize threat landscape for Q4.",
             key_topics=["threat intelligence", "strategic outlook"],
-            suggested_workflows=["Research Analysis"],
-            confidence_scores={"Research Analysis": 0.92},
+            suggested_workflows=["Person Entity Profiling"],
+            confidence_scores={"Person Entity Profiling": 0.92},
             technical_indicators=["emerging threat", "fusion required"],
             urgency_level="high",
-            content_type="research",
+            content_type="investigative",
+            combined_scores={"Person Entity Profiling": 0.92},
+            reason_codes=["PERSON_ENTITY_DETECTED", "STATUTE_CITATION_DETECTED"],
         )
 
         section = AIWorkflowAssignmentAgent._render_ai_assessment_section(
             analysis,
-            assigned_workflow="Research Analysis",
+            assigned_workflow="Person Entity Profiling",
         )
 
         assert "Confidence: 92%" in section
         assert "Rationale: Matches topics" in section
         assert "(assigned)" in section
+        assert "Reason Codes" in section
+        assert "PERSON_ENTITY_DETECTED" in section
     
     @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
     @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')
@@ -207,6 +231,89 @@ class TestAIWorkflowAssignmentAgent:
         assert agent.enable_ai is True
         assert agent.ai_client is not None
         assert isinstance(agent.ai_client, GitHubModelsClient)
+
+    @patch('src.agents.ai_workflow_assignment_agent.publish_telemetry_event')
+    @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
+    @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')
+    def test_issue_telemetry_includes_audit_payload(
+        self,
+        mock_matcher,
+        mock_github,
+        mock_publish,
+        mock_github_token,
+        mock_repo_name,
+    ):
+        mock_matcher_instance = mock_matcher.return_value
+        mock_matcher_instance.get_available_workflows.return_value = []
+
+        workflow_info = WorkflowInfo(
+            path="/tmp/workflow.yaml",
+            name="Person Entity Profiling & Risk Flagging",
+            description="Profiles individuals and surfaces risk posture",
+            version="1.0.0",
+            trigger_labels=["person-profile"],
+            deliverables=[{"name": "entity-backbone"}],
+            processing={},
+            validation={},
+            output={},
+            workflow_version="1.0.0",
+            category="entity-foundation",
+            confidence_threshold=0.75,
+            audit_trail={
+                'required': True,
+                'fields': ['model_version', 'reason_codes', 'entity_evidence', 'citation_sources'],
+            },
+        )
+        mock_matcher_instance.get_workflow_by_name.return_value = workflow_info
+
+        agent = AIWorkflowAssignmentAgent(
+            github_token=mock_github_token,
+            repo_name=mock_repo_name,
+            enable_ai=True,
+        )
+
+        analysis = {
+            'summary': 'Entity risk analysis',
+            'entity_summary': {
+                'coverage': 0.9,
+                'counts': {'person': 3, 'place': 2, 'thing': 1},
+                'missing_base_entities': [],
+            },
+            'legal_signals': {
+                'statutes': 1.0,
+                'statute_matches': ['18 U.S.C.', '§ 371'],
+                'precedent': 1.0,
+                'precedent_matches': ['Smith v. Jones'],
+                'interagency': 1.0,
+                'interagency_terms': ['gao', 'department of justice'],
+            },
+            'reason_codes': ['PERSON_ENTITY_DETECTED'],
+        }
+
+        result_payload = {
+            'issue_number': 42,
+            'action_taken': 'auto_assigned',
+            'assigned_workflow': workflow_info.name,
+            'labels_added': ['workflow::person-entity-profiling'],
+            'dry_run': False,
+            'message': 'Assigned automatically',
+            'ai_analysis': analysis,
+            'reason_codes': ['PERSON_ENTITY_DETECTED', 'HIGH_ENTITY_COVERAGE'],
+        }
+
+        agent._emit_issue_result_telemetry(result_payload, 0.42)
+
+        assert mock_publish.called
+        args, kwargs = mock_publish.call_args
+        telemetry_payload = args[2]
+        assert telemetry_payload['audit_trail']['required'] is True
+        audit_data = telemetry_payload['audit_trail']['data']
+        assert audit_data['model_version'] == agent.model_identifier
+        assert audit_data['reason_codes'] == result_payload['reason_codes']
+        assert audit_data['entity_evidence']['coverage'] == 0.9
+        assert audit_data['citation_sources'] == ['18 U.S.C.', '§ 371', 'Smith v. Jones']
+        assert telemetry_payload['legal_signals']['statute_matches'] == ['18 U.S.C.', '§ 371']
+        assert telemetry_payload['statute_references'][0][0] == '18 U.S.C.'
 
     @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
     @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')
@@ -364,16 +471,27 @@ class TestAIWorkflowAssignmentAgent:
             content_type=mock_ai_response["content_type"]
         )
 
+        signals = AssignmentSignals(
+            entity_score=1.0,
+            base_counts={"person": 1, "place": 1, "thing": 1},
+            missing_entities=[],
+            legal_signals={"statutes": 0.5, "precedent": 0.0, "interagency": 0.2},
+            reason_codes=["PERSON_ENTITY_DETECTED"],
+            source="heuristic",
+        )
+
         with patch.object(agent, '_load_page_extract', return_value='Primary summary block'):
             with patch.object(agent.ai_client, 'analyze_issue_content', return_value=mock_analysis) as mock_analyze:
-                workflow, analysis, message = agent.analyze_issue_with_ai(sample_issue_data)
+                with patch.object(agent, '_compute_assignment_signals', return_value=signals):
+                    workflow, analysis, message = agent.analyze_issue_with_ai(sample_issue_data)
 
         mock_analyze.assert_called_once()
         assert mock_analyze.call_args.kwargs.get('page_extract') == 'Primary summary block'
         assert workflow is not None
-        assert workflow.name == "Research Analysis"
+        assert workflow.name == "Person Entity Profiling"
         assert analysis.summary == mock_ai_response["summary"]
-        assert "Research Analysis" in message
+        assert analysis.combined_scores.get("Person Entity Profiling") is not None
+        assert "score" in message
     
     @patch.dict(os.environ, {'GITHUB_ACTIONS': 'true'})
     @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
@@ -411,13 +529,15 @@ class TestAIWorkflowAssignmentAgent:
         
         # Mock high confidence analysis
         mock_analysis = ContentAnalysis(
-            summary="High confidence research request",
-            key_topics=["research"],
-            suggested_workflows=["Research Analysis"],
-            confidence_scores={"Research Analysis": 0.9},
+            summary="High confidence profiling request",
+            key_topics=["entity profiling"],
+            suggested_workflows=["Person Entity Profiling"],
+            confidence_scores={"Person Entity Profiling": 0.9},
             technical_indicators=[],
             urgency_level="medium",
-            content_type="research"
+            content_type="investigative",
+            combined_scores={"Person Entity Profiling": 0.9},
+            reason_codes=["PERSON_ENTITY_DETECTED"],
         )
         
         with patch.object(agent, 'analyze_issue_with_ai', return_value=(sample_workflows[0], mock_analysis, "High confidence")):
@@ -425,9 +545,10 @@ class TestAIWorkflowAssignmentAgent:
         
         # Verify auto assignment
         assert result['action_taken'] == 'auto_assigned'
-        assert result['assigned_workflow'] == 'Research Analysis'
+        assert result['assigned_workflow'] == 'Person Entity Profiling'
         assert result['issue_number'] == 123
         assert 'ai_analysis' in result
+        assert "PERSON_ENTITY_DETECTED" in result['reason_codes']
     
     @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
     @patch('src.agents.ai_workflow_assignment_agent.WorkflowMatcher')  
@@ -476,13 +597,14 @@ class TestAIWorkflowAssignmentAgent:
         mock_result = {
             'issue_number': 321,
             'action_taken': 'auto_assigned',
-            'assigned_workflow': 'Research Analysis',
-            'labels_added': ['workflow::research-analysis'],
+            'assigned_workflow': 'Person Entity Profiling',
+            'labels_added': ['workflow::person-entity-profiling'],
             'dry_run': True,
+            'reason_codes': ['PERSON_ENTITY_DETECTED'],
             'ai_analysis': {
                 'summary': 'High confidence assignment',
-                'suggested_workflows': ['Research Analysis'],
-                'confidence_scores': {'Research Analysis': 0.92},
+                'suggested_workflows': ['Person Entity Profiling'],
+                'confidence_scores': {'Person Entity Profiling': 0.92},
             },
             'message': 'High confidence assignment',
         }
@@ -507,14 +629,25 @@ class TestAIWorkflowAssignmentAgent:
         assert issue_event['issue_number'] == 321
         assert issue_event['action_taken'] == 'auto_assigned'
         assert issue_event['ai_summary'] == 'High confidence assignment'
-        assert issue_event['suggested_workflows'] == ['Research Analysis']
-        assert issue_event['confidence_scores']['Research Analysis'] == pytest.approx(0.92)
+        assert issue_event['suggested_workflows'] == ['Person Entity Profiling']
+        assert issue_event['confidence_scores']['Person Entity Profiling'] == pytest.approx(0.92)
+        assert issue_event['reason_codes'] == ['PERSON_ENTITY_DETECTED']
         assert issue_event['assignment_mode'] == 'ai'
+        assert 'entity_coverage' in issue_event
+        assert issue_event['entity_coverage'] is None
+        assert issue_event['entity_counts'] is None
+        assert issue_event['missing_base_entities'] is None
+        assert issue_event['legal_signals'] is None
 
         summary_event = events[-1]
         assert summary_event['processed'] == 1
         assert summary_event['status'] == 'success'
         assert summary_event['assignment_mode'] == 'ai'
+        assert summary_event['average_entity_coverage'] is None
+        assert summary_event['entity_coverage_distribution'] == {'high': 0, 'partial': 0, 'low': 0}
+        assert summary_event['issues_with_missing_entities'] == 0
+        assert summary_event['top_reason_codes'] == [{'code': 'PERSON_ENTITY_DETECTED', 'count': 1}]
+        assert summary_event['legal_signal_counts'] == {}
 
 
 class TestIntegration:
@@ -550,13 +683,13 @@ class TestIntegration:
         with patch.object(agent, 'get_unassigned_site_monitor_issues', return_value=[sample_issue_data]):
             # Mock AI analysis to return high confidence
             mock_analysis = ContentAnalysis(
-                summary="Research workflow needed",
-                key_topics=["research"],
-                suggested_workflows=["Research Analysis"],
-                confidence_scores={"Research Analysis": 0.85},
+                summary="Profiling workflow needed",
+                key_topics=["witness background"],
+                suggested_workflows=["Person Entity Profiling"],
+                confidence_scores={"Person Entity Profiling": 0.85},
                 technical_indicators=[],
                 urgency_level="medium", 
-                content_type="research"
+                content_type="investigative"
             )
             
             with patch.object(agent, 'analyze_issue_with_ai', return_value=(sample_workflows[0], mock_analysis, "High confidence")):
@@ -567,11 +700,12 @@ class TestIntegration:
         assert result['processed'] == 1
         assert result['statistics']['auto_assigned'] == 1
         assert len(result['results']) == 1
+        assert result['explainability_summary'] is not None
         
         issue_result = result['results'][0]
         assert issue_result['issue_number'] == 123
         assert issue_result['action_taken'] == 'auto_assigned'
-        assert issue_result['assigned_workflow'] == 'Research Analysis'
+        assert issue_result['assigned_workflow'] == 'Person Entity Profiling'
         assert issue_result['dry_run'] is True
 
 

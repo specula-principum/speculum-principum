@@ -1,0 +1,45 @@
+# Internal staging configuration for taxonomy workflows
+# Fill secrets via environment variables (.env.staging) or CI secrets.
+
+sites:
+  - url: https://taxonomy-staging.internal
+    name: Taxonomy Staging Feed
+    max_results: 3
+    labels:
+      include:
+        - site-monitor
+    schedule:
+      frequency_hours: 6
+
+search:
+  api_key: ${GOOGLE_API_KEY}
+  search_engine_id: ${GOOGLE_SEARCH_ENGINE_ID}
+  daily_query_limit: 20
+  results_per_query: 5
+  date_range_days: 7
+
+agent:
+  username: staging-taxonomy-bot
+  workflow_directory: docs/workflow/deliverables/criminal-law
+  template_directory: templates
+  output_directory: artifacts/staging/outputs
+  enable_ai_extraction: true
+  processing:
+    default_timeout_minutes: 10
+    max_concurrent_issues: 3
+    retry_attempts: 1
+    require_review: false
+    auto_create_pr: false
+  git:
+    repository: owner/taxonomy-staging
+    branch_prefix: staging
+    commit_message_template: "Staging Run: {workflow_name}"
+    auto_push: false
+    enable_git: false
+
+storage_path: artifacts/staging/processed_urls.json
+log_level: INFO
+telemetry:
+  enabled: true
+  publisher: filesystem
+  output_path: artifacts/staging/telemetry

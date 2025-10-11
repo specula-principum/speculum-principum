@@ -8,9 +8,10 @@ import yaml
 import logging
 import time
 import functools
-from typing import Dict, List, Optional, Tuple, Set, Any
+import re
+from typing import Dict, List, Optional, Tuple, Set, Any, Iterable
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from .workflow_schemas import WorkflowSchemaValidator
@@ -87,7 +88,8 @@ def retry_on_io_error(max_attempts: int = 3, delay_seconds: float = 0.5):
 
 @dataclass
 class WorkflowInfo:
-    """Information about a discovered workflow"""
+    """Information about a discovered workflow."""
+
     path: str
     name: str
     description: str
@@ -97,21 +99,35 @@ class WorkflowInfo:
     processing: Dict
     validation: Dict
     output: Dict
-    
+    workflow_version: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[str] = None
+    confidence_threshold: Optional[float] = None
+    required_entities: Optional[List[Dict[str, Any]]] = None
+    deliverable_templates: Optional[List[str]] = None
+    audit_trail: Optional[Dict[str, Any]] = None
+    legacy_mode: bool = False
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
     def __post_init__(self):
-        """Validate workflow info after creation"""
+        """Validate workflow info after creation."""
         if not self.trigger_labels:
             raise WorkflowValidationError(
                 f"Workflow {self.name} must have at least one trigger label",
                 workflow_path=self.path,
-                error_code="NO_TRIGGER_LABELS"
+                error_code="NO_TRIGGER_LABELS",
             )
         if not self.deliverables:
             raise WorkflowValidationError(
                 f"Workflow {self.name} must have at least one deliverable",
                 workflow_path=self.path,
-                error_code="NO_DELIVERABLES"
+                error_code="NO_DELIVERABLES",
             )
+
+    def is_taxonomy(self) -> bool:
+        """Return True when the workflow adheres to the criminal-law taxonomy."""
+
+        return bool(self.workflow_version and self.category and not self.legacy_mode)
 
 
 class WorkflowMatcher:
@@ -155,6 +171,14 @@ class WorkflowMatcher:
                 workflow_path=str(self.workflow_directory),
                 error_code="INITIALIZATION_FAILED"
             ) from e
+
+    @staticmethod
+    def _slugify_name(value: str) -> str:
+        """Convert workflow names into stable slug identifiers."""
+
+        slug = re.sub(r"[^\w\s-]", "", value.lower())
+        slug = re.sub(r"[-\s]+", "-", slug)
+        return slug.strip("-")
 
     def _load_workflows(self) -> None:
         """
@@ -352,7 +376,16 @@ class WorkflowMatcher:
                 deliverables=workflow_data['deliverables'],
                 processing=workflow_data.get('processing', {}),
                 validation=workflow_data.get('validation', {}),
-                output=workflow_data.get('output', {})
+                output=workflow_data.get('output', {}),
+                workflow_version=workflow_data.get('workflow_version'),
+                category=workflow_data.get('category'),
+                priority=workflow_data.get('priority'),
+                confidence_threshold=workflow_data.get('confidence_threshold'),
+                required_entities=workflow_data.get('required_entities'),
+                deliverable_templates=workflow_data.get('deliverable_templates'),
+                audit_trail=workflow_data.get('audit_trail'),
+                legacy_mode=bool(workflow_data.get('legacy_mode', False)),
+                metadata=dict(workflow_data),
             )
             
             logger.debug(f"Successfully parsed workflow: {workflow_info.name}")
@@ -396,7 +429,12 @@ class WorkflowMatcher:
         logger.info("Forcing workflow refresh")
         self._load_workflows()
     
-    def get_available_workflows(self) -> List[WorkflowInfo]:
+    def get_available_workflows(
+        self,
+        *,
+        categories: Optional[Iterable[str]] = None,
+        taxonomy_only: bool = False,
+    ) -> List[WorkflowInfo]:
         """
         Get list of all available workflows.
         
@@ -405,10 +443,28 @@ class WorkflowMatcher:
         """
         if self._should_rescan():
             self._load_workflows()
-        
-        return list(self._workflow_cache.values())
+
+        workflows = list(self._workflow_cache.values())
+
+        if taxonomy_only:
+            workflows = [workflow for workflow in workflows if workflow.is_taxonomy()]
+
+        if categories:
+            category_set = {category.lower() for category in categories}
+            workflows = [
+                workflow
+                for workflow in workflows
+                if workflow.category and workflow.category.lower() in category_set
+            ]
+
+        return workflows
     
-    def find_matching_workflows(self, issue_labels: List[str]) -> List[WorkflowInfo]:
+    def find_matching_workflows(
+        self,
+        issue_labels: List[str],
+        *,
+        categories: Optional[Iterable[str]] = None,
+    ) -> List[WorkflowInfo]:
         """
         Find all workflows that match the given issue labels.
         
@@ -427,20 +483,65 @@ class WorkflowMatcher:
             return []
         
         issue_label_set = set(issue_labels)
-        matching_workflows = []
+
+        taxonomy_matches: List[WorkflowInfo] = []
+        legacy_matches: List[WorkflowInfo] = []
         
         for workflow_info in self._workflow_cache.values():
             trigger_set = set(workflow_info.trigger_labels)
             
             # Check if any trigger labels match issue labels
             if trigger_set.intersection(issue_label_set):
-                matching_workflows.append(workflow_info)
-                logger.debug(f"Workflow '{workflow_info.name}' matches labels: {list(trigger_set.intersection(issue_label_set))}")
-        
-        logger.info(f"Found {len(matching_workflows)} matching workflow(s) for labels: {issue_labels}")
-        return matching_workflows
+                intersection = list(trigger_set.intersection(issue_label_set))
+                logger.debug(
+                    "Workflow '%s' matches labels: %s",
+                    workflow_info.name,
+                    intersection,
+                )
+                if workflow_info.is_taxonomy():
+                    taxonomy_matches.append(workflow_info)
+                else:
+                    legacy_matches.append(workflow_info)
+
+        if categories:
+            category_set = {category.lower() for category in categories}
+            taxonomy_matches = [
+                workflow
+                for workflow in taxonomy_matches
+                if workflow.category and workflow.category.lower() in category_set
+            ]
+            legacy_matches = [
+                workflow
+                for workflow in legacy_matches
+                if workflow.category and workflow.category.lower() in category_set
+            ]
+
+        if taxonomy_matches:
+            if legacy_matches:
+                logger.debug(
+                    "Ignoring %d legacy workflow match(es) in favor of taxonomy-aligned definitions",
+                    len(legacy_matches),
+                )
+            logger.info(
+                "Found %d taxonomy workflow(s) for labels: %s",
+                len(taxonomy_matches),
+                issue_labels,
+            )
+            return taxonomy_matches
+
+        logger.info(
+            "Found %d legacy workflow(s) for labels: %s",
+            len(legacy_matches),
+            issue_labels,
+        )
+        return legacy_matches
     
-    def get_best_workflow_match(self, issue_labels: List[str]) -> Tuple[Optional[WorkflowInfo], str]:
+    def get_best_workflow_match(
+        self,
+        issue_labels: List[str],
+        *,
+        categories: Optional[Iterable[str]] = None,
+    ) -> Tuple[Optional[WorkflowInfo], str]:
         """
         Get the best single workflow match for the given labels.
         
@@ -452,7 +553,7 @@ class WorkflowMatcher:
             - WorkflowInfo is None if no clear match
             - status_message explains the result
         """
-        matching_workflows = self.find_matching_workflows(issue_labels)
+        matching_workflows = self.find_matching_workflows(issue_labels, categories=categories)
         
         if not matching_workflows:
             if 'site-monitor' not in issue_labels:
@@ -487,8 +588,29 @@ class WorkflowMatcher:
                 return workflow_info
         
         return None
+
+    def get_workflow_by_slug(self, workflow_slug: str) -> Optional[WorkflowInfo]:
+        """Return workflow info matching the provided slug identifier."""
+
+        if self._should_rescan():
+            self._load_workflows()
+
+        slug = (workflow_slug or "").lower().strip()
+        if not slug:
+            return None
+
+        for workflow_info in self._workflow_cache.values():
+            if self._slugify_name(workflow_info.name) == slug:
+                return workflow_info
+
+        return None
     
-    def get_workflow_suggestions(self, issue_labels: List[str]) -> List[str]:
+    def get_workflow_suggestions(
+        self,
+        issue_labels: List[str],
+        *,
+        categories: Optional[Iterable[str]] = None,
+    ) -> List[str]:
         """
         Get suggestions for workflow labels based on current issue labels.
         
@@ -505,7 +627,13 @@ class WorkflowMatcher:
         suggestions = set()
         
         # Collect all trigger labels from workflows
+        category_set = {category.lower() for category in categories} if categories else None
+
         for workflow_info in self._workflow_cache.values():
+            if category_set:
+                category_value = (workflow_info.category or '').lower()
+                if category_value not in category_set:
+                    continue
             for trigger_label in workflow_info.trigger_labels:
                 if trigger_label not in issue_label_set:
                     suggestions.add(trigger_label)

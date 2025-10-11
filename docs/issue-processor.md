@@ -112,7 +112,7 @@ python main.py process-issues --config custom-config.yaml --issue 123
 python main.py process-issues --batch
 
 # Process issues with specific workflow
-python main.py process-issues --batch --workflow research-analysis
+python main.py process-issues --batch --workflow-category legal-research
 
 # Limit number of issues processed
 python main.py process-issues --batch --limit 5
@@ -149,10 +149,17 @@ python main.py workflow-stats
 #### Workflow Directory Structure
 ```
 docs/workflow/deliverables/
-├── research-analysis.yaml
-├── technical-review.yaml
-├── security-assessment.yaml
-└── compliance-audit.yaml
+└── criminal-law/
+  ├── person-entity-profiling.yaml
+  ├── place-intelligence-mapping.yaml
+  ├── asset-evidence-cataloguing.yaml
+  ├── statutory-regulatory-research-tracker.yaml
+  ├── case-law-precedent-explorer.yaml
+  ├── investigative-lead-development.yaml
+  ├── witness-expert-reliability-assessment.yaml
+  ├── sentencing-mitigation-scenario-planner.yaml
+  ├── inter-agency-coordination-briefs.yaml
+  └── compliance-remediation-monitoring.yaml
 ```
 
 #### Issue Processing Trigger
@@ -207,41 +214,64 @@ Each workflow file in `docs/workflow/deliverables/` must include:
 
 ```yaml
 # Required metadata
-name: "Research Analysis Workflow"
-description: "Comprehensive research and analysis workflow"
-version: "1.0.0"
+name: "Statutory & Regulatory Research Tracker"
+description: "Curates applicable statutes, directives, and compliance checkpoints for GAO criminal law engagements."
+workflow_version: "1.0.0"
+category: "legal-research"
+priority: "high"
+confidence_threshold: 0.7
 
 # Trigger configuration
 trigger_labels:
-  - "research"
-  - "analysis"
-  - "investigation"
+  - "statute-review"
+  - "gao-directive"
+  - "criminal-law"
 
-# Output configuration
-output:
-  folder_structure: "study/{issue_number}/{workflow_name}"
-  file_naming: "{deliverable_name}_{timestamp}.md"
-  branch_naming: "research-analysis-{issue_number}"
+required_entities:
+  - entity_type: "person"
+    min_count: 1
+    min_confidence: 0.65
+  - entity_type: "place"
+    min_count: 1
+    min_confidence: 0.6
+
+deliverable_templates:
+  - "entity_backbone"
+  - "statute_research_core"
+  - "gao_compliance_appendix"
 
 # Deliverables specification
 deliverables:
-  - name: "executive_summary"
-    template: "research_analysis.md"
+  - name: "entity-backbone"
+    template: "entity_backbone.md"
     required: true
-    description: "High-level summary of findings"
+    description: "Standardized entity tables for people, places, and evidence."
+    order: 1
     
-  - name: "detailed_analysis"
-    template: "detailed_research.md"
+  - name: "statute-research-core"
+    template: "statute_research_core.md"
     required: true
-    description: "Comprehensive analysis with evidence"
+    description: "Digest of applicable statutes, directives, and compliance checkpoints."
+    order: 2
     
-  - name: "recommendations"
-    template: "recommendations.md"
-    required: false
-    description: "Actionable recommendations"
+  - name: "gao-compliance-appendix"
+    template: "gao_compliance_appendix.md"
+    required: true
+    description: "GAO alignment appendix capturing citations, audit trail, and reviewer notes."
+    order: 3
 
 # Processing configuration
 processing:
+  timeout: 180
+  max_retries: 1
+
+audit_trail:
+  required: true
+  fields:
+    - "model_version"
+    - "reason_codes"
+    - "citation_sources"
+```
   research_depth: "comprehensive"
   include_citations: true
   generate_diagrams: false
@@ -259,30 +289,63 @@ processing:
 5. **List deliverables**: required documents to generate
 6. **Set processing options**: workflow-specific settings
 
-### Example: Simple Review Workflow
+### Example: GAO Coordination Workflow
 
 ```yaml
-name: "Technical Review"
-description: "Technical review and assessment workflow"
-version: "1.0.0"
+name: "Inter-Agency Coordination Briefs"
+description: "Generates GAO-ready coordination briefs, contact maps, and decision timelines."
+workflow_version: "1.0.0"
+category: "operational-coordination"
+priority: "high"
+confidence_threshold: 0.65
 
 trigger_labels:
-  - "technical-review"
-  - "code-review"
+  - "coordination"
+  - "gao-brief"
+  - "criminal-law"
 
-output:
-  folder_structure: "study/{issue_number}/technical-review"
-  file_naming: "{deliverable_name}.md"
+required_entities:
+  - entity_type: "organization"
+    min_count: 1
+    min_confidence: 0.6
+  - entity_type: "person"
+    min_count: 1
+    min_confidence: 0.6
+
+deliverable_templates:
+  - "entity_backbone"
+  - "coordination_brief_core"
+  - "gao_compliance_appendix"
 
 deliverables:
-  - name: "review_summary"
-    template: "technical_review.md"
+  - name: "entity-backbone"
+    template: "entity_backbone.md"
     required: true
-    description: "Technical review summary"
+    description: "Entity backbone shared component"
+    order: 1
+
+  - name: "coordination-brief-core"
+    template: "coordination_brief_core.md"
+    required: true
+    description: "Inter-agency coordination summary with contact map and timeline"
+    order: 2
+
+  - name: "gao-compliance-appendix"
+    template: "gao_compliance_appendix.md"
+    required: true
+    description: "GAO compliance appendix with citations and audit notes"
+    order: 3
 
 processing:
-  focus_areas: ["architecture", "security", "performance"]
-  depth: "standard"
+  timeout: 150
+  max_retries: 1
+
+audit_trail:
+  required: true
+  fields:
+    - "model_version"
+    - "reason_codes"
+    - "contact_sources"
 ```
 
 ### Advanced Features
@@ -379,7 +442,7 @@ python main.py validate-templates
 python main.py test-template --template research_analysis.md
 
 # Check template variables
-python main.py template-vars --workflow research-analysis
+python main.py template-vars --workflow person-entity-profiling
 ```
 
 ### Debug Commands
