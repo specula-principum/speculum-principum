@@ -470,8 +470,9 @@ def safe_execute_cli_command(func: Callable[[], CliResult]) -> int:
         result = func()
         
         if not result.success:
+            exit_code = result.error_code or 1  # Ensure failures propagate a non-zero exit status
             print(result.message, file=sys.stderr)
-            return result.error_code
+            return exit_code
         
         print(result.message)
         return 0
