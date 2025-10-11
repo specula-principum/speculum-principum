@@ -60,8 +60,8 @@ class GitHubModelsClient:
     def __init__(self, 
                  github_token: str, 
                  model: str = "gpt-4o",
-                 timeout: int = None,
-                 max_retries: int = None,
+                 timeout: Optional[int] = None,
+                 max_retries: Optional[int] = None,
                  enable_logging: bool = True):
         """
         Initialize GitHub Models client.
@@ -173,7 +173,7 @@ class GitHubModelsClient:
     
     def simple_completion(self, 
                          prompt: str,
-                         system_message: str = None,
+                         system_message: Optional[str] = None,
                          **kwargs) -> AIResponse:
         """
         Simple completion with a single prompt.

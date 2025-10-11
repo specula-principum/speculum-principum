@@ -196,7 +196,7 @@ class TestAIWorkflowAssignmentAgent:
             technical_indicators=["emerging threat", "fusion required"],
             urgency_level="high",
             content_type="investigative",
-            combined_scores={"Person Entity Profiling": 0.92},
+            combined_scores={"Person Entity Profiling": 0.92}, 
             reason_codes=["PERSON_ENTITY_DETECTED", "STATUTE_CITATION_DETECTED"],
         )
 

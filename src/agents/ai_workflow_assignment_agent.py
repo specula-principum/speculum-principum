@@ -205,7 +205,7 @@ Return response as valid JSON only:
         Note: This uses the GitHub Models inference endpoint which is
         available in GitHub Actions with proper authentication.
         """
-    endpoint = f"{self.BASE_URL}/chat/completions"
+        endpoint = f"{self.BASE_URL}/chat/completions"
         
         payload = {
             "model": self.model,
