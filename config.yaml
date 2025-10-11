@@ -15,7 +15,7 @@ search:
   search_engine_id: "${GOOGLE_SEARCH_ENGINE_ID:dummy-search-engine-id}"
   daily_query_limit: 90
   results_per_query: 10
-  date_range_days: 30
+  date_range_days: 365
 agent:
   username: "${GITHUB_ACTOR:github-actions[bot]}"
   workflow_directory: "docs/workflow/deliverables"
