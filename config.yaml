@@ -43,8 +43,9 @@ ai:
   confidence_thresholds:
     auto_assign: 0.8   # Confidence threshold for automatic assignment
     request_review: 0.6  # Confidence threshold for requesting human review
-  max_tokens: 500
-  temperature: 0.3  # Lower = more consistent, higher = more creative
+  settings:
+    max_tokens: 500
+    temperature: 0.3  # Lower = more consistent, higher = more creative
   # Historical data storage (future enhancement)
   history:
     storage_type: "gist"  # or "repo_file" 
