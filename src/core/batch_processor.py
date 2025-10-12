@@ -637,7 +637,11 @@ class BatchProcessor:
                         processing_time_seconds=0.0
                     )
                 else:
-                    # Get issue data and process
+                    # Prefer GitHub-integrated processing when available so issue updates occur
+                    if hasattr(self.issue_processor, 'process_github_issue'):
+                        return self.issue_processor.process_github_issue(issue_number)  # type: ignore[union-attr]
+
+                    # Fallback to local processing with retrieved issue data
                     issue_data_dict = self.github_client.get_issue_data(issue_number)
                     issue_data = IssueData(
                         number=issue_number,
