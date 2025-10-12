@@ -60,7 +60,8 @@ jobs:
 
       - name: Validate required secrets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODELS_PAT: ${{ secrets.MODELS_PAT }}
+          GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
         run: |
@@ -76,7 +77,7 @@ jobs:
             fi
           }
 
-          check_secret "GITHUB_TOKEN" "$GITHUB_TOKEN"
+          check_secret "MODELS_PAT" "${MODELS_PAT:-$GITHUB_TOKEN}"
           check_secret "GOOGLE_API_KEY" "$GOOGLE_API_KEY"
           check_secret "GOOGLE_SEARCH_ENGINE_ID" "$GOOGLE_SEARCH_ENGINE_ID"
 
@@ -87,7 +88,7 @@ jobs:
 
       - name: Configure environment
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
         run: |
@@ -99,7 +100,7 @@ jobs:
 
       - name: Monitor (aggregate dry run)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           TELEMETRY_ROOT: ${{ steps.telemetry_paths.outputs.telemetry_root }}
           SPECULUM_CLI_TELEMETRY_DIR: ${{ steps.telemetry_paths.outputs.telemetry_root }}/monitor
@@ -112,7 +113,7 @@ jobs:
 
       - name: Assign workflows (dry run)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
@@ -143,7 +144,7 @@ jobs:
 
       - name: Process issues (dry run)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           SPECULUM_CLI_TELEMETRY_DIR: ${{ steps.telemetry_paths.outputs.telemetry_root }}/process
           LOG_PROCESS: ${{ steps.telemetry_paths.outputs.log_process }}
