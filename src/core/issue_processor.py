@@ -307,13 +307,21 @@ class IssueProcessor:
         self.content_extraction_agent: Optional['ContentExtractionAgent'] = None
         self.enable_ai_extraction = False
         try:
-            if self.config.ai and hasattr(self.config.ai, 'enabled') and self.config.ai.enabled:
+            if (
+                self.config.ai
+                and getattr(self.config.ai, 'enabled', False)
+                and getattr(self.config.ai, 'content_extraction_enabled', False)
+            ):
                 from ..agents.content_extraction_agent import ContentExtractionAgent
                 # We'll need github_token for AI client, this will be passed by subclass
                 self.enable_ai_extraction = True
                 self.logger.info("AI content extraction enabled (agent will be initialized with GitHub token)")
             else:
-                self.logger.info("AI content extraction disabled in configuration")
+                self.logger.info(
+                    "AI content extraction disabled in configuration (enabled=%s, content_extraction_enabled=%s)",
+                    getattr(self.config.ai, 'enabled', False),
+                    getattr(self.config.ai, 'content_extraction_enabled', False),
+                )
         except Exception as e:
             self.logger.warning(f"Failed to initialize AI content extraction: {e}")
             self.enable_ai_extraction = False

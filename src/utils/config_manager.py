@@ -151,6 +151,7 @@ class AIExtractionFocusConfig:
 class AIConfig:
     """Enhanced AI configuration for content extraction and workflow assignment"""
     enabled: bool = False
+    content_extraction_enabled: bool = True
     provider: str = "github-models"  # Internal GitHub Models provider only
     models: Optional[AIModelConfig] = None
     settings: Optional[AISettingsConfig] = None
@@ -548,7 +549,8 @@ class ConfigLoader:
                             "page_extract_max_chars": {"type": "integer", "minimum": 0}
                         },
                         "additionalProperties": False
-                    }
+                    },
+                    "content_extraction_enabled": {"type": "boolean"}
                 },
                 "additionalProperties": False
             }
@@ -748,6 +750,7 @@ class ConfigLoader:
 
             ai = AIConfig(
                 enabled=ai_data.get('enabled', False),
+                content_extraction_enabled=ai_data.get('content_extraction_enabled', True),
                 provider=provider_value,
                 models=models,
                 settings=settings,
