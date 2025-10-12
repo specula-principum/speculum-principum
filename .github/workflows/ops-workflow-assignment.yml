@@ -29,10 +29,8 @@ on:
         required: false
         type: boolean
         default: false
-
-  # Schedule to run every 2 hours to catch unassigned issues
-  schedule:
-    - cron: '0 */2 * * *'  # Every 2 hours
+  # schedule:
+  #   - cron: '0 */2 * * *'  # Every 2 hours
 
 jobs:
   # Job to check if workflow assignment is needed

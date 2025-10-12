@@ -133,8 +133,8 @@ name: AI Workflow Assignment
 on:
   issues:
     types: [opened, labeled]
-  schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
+  # schedule:
+  #   - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
 ```
 

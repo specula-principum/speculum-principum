@@ -31,8 +31,8 @@ on:
         required: false
         type: boolean
         default: true
-  schedule:
-    - cron: '5 */4 * * *'
+  # schedule:
+  #   - cron: '5 */4 * * *'
   issues:
     types: [labeled]
 
