@@ -76,7 +76,7 @@ jobs:
           fi
         }
 
-  check_secret "MODELS_PAT" "${MODELS_PAT:-$GITHUB_TOKEN}"
+        check_secret "MODELS_PAT" "${MODELS_PAT:-$GITHUB_TOKEN}"
         check_secret "GOOGLE_API_KEY" "$GOOGLE_API_KEY"
         check_secret "GOOGLE_SEARCH_ENGINE_ID" "$GOOGLE_SEARCH_ENGINE_ID"
 
