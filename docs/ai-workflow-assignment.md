@@ -14,10 +14,11 @@ The AI-enhanced workflow assignment agent analyzes GitHub issue content semantic
 - **Urgency Assessment**: Evaluates issue priority (low/medium/high/critical)
 - **Content Categorization**: Classifies as research, bug, feature, security, or documentation
 
-### 📊 Multi-Factor Scoring
-- **AI Confidence (70% weight)**: Content-based workflow recommendations
-- **Label Matching (20% weight)**: Traditional trigger label validation
-- **Historical Success (10% weight)**: Learning from past assignments
+### 📊 Multi-Signal Confidence
+- **AI Confidence**: Primary signal; high scores can auto-assign on their own
+- **Entity & Legal Overrides**: Strong person/place/thing coverage plus citations elevate confidence even if AI hesitates
+- **Label + History Boost**: Proven workflows with matching labels can raise the score when AI is uncertain
+- **Fallback Blend**: If no single signal dominates, a lightweight blend still produces a score for review decisions
 
 ### 🛡️ Robust Fallback System
 - **Graceful Degradation**: Falls back to label-based matching if AI fails
@@ -188,7 +189,7 @@ TASK: Return JSON with workflow suggestions and confidence scores
 ```
 
 ### 4. Decision Making
-- **Combine scores**: AI (70%) + Labels (20%) + History (10%)
+- **Score resolution**: Any high-confidence signal (AI, entity/legal cues, or label+history) can drive the final decision
 - **Apply thresholds**: Auto-assign, review, or clarify
 - **Execute action**: Add labels, create comments, assign workflow
 

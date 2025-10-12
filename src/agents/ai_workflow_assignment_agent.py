@@ -1140,32 +1140,75 @@ class AIWorkflowAssignmentAgent:
     ) -> Tuple[float, Optional[str]]:
         """Compute combined score for a workflow and return optional reason code."""
 
+        score = ai_confidence
         reason_code: Optional[str] = None
 
+        def apply_override(value: float, code: str) -> None:
+            nonlocal score, reason_code
+            if value > score:
+                score = min(max(value, 0.0), 1.0)
+                reason_code = code
+
         if self._is_taxonomy_workflow(workflow):
-            score = (
-                signals.entity_score * 0.4
-                + ai_confidence * 0.35
-                + label_signal * 0.08
-                + historical_signal * 0.07
-                + signals.legal_signals.get('statutes', 0.0) * 0.05
-                + signals.legal_signals.get('precedent', 0.0) * 0.03
-                + signals.legal_signals.get('interagency', 0.0) * 0.02
-            )
+            if ai_confidence >= self.HIGH_CONFIDENCE_THRESHOLD:
+                apply_override(ai_confidence, "AI_CONFIDENCE_OVERRIDE")
+
+            if signals.entity_score >= 0.95:
+                apply_override(max(signals.entity_score, 0.9), "ENTITY_COVERAGE_OVERRIDE")
+
+            if (
+                signals.entity_score >= 0.85
+                and (
+                    signals.legal_signals.get('statutes', 0.0) > 0.0
+                    or signals.legal_signals.get('precedent', 0.0) > 0.0
+                )
+            ):
+                apply_override(max(signals.entity_score, 0.88), "ENTITY_LEGAL_OVERRIDE")
+
+            if label_signal > 0.0 and historical_signal >= 0.8:
+                apply_override(max(historical_signal, 0.85), "LABEL_HISTORY_OVERRIDE")
+
+            if (
+                signals.legal_signals.get('statutes', 0.0) > 0.0
+                and ai_confidence >= self.MEDIUM_CONFIDENCE_THRESHOLD
+            ):
+                apply_override(max(ai_confidence, 0.82), "LEGAL_CITATION_OVERRIDE")
+
+            if score < self.MEDIUM_CONFIDENCE_THRESHOLD:
+                blended = (
+                    ai_confidence * 0.6
+                    + signals.entity_score * 0.3
+                    + historical_signal * 0.1
+                )
+                if blended > score:
+                    score = blended
+
             return score, reason_code
 
-        # Legacy workflows rely more heavily on AI confidence and label agreement.
-        score = (
-            ai_confidence * 0.6
-            + label_signal * 0.25
-            + historical_signal * 0.15
-        )
+        if ai_confidence >= self.LEGACY_HIGH_CONFIDENCE_THRESHOLD:
+            apply_override(ai_confidence, "LEGACY_AI_OVERRIDE")
 
-        if ai_confidence >= self.LEGACY_HIGH_CONFIDENCE_THRESHOLD and (
-            label_signal > 0 or historical_signal >= 0.7
+        if label_signal > 0.0 and historical_signal >= 0.75:
+            apply_override(max(historical_signal, ai_confidence, 0.82), "LEGACY_LABEL_HISTORY_OVERRIDE")
+
+        if historical_signal >= 0.9:
+            apply_override(historical_signal, "LEGACY_HISTORY_OVERRIDE")
+
+        if score < self.MEDIUM_CONFIDENCE_THRESHOLD:
+            blended = (
+                ai_confidence * 0.7
+                + label_signal * 0.2
+                + historical_signal * 0.1
+            )
+            if blended > score:
+                score = blended
+
+        if (
+            reason_code != "LEGACY_AI_OVERRIDE"
+            and ai_confidence >= self.LEGACY_HIGH_CONFIDENCE_THRESHOLD
+            and (label_signal > 0.0 or historical_signal >= 0.7)
         ):
-            score = max(score, ai_confidence)
-            reason_code = "LEGACY_HIGH_CONFIDENCE_OVERRIDE"
+            apply_override(ai_confidence, "LEGACY_HIGH_CONFIDENCE_OVERRIDE")
 
         return score, reason_code
 
