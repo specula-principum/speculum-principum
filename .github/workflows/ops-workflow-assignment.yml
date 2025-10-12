@@ -59,7 +59,8 @@ jobs:
     
     - name: Validate required secrets
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        MODELS_PAT: ${{ secrets.MODELS_PAT }}
+        GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
       run: |
@@ -75,7 +76,7 @@ jobs:
           fi
         }
 
-        check_secret "GITHUB_TOKEN" "$GITHUB_TOKEN"
+  check_secret "MODELS_PAT" "${MODELS_PAT:-$GITHUB_TOKEN}"
         check_secret "GOOGLE_API_KEY" "$GOOGLE_API_KEY"
         check_secret "GOOGLE_SEARCH_ENGINE_ID" "$GOOGLE_SEARCH_ENGINE_ID"
 
@@ -87,7 +88,7 @@ jobs:
     - name: Detect discovery-state issues
       id: discovery
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.MODELS_PAT }}
       run: |
         echo "🔎 Counting open issues tagged with state::discovery…"
         DISCOVERY_JSON=$(gh issue list --state open --label "state::discovery" --json number --limit 200)
@@ -135,7 +136,7 @@ jobs:
     - name: Show Statistics (if requested)
       if: github.event.inputs.statistics_only == 'true'
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
@@ -148,7 +149,7 @@ jobs:
         github.event.inputs.statistics_only != 'true' && 
         (github.event.inputs.dry_run == 'true' || github.event.inputs.dry_run == null)
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
@@ -171,7 +172,7 @@ jobs:
         github.event.inputs.dry_run == 'false' &&
         github.event_name != 'schedule'
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
@@ -190,7 +191,7 @@ jobs:
     - name: Assign Workflows (Scheduled - Safe)
       if: github.event_name == 'schedule' && needs.check-assignment-needed.outputs.should_assign == 'true'
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
@@ -207,7 +208,7 @@ jobs:
     - name: Verify monitor::triage cleared from assigned issues
       if: success()
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.MODELS_PAT }}
         EVENT_NAME: ${{ github.event_name }}
         INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
         INPUT_STATISTICS_ONLY: ${{ github.event.inputs.statistics_only }}
@@ -235,7 +236,7 @@ jobs:
     - name: Create Summary Report
       if: github.event.inputs.statistics_only != 'true'
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.MODELS_PAT }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
