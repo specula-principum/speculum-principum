@@ -1845,12 +1845,29 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                                     )
                 
                 success = processed > 0 or total == 0
+                error_code = 0
+                if not success:
+                    has_errors = False
+                    if isinstance(stats, dict):
+                        error_values = [
+                            stats.get('errors', 0),
+                            stats.get('error', 0),
+                        ]
+                        has_errors = any(value and value > 0 for value in error_values)
+                    has_error_results = any(
+                        isinstance(issue_result, dict)
+                        and issue_result.get('action_taken') == 'error'
+                        for issue_result in results_list
+                    )
+                    if processed == 0 and (has_errors or has_error_results):
+                        error_code = 1
                 if taxonomy_metrics:
                     result.setdefault('taxonomy_metrics', taxonomy_metrics)
                 return finalize(CliResult(
                     success=success,
                     message="\n".join(result_lines),
-                    data=result
+                    data=result,
+                    error_code=error_code,
                 ))
                 
         except Exception as e:
