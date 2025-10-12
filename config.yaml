@@ -39,6 +39,7 @@ agent:
 # AI configuration for workflow assignment
 ai:
   enabled: true  # AI is now the default workflow assignment method
+  content_extraction_enabled: false  # Disable AI extraction during issue processing to avoid GitHub Models dependency
   model: "gpt-4o"  # GitHub Models options: gpt-4o, llama-3.2, etc.
   confidence_thresholds:
     auto_assign: 0.8   # Confidence threshold for automatic assignment
