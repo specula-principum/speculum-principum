@@ -35,7 +35,6 @@ from ..workflow.execution_planner import (
     build_plan_created_event,
 )
 from ..workflow.deliverable_namer import MultiWorkflowDeliverableNamer
-from ..workflow.sandbox_execution import execute_workflow_in_sandbox, prepare_sandbox
 from ..workflow.workflow_state_manager import (
     WORKFLOW_LABEL_PREFIX,
     SPECIALIST_LABEL_PREFIX,
@@ -628,6 +627,131 @@ class IssueProcessor:
                     selection_state_update,
                 )
             
+            execution_plan_obj = plan_context.execution_plan if plan_context else None
+            multi_plan_available = bool(execution_plan_obj and execution_plan_obj.workflow_count())
+            preview_only_mode = getattr(self, 'multi_workflow_preview_only', False)
+            multi_runtime_enabled = bool(
+                execution_plan_obj
+                and execution_plan_obj.workflow_count() > 1
+                and not preview_only_mode
+            )
+
+            if multi_runtime_enabled:
+                try:
+                    execution_result = self._execute_multi_workflow_plan(
+                        issue_data,
+                        plan_context,
+                        extracted_content=extracted_content,
+                    )
+                except WorkflowExecutionError as e:
+                    error_msg = f"Multi-workflow execution failed: {e}"
+                    self.logger.error(error_msg)
+                    self._update_issue_status(issue_number, IssueProcessingStatus.ERROR, {
+                        'error_message': error_msg,
+                        'error_time': datetime.now().isoformat(),
+                        'error_type': 'multi_workflow_execution',
+                    })
+                    return ProcessingResult(
+                        issue_number=issue_number,
+                        status=IssueProcessingStatus.ERROR,
+                        error_message=error_msg,
+                        metadata=result_metadata,
+                    )
+                except Exception as e:  # pragma: no cover - defensive guard
+                    error_msg = f"Unexpected error during multi-workflow execution: {e}"
+                    log_exception(self.logger, error_msg, e)
+                    self._update_issue_status(issue_number, IssueProcessingStatus.ERROR, {
+                        'error_message': error_msg,
+                        'error_time': datetime.now().isoformat(),
+                        'error_type': 'multi_workflow_execution',
+                    })
+                    return ProcessingResult(
+                        issue_number=issue_number,
+                        status=IssueProcessingStatus.ERROR,
+                        error_message=error_msg,
+                        metadata=result_metadata,
+                    )
+
+                if execution_result.get('multi_workflow_execution'):
+                    result_metadata['multi_workflow_execution'] = execution_result['multi_workflow_execution']
+                if execution_result.get('workflow_results'):
+                    result_metadata['multi_workflow_results'] = execution_result['workflow_results']
+                if execution_result.get('errors'):
+                    result_metadata['multi_workflow_errors'] = execution_result['errors']
+                if execution_result.get('partial_success'):
+                    result_metadata['multi_workflow_partial_success'] = True
+
+                processing_time = (datetime.now() - start_time).total_seconds()
+                workflow_display_name = execution_result.get('workflow_name') or 'multi_workflow'
+                created_files = list(execution_result.get('created_files') or [])
+                git_branch = execution_result.get('git_branch')
+                git_commit = execution_result.get('git_commit')
+                output_directory = execution_result.get('output_directory')
+
+                completed_state = {
+                    'completed_at': datetime.now().isoformat(),
+                    'workflow_name': workflow_display_name,
+                    'created_files': created_files,
+                    'processing_time_seconds': processing_time,
+                    'multi_workflow_execution': execution_result.get('multi_workflow_execution'),
+                    'multi_workflow_results': execution_result.get('workflow_results'),
+                }
+                if execution_result.get('errors'):
+                    completed_state['multi_workflow_errors'] = execution_result['errors']
+                    completed_state['partial_success'] = True
+                if output_directory:
+                    completed_state['output_directory'] = output_directory
+
+                if execution_result.get('errors') and not created_files:
+                    error_msg = "Multi-workflow execution failed for all workflows; no deliverables were produced."
+                    self.logger.error(error_msg)
+                    failure_state = dict(completed_state)
+                    failure_state['error_message'] = error_msg
+                    self._update_issue_status(
+                        issue_number,
+                        IssueProcessingStatus.ERROR,
+                        failure_state,
+                    )
+                    return ProcessingResult(
+                        issue_number=issue_number,
+                        status=IssueProcessingStatus.ERROR,
+                        error_message=error_msg,
+                        metadata=result_metadata,
+                    )
+
+                self._update_issue_status(
+                    issue_number,
+                    IssueProcessingStatus.COMPLETED,
+                    completed_state,
+                )
+
+                self.logger.info(
+                    "Successfully processed multi-workflow issue #%s in %.2fs",
+                    issue_number,
+                    processing_time,
+                )
+
+                return ProcessingResult(
+                    issue_number=issue_number,
+                    status=IssueProcessingStatus.COMPLETED,
+                    workflow_name=workflow_display_name,
+                    created_files=created_files,
+                    processing_time_seconds=processing_time,
+                    output_directory=output_directory,
+                    git_branch=git_branch,
+                    git_commit=git_commit,
+                    metadata=result_metadata,
+                )
+
+            if plan_context and preview_only_mode:
+                preview_result = self._execute_multi_workflow_plan(
+                    issue_data,
+                    plan_context,
+                    extracted_content=extracted_content,
+                )
+                if preview_result.get('multi_workflow_execution'):
+                    result_metadata['multi_workflow_execution'] = preview_result['multi_workflow_execution']
+
             if workflow_info is None:
                 # Need clarification
                 clarification_msg = self._generate_clarification_message(issue_data)
@@ -1036,7 +1160,7 @@ class IssueProcessor:
         issue_data: IssueData,
         overview: Dict[str, Any],
     ) -> None:
-        """Emit telemetry summarizing sandbox execution stages."""
+        """Emit telemetry summarizing multi-workflow execution."""
 
         if not self.telemetry_publishers:
             return
@@ -1052,15 +1176,51 @@ class IssueProcessor:
                 exc,
             )
 
+    def _build_deliverable_overrides(
+        self,
+        plan_context: _PlanExecutionContext,
+    ) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        """Return per-workflow deliverable overrides derived from the manifest."""
+
+        manifest = getattr(plan_context, "deliverable_manifest", None) or {}
+        workflows = manifest.get("workflows", []) if isinstance(manifest, dict) else []
+
+        overrides: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        for workflow_entry in workflows:
+            workflow_name = workflow_entry.get("workflow_name")
+            if not workflow_name:
+                continue
+
+            deliverable_map: Dict[str, Dict[str, Any]] = {}
+            for deliverable in workflow_entry.get("deliverables", []):
+                slug = deliverable.get("deliverable_slug") or self._slugify(deliverable.get("deliverable_name", ""))
+                deliverable_map[slug] = deliverable
+
+            overrides[workflow_name] = deliverable_map
+
+        return overrides
+
     def _execute_multi_workflow_plan(
         self,
         issue_data: IssueData,
         plan_context: Optional[_PlanExecutionContext],
-    ) -> Optional[Dict[str, Any]]:
-        """Execute the sandbox plan when available and return execution metadata."""
+        *,
+        extracted_content=None,
+    ) -> Dict[str, Any]:
+        """Execute all workflows in the provided plan and return aggregated results."""
 
         if not plan_context:
-            return None
+            return {
+                'workflow_name': None,
+                'workflow_names': [],
+                'created_files': [],
+                'multi_workflow_execution': None,
+                'workflow_results': [],
+                'errors': [],
+                'partial_success': False,
+                'git_branch': None,
+                'git_commit': None,
+            }
 
         execution_plan = plan_context.execution_plan
         overview = execution_plan.to_summary()
@@ -1078,6 +1238,12 @@ class IssueProcessor:
         if plan_context.deliverable_manifest:
             overview['deliverable_manifest'] = plan_context.deliverable_manifest
 
+        ordered_workflow_names: List[str] = []
+        for candidate in plan_context.plan.candidates:
+            name = candidate.workflow_info.name
+            if name not in ordered_workflow_names:
+                ordered_workflow_names.append(name)
+
         stage_runs: List[Dict[str, Any]] = []
 
         if preview_only:
@@ -1091,7 +1257,6 @@ class IssueProcessor:
                             {
                                 'workflow_name': run_spec.name,
                                 'status': 'skipped',
-                                'sandbox_path': None,
                                 'message': 'Multi-workflow execution skipped due to preview-only mode.',
                             }
                             for run_spec in stage.workflows
@@ -1103,39 +1268,152 @@ class IssueProcessor:
             overview['status'] = 'skipped'
             overview['skip_reason'] = 'preview_only_guard'
             self._emit_execution_summary_event(issue_data, overview)
-            return overview
+            return {
+                'workflow_name': ", ".join(ordered_workflow_names) if ordered_workflow_names else None,
+                'workflow_names': ordered_workflow_names,
+                'created_files': [],
+                'multi_workflow_execution': overview,
+                'workflow_results': [],
+                'errors': [],
+                'partial_success': False,
+                'git_branch': None,
+                'git_commit': None,
+            }
 
-        sandbox_root = self.output_base_dir / f"issue_{issue_data.number}" / "multi_workflow_sandboxes"
-        sandbox_root.mkdir(parents=True, exist_ok=True)
+        overrides_map = self._build_deliverable_overrides(plan_context)
+        aggregated_files: List[str] = []
+        workflow_results: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
+        primary_branch: Optional[str] = None
+        primary_commit: Optional[str] = None
 
         for stage in execution_plan.stages:
-            workflow_entries: List[Dict[str, Any]] = []
-            for run_spec in stage.workflows:
-                sandbox_context = prepare_sandbox(sandbox_root, run_spec)
-                sandbox_result = execute_workflow_in_sandbox(sandbox_context)
-                workflow_entries.append(
-                    {
-                        'workflow_name': sandbox_result.workflow_name,
-                        'status': sandbox_result.status,
-                        'sandbox_path': str(sandbox_result.sandbox_path),
-                        'message': sandbox_result.message,
-                    }
-                )
+            stage_entry: Dict[str, Any] = {
+                'index': stage.index,
+                'run_mode': stage.run_mode,
+                'blocking_conflicts': sorted(stage.blocking_conflicts),
+                'workflows': [],
+            }
 
-            stage_runs.append(
-                {
-                    'index': stage.index,
-                    'run_mode': stage.run_mode,
-                    'blocking_conflicts': sorted(stage.blocking_conflicts),
-                    'workflows': workflow_entries,
-                }
-            )
+            for run_spec in stage.workflows:
+                workflow_info = run_spec.candidate.workflow_info
+                overrides = overrides_map.get(workflow_info.name, {})
+
+                try:
+                    result = self._execute_workflow_with_recovery(
+                        issue_data,
+                        workflow_info,
+                        extracted_content,
+                        plan_context=None,
+                        deliverable_overrides=overrides,
+                    )
+
+                    created = list(result.get('created_files') or [])
+                    for path in created:
+                        if path not in aggregated_files:
+                            aggregated_files.append(path)
+
+                    if result.get('git_branch') and not primary_branch:
+                        primary_branch = result.get('git_branch')
+                    if result.get('git_commit') and not primary_commit:
+                        primary_commit = result.get('git_commit')
+
+                    workflow_results.append(result)
+                    stage_entry['workflows'].append(
+                        {
+                            'workflow_name': workflow_info.name,
+                            'status': 'executed',
+                            'message': 'Workflow executed successfully.',
+                            'created_files': created,
+                        }
+                    )
+
+                except WorkflowExecutionError as exc:
+                    error_message = str(exc)
+                    stage_entry['workflows'].append(
+                        {
+                            'workflow_name': workflow_info.name,
+                            'status': 'failed',
+                            'message': error_message,
+                        }
+                    )
+                    errors.append(
+                        {
+                            'workflow_name': workflow_info.name,
+                            'error': error_message,
+                        }
+                    )
+
+                    if not execution_plan.allow_partial_success:
+                        stage_runs.append(stage_entry)
+                        overview['stage_runs'] = stage_runs
+                        overview['status'] = 'failed'
+                        overview['errors'] = errors
+                        self._emit_execution_summary_event(issue_data, overview)
+                        raise
+
+                    continue
+
+                except Exception as exc:  # pragma: no cover - defensive guard
+                    error_message = str(exc)
+                    stage_entry['workflows'].append(
+                        {
+                            'workflow_name': workflow_info.name,
+                            'status': 'failed',
+                            'message': error_message,
+                        }
+                    )
+                    errors.append(
+                        {
+                            'workflow_name': workflow_info.name,
+                            'error': error_message,
+                        }
+                    )
+
+                    if not execution_plan.allow_partial_success:
+                        stage_runs.append(stage_entry)
+                        overview['stage_runs'] = stage_runs
+                        overview['status'] = 'failed'
+                        overview['errors'] = errors
+                        self._emit_execution_summary_event(issue_data, overview)
+                        raise WorkflowExecutionError(
+                            f"Unexpected error executing workflow '{workflow_info.name}': {exc}",
+                            issue_number=issue_data.number,
+                            error_code="MULTI_WORKFLOW_EXECUTION_ERROR",
+                        ) from exc
+
+                    continue
+
+            stage_runs.append(stage_entry)
 
         overview['stage_runs'] = stage_runs
-        overview['status'] = 'executed'
-        overview['sandbox_root'] = str(sandbox_root)
+        if errors:
+            overview['status'] = 'partial' if aggregated_files else 'failed'
+            overview['errors'] = errors
+        else:
+            overview['status'] = 'executed'
+
         self._emit_execution_summary_event(issue_data, overview)
-        return overview
+
+        output_directory = None
+        for res in workflow_results:
+            candidate_dir = res.get('output_directory') if isinstance(res, dict) else None
+            if candidate_dir:
+                output_directory = candidate_dir
+                break
+
+        return {
+            'workflow_name': ", ".join(ordered_workflow_names) if ordered_workflow_names else None,
+            'workflow_names': ordered_workflow_names,
+            'created_files': aggregated_files,
+            'multi_workflow_execution': overview,
+            'workflow_results': workflow_results,
+            'errors': errors,
+            'partial_success': bool(errors),
+            'git_branch': primary_branch,
+            'git_commit': primary_commit,
+            'output_directory': output_directory,
+        }
 
     def _execute_workflow_with_recovery(
         self,
@@ -1144,6 +1422,7 @@ class IssueProcessor:
         extracted_content=None,
         *,
         plan_context: Optional[_PlanExecutionContext] = None,
+        deliverable_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Execute workflow with error recovery and partial success handling.
@@ -1167,6 +1446,7 @@ class IssueProcessor:
                 workflow_info,
                 extracted_content,
                 plan_context=plan_context,
+                deliverable_overrides=deliverable_overrides,
             )
         except Exception as e:
             # Try to recover by falling back to basic workflow execution
@@ -1178,6 +1458,7 @@ class IssueProcessor:
                     workflow_info,
                     extracted_content,
                     plan_context=plan_context,
+                    deliverable_overrides=deliverable_overrides,
                 )
             except Exception as recovery_error:
                 error_msg = f"Workflow execution and recovery both failed: {recovery_error}"
@@ -1195,6 +1476,7 @@ class IssueProcessor:
         extracted_content=None,
         *,
         plan_context: Optional[_PlanExecutionContext] = None,
+        deliverable_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Execute a basic version of the workflow with minimal dependencies.
@@ -1210,7 +1492,6 @@ class IssueProcessor:
             Dictionary with execution results
         """
         self.logger.info(f"Executing basic workflow for issue #{issue_data.number}")
-        multi_workflow_execution = self._execute_multi_workflow_plan(issue_data, plan_context)
         
         # Create basic output directory
         output_dir = self.output_base_dir / f"issue_{issue_data.number}"
@@ -1221,8 +1502,21 @@ class IssueProcessor:
         # Create basic deliverables without complex templating
         for deliverable in workflow_info.deliverables:
             try:
-                file_name = f"{self._slugify(deliverable['name'])}.md"
-                file_path = output_dir / file_name
+                deliverable_slug = self._slugify(deliverable['name'])
+                override_entry = None
+                if deliverable_overrides:
+                    override_entry = deliverable_overrides.get(deliverable_slug)
+
+                if override_entry:
+                    relative_path_value = override_entry.get('final_relative_path') or override_entry.get('base_relative_path')
+                    if not relative_path_value:
+                        relative_path_value = f"issue_{issue_data.number}/{deliverable_slug}.md"
+                    file_path = self.output_base_dir / str(relative_path_value)
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                else:
+                    file_name = f"{deliverable_slug}.md"
+                    file_path = output_dir / file_name
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
                 
                 # Generate basic content
                 content = self._generate_basic_deliverable_content(issue_data, deliverable)
@@ -1250,8 +1544,6 @@ class IssueProcessor:
             'output_directory': str(output_dir),
             'execution_mode': 'basic_recovery'
         }
-        if multi_workflow_execution:
-            result['multi_workflow_execution'] = multi_workflow_execution
 
         return result
 
@@ -1317,6 +1609,7 @@ This deliverable was generated using basic recovery mode due to processing const
         extracted_content=None,
         *,
         plan_context: Optional[_PlanExecutionContext] = None,
+        deliverable_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Execute the matched workflow for the given issue.
@@ -1355,19 +1648,30 @@ This deliverable was generated using basic recovery mode due to processing const
         )
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        multi_workflow_execution = self._execute_multi_workflow_plan(issue_data, plan_context)
-
         # Process deliverables
         created_files = []
         
         for deliverable in workflow_info.deliverables:
             try:
+                deliverable_slug = self._slugify(deliverable['name'])
+                override_entry = None
+                if deliverable_overrides:
+                    override_entry = deliverable_overrides.get(deliverable_slug)
+
                 file_name = file_pattern.format(
                     deliverable_name=self._slugify(deliverable['name']),
                     issue_number=issue_data.number,
                     title_slug=self._slugify(issue_data.title)
                 )
-                file_path = output_dir / file_name
+                if override_entry:
+                    relative_path_value = override_entry.get('final_relative_path') or override_entry.get('base_relative_path')
+                    if not relative_path_value:
+                        relative_path_value = (output_dir / file_name).relative_to(self.output_base_dir)
+                    file_path = self.output_base_dir / str(relative_path_value)
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                else:
+                    file_path = output_dir / file_name
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
                 
                 # Generate content based on issue and deliverable spec
                 content = self._generate_deliverable_content(issue_data, deliverable, workflow_info, extracted_content)
@@ -1410,8 +1714,6 @@ This deliverable was generated using basic recovery mode due to processing const
             'created_files': created_files,
             'output_directory': str(output_dir)
         }
-        if multi_workflow_execution:
-            result['multi_workflow_execution'] = multi_workflow_execution
         
         # Add git information if available
         if branch_info:
