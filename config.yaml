@@ -27,6 +27,12 @@ agent:
     retry_attempts: 2
     require_review: true
     auto_create_pr: false
+    enable_multi_workflow: true
+    multi_workflow:
+      allow_parallel_stages: true
+      allow_partial_success: true
+      conflict_resolution: suffix
+      suffix_separator: "--"
   git:
     branch_prefix: "agent"
     commit_message_template: "Agent: {workflow_name} for issue #{issue_number}"
