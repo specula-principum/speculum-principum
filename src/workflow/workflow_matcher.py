@@ -602,7 +602,12 @@ class WorkflowMatcher:
         
         # Multiple matches - need clarification
         workflow_names = [w.name for w in matching_workflows]
-        message = f"Multiple workflows match ({', '.join(workflow_names)}). Add more specific labels to clarify."
+        message = (
+            "Multiple workflows match ("
+            f"{', '.join(workflow_names)}). "
+            "Enable multi-workflow processing with the --allow-multi-workflow flag "
+            "or set agent.processing.enable_multi_workflow: true to run all applicable workflows."
+        )
         return None, message
     
     def get_workflow_plan(
