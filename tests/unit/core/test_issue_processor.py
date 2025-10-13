@@ -505,7 +505,7 @@ output:
         assert result.metadata['multi_workflow_plan']['workflow_count'] == 2
         assert 'deliverable_manifest' in result.metadata['multi_workflow_plan']
         assert result.metadata['multi_workflow_plan']['deliverable_manifest']['workflow_count'] == 2
-        assert result.metadata['workflow_selection_message'] == "Primary workflow selected"
+        assert result.metadata['workflow_selection_message'] == "Mocked multi-workflow plan"
         assert result.metadata['multi_workflow_execution']['status'] == 'skipped'
         assert len(telemetry_events) == 1
         plan_event = telemetry_events[0]
@@ -518,7 +518,7 @@ output:
         assert 'multi_workflow_plan' in state
         assert state['multi_workflow_plan']['workflow_count'] == 2
         assert 'deliverable_manifest' in state['multi_workflow_plan']
-        assert state['workflow_selection_message'] == "Primary workflow selected"
+        assert state['workflow_selection_message'] == "Mocked multi-workflow plan"
         assert state['multi_workflow_execution']['status'] == 'skipped'
 
     def test_multi_workflow_execution_emits_telemetry(self, temp_config_dir):

@@ -61,16 +61,16 @@
   },
   "4242": {
     "status": "completed",
-    "updated_at": "2025-10-12T18:23:58.278506",
-    "started_at": "2025-10-12T18:23:58.275531",
+    "updated_at": "2025-10-12T19:30:29.338264",
+    "started_at": "2025-10-12T19:30:29.334393",
     "title": "Multi workflow issue",
     "labels": [
       "site-monitor",
       "multi-label"
     ],
-    "workflow_selection_message": "Primary workflow selected",
+    "workflow_selection_message": "Mocked multi-workflow plan",
     "multi_workflow_plan": {
-      "plan_id": "multiwf-c059e484f8c64952bde9710d849272c6",
+      "plan_id": "multiwf-be9df692e39142a191996755753181cb",
       "stage_count": 1,
       "workflow_count": 2,
       "stages": [
@@ -146,13 +146,13 @@
         "conflict_groups": []
       }
     },
-    "plan_generated_at": "2025-10-12T18:23:58.277696",
-    "completed_at": "2025-10-12T18:23:58.278495",
+    "plan_generated_at": "2025-10-12T19:30:29.335888",
+    "completed_at": "2025-10-12T19:30:29.338253",
     "workflow_name": "Primary Workflow",
     "created_files": [
       "study/primary/output.md"
     ],
-    "processing_time_seconds": 0.002961,
+    "processing_time_seconds": 0.003857,
     "multi_workflow_execution": {
       "status": "skipped",
       "plan_id": "test-plan-id",

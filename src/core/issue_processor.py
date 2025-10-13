@@ -857,12 +857,26 @@ class IssueProcessor:
                     exc,
                 )
             else:
-                if plan and plan.candidates:
+                if self._is_valid_workflow_plan(plan):
                     primary = plan.primary_workflow()
-                    if primary:
+                    if primary and primary.workflow_info:
                         return primary.workflow_info, plan.selection_message
 
         return self.workflow_matcher.get_best_workflow_match(issue_data.labels)
+
+    @staticmethod
+    def _is_valid_workflow_plan(plan: Any) -> bool:
+        """Return True when a workflow plan contains concrete candidates."""
+
+        if not isinstance(plan, WorkflowPlan):
+            return False
+
+        candidates = getattr(plan, 'candidates', ())
+        if isinstance(candidates, tuple):
+            return len(candidates) > 0
+        if isinstance(candidates, list):
+            return len(candidates) > 0
+        return False
 
     def _prepare_multi_workflow_plan(
         self,
@@ -890,7 +904,7 @@ class IssueProcessor:
                 )
                 return None, None
 
-        if plan is None or not plan.candidates:
+        if not self._is_valid_workflow_plan(plan):
             return None, None
 
         try:
