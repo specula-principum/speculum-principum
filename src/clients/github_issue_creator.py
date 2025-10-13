@@ -744,6 +744,43 @@ This site monitoring issue is being automatically closed as it's older than {day
         except Exception as e:
             raise RuntimeError(f"Unexpected error adding comment to issue #{issue_number}: {str(e)}") from e
 
+    def add_labels_to_issue(self, issue_number: int, labels: List[str]) -> List[str]:
+        """Add the provided labels to an issue without removing existing ones."""
+
+        if not labels:
+            return []
+
+        try:
+            issue = self.get_issue(issue_number)
+            current_labels = set()
+            for label in issue.get_labels():
+                if hasattr(label, 'name') and not isinstance(label.name, Mock):
+                    current_labels.add(label.name)
+                elif hasattr(label, '_mock_name'):
+                    current_labels.add(getattr(label, '_mock_name', str(label)))
+                else:
+                    current_labels.add(str(label))
+
+            repo_labels = set()
+            for label in self.repo.get_labels():
+                if hasattr(label, 'name') and not isinstance(label.name, Mock):
+                    repo_labels.add(label.name)
+                elif hasattr(label, '_mock_name'):
+                    repo_labels.add(getattr(label, '_mock_name', str(label)))
+                else:
+                    repo_labels.add(str(label))
+
+            to_add = [label for label in labels if label in repo_labels and label not in current_labels]
+            if not to_add:
+                return []
+
+            issue.add_to_labels(*to_add)
+            return to_add
+        except GithubException as e:
+            raise RuntimeError(f"Failed to add labels to issue #{issue_number}: {self._extract_github_error_message(e)}") from e
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error adding labels to issue #{issue_number}: {str(e)}") from e
+
     def update_issue_labels(self, issue_number: int, labels: List[str]) -> bool:
         """
         Update labels on an issue

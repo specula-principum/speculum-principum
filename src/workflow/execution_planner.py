@@ -297,23 +297,33 @@ def build_plan_created_event(
 ) -> Dict[str, object]:
     """Draft telemetry payload for ``multi_workflow.plan_created`` events."""
 
+    summary = plan.to_summary()
+
     payload = {
         "event_type": "multi_workflow.plan_created",
-        "plan_id": plan.plan_id,
+        "plan_id": summary.get("plan_id", plan.plan_id),
         "issue_number": issue_number,
         "batch_id": batch_id,
-        "stage_count": plan.stage_count(),
-        "workflow_count": plan.workflow_count(),
+        "stage_count": summary.get("stage_count", plan.stage_count()),
+        "workflow_count": summary.get("workflow_count", plan.workflow_count()),
         "allow_partial_success": plan.allow_partial_success,
     }
 
-    payload["stages"] = [
-        {
-            "index": stage.index,
-            "run_mode": stage.run_mode,
-            "workflows": list(stage.workflow_names()),
-        }
-        for stage in plan.stages
-    ]
+    if plan.overall_timeout_seconds is not None:
+        payload["overall_timeout_seconds"] = plan.overall_timeout_seconds
+
+    stages = summary.get("stages")
+    if stages is not None:
+        payload["stages"] = stages
+    else:
+        payload["stages"] = [
+            {
+                "index": stage.index,
+                "run_mode": stage.run_mode,
+                "workflows": list(stage.workflow_names()),
+                "blocking_conflicts": sorted(stage.blocking_conflicts),
+            }
+            for stage in plan.stages
+        ]
 
     return payload

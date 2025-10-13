@@ -12,8 +12,13 @@ from typing import Any, Dict, List
 from unittest.mock import Mock, patch, MagicMock
 
 from src.core.issue_processor import (
-    IssueProcessor, IssueProcessingStatus, ProcessingResult, IssueData,
-    IssueProcessingError, ProcessingTimeoutError
+    IssueProcessor,
+    IssueProcessingStatus,
+    ProcessingResult,
+    IssueData,
+    IssueProcessingError,
+    ProcessingTimeoutError,
+    GitHubIntegratedIssueProcessor,
 )
 from src.workflow.workflow_matcher import (
     WorkflowInfo,
@@ -512,6 +517,7 @@ output:
         assert plan_event['event_type'] == 'multi_workflow.plan_created'
         assert plan_event['issue_number'] == issue_data.number
         assert plan_event['plan_id'] == result.metadata['multi_workflow_plan']['plan_id']
+        assert sorted(plan_event['stages'][0]['blocking_conflicts']) == ['deliverable:primary', 'deliverable:secondary']
         assert summary_event['issue_number'] == issue_data.number
         assert summary_event['status'] == 'executed'
 
@@ -618,6 +624,116 @@ output:
         event_types = [event['event_type'] for event in telemetry_events]
         assert event_types.count('multi_workflow.plan_created') == 1
         assert event_types.count('multi_workflow.execution_summary') == 1
+
+    def test_generate_multi_workflow_completion_comment_renders_table(self):
+        """GitHub processor should format multi-workflow comments with per-stage detail."""
+
+        processor = GitHubIntegratedIssueProcessor.__new__(GitHubIntegratedIssueProcessor)
+        processor.logger = Mock()
+
+        result = ProcessingResult(
+            issue_number=5555,
+            status=IssueProcessingStatus.COMPLETED,
+            workflow_name='Primary Workflow, Secondary Workflow',
+            created_files=[
+                'study/5555/primary/report.md',
+                'study/5555/secondary/summary.md',
+            ],
+            processing_time_seconds=12.3,
+        )
+
+        execution = {
+            'plan_id': 'multiwf-test-plan',
+            'status': 'executed',
+            'stage_count': 2,
+            'workflow_count': 2,
+            'stage_runs': [
+                {
+                    'index': 0,
+                    'run_mode': 'parallel',
+                    'blocking_conflicts': ['deliverable:primary'],
+                    'workflows': [
+                        {
+                            'workflow_name': 'Primary Workflow',
+                            'status': 'executed',
+                            'created_files': ['study/5555/primary/report.md'],
+                            'message': 'Workflow executed successfully.',
+                        }
+                    ],
+                },
+                {
+                    'index': 1,
+                    'run_mode': 'sequential',
+                    'blocking_conflicts': [],
+                    'workflows': [
+                        {
+                            'workflow_name': 'Secondary Workflow',
+                            'status': 'executed',
+                            'created_files': ['study/5555/secondary/summary.md'],
+                            'message': 'Workflow executed successfully.',
+                        }
+                    ],
+                },
+            ],
+        }
+
+        plan_summary = {
+            'plan_id': 'multiwf-test-plan',
+            'stage_count': 2,
+            'workflow_count': 2,
+            'selection_message': 'Mocked multi-workflow plan',
+        }
+
+        result.metadata['multi_workflow_execution'] = execution
+        result.metadata['multi_workflow_plan'] = plan_summary
+
+        comment = processor._generate_completion_comment(result)
+
+        assert 'Multi-Workflow Processing Complete' in comment
+        assert '| Workflow | Stage | Status | Deliverables | Notes |' in comment
+        assert '`study/5555/primary/report.md`' in comment
+        assert 'Mocked multi-workflow plan' in comment
+
+    def test_apply_multi_workflow_labels_adds_partial_label(self):
+        """Partial multi-workflow runs add both multi and partial labels."""
+
+        processor = GitHubIntegratedIssueProcessor.__new__(GitHubIntegratedIssueProcessor)
+        processor.github = Mock()
+        processor.github.add_labels_to_issue = Mock(return_value=['workflow::multi', 'workflow::partial-complete'])
+        processor.logger = Mock()
+
+        result = ProcessingResult(issue_number=42, status=IssueProcessingStatus.COMPLETED)
+        result.metadata['multi_workflow_execution'] = {
+            'status': 'partial',
+            'stage_runs': [],
+            'errors': [{'workflow_name': 'Secondary Workflow', 'error': 'Failed to render output'}],
+        }
+
+        processor._apply_multi_workflow_labels(42, result)
+
+        processor.github.add_labels_to_issue.assert_called_once_with(
+            42,
+            ['workflow::multi', 'workflow::partial-complete'],
+        )
+
+    def test_apply_multi_workflow_labels_success_only_adds_multi(self):
+        """Successful multi-workflow runs only add the multi label."""
+
+        processor = GitHubIntegratedIssueProcessor.__new__(GitHubIntegratedIssueProcessor)
+        processor.github = Mock()
+        processor.github.add_labels_to_issue = Mock(return_value=['workflow::multi'])
+        processor.logger = Mock()
+
+        result = ProcessingResult(issue_number=99, status=IssueProcessingStatus.COMPLETED)
+        result.metadata['multi_workflow_execution'] = {
+            'status': 'executed',
+            'stage_runs': [],
+            'errors': [],
+        }
+
+        processor._apply_multi_workflow_labels(99, result)
+
+        processor.github.add_labels_to_issue.assert_called_once_with(99, ['workflow::multi'])
     
     def test_generate_deliverable_content(self, temp_config_dir, sample_issue_data, mock_workflow_matcher):
         """Test deliverable content generation."""

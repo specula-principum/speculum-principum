@@ -2400,6 +2400,7 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
             else:
                 comment_body = completion_comment
 
+            self._apply_multi_workflow_labels(issue_number, result)
             self.github.add_comment(issue_number, comment_body)
             self.logger.info(f"Posted completion summary to issue #{issue_number}")
             try:
@@ -2414,19 +2415,128 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
             self._unassign_from_agent(issue_number)
             self.logger.info(f"Added error comment to issue #{issue_number}")
     
+    def _generate_multi_workflow_completion_comment(
+        self,
+        result: ProcessingResult,
+        execution: Dict[str, Any],
+    ) -> str:
+        """Render a completion comment tailored for multi-workflow runs."""
+
+        metadata = result.metadata or {}
+        plan_summary: Dict[str, Any] = metadata.get('multi_workflow_plan') or {}
+
+        plan_id = execution.get('plan_id') or plan_summary.get('plan_id')
+        workflow_display = result.workflow_name or ", ".join(plan_summary.get('workflows', []))
+        stage_count = execution.get('stage_count') or plan_summary.get('stage_count')
+        workflow_count = execution.get('workflow_count') or plan_summary.get('workflow_count')
+        selection_message = plan_summary.get('selection_message') or execution.get('selection_message')
+        selection_reason = plan_summary.get('selection_reason') or execution.get('selection_reason')
+
+        status = str(execution.get('status', 'executed')).lower()
+        status_emojis = {
+            'executed': '✅',
+            'partial': '⚠️',
+            'failed': '❌',
+            'skipped': 'ℹ️',
+        }
+        status_titles = {
+            'executed': 'Multi-Workflow Processing Complete',
+            'partial': 'Multi-Workflow Processing Partially Complete',
+            'failed': 'Multi-Workflow Processing Failed',
+            'skipped': 'Multi-Workflow Processing Skipped',
+        }
+        emoji = status_emojis.get(status, 'ℹ️')
+        title = status_titles.get(status, 'Multi-Workflow Processing Update')
+
+        processing_time = None
+        if result.processing_time_seconds is not None:
+            processing_time = f"{result.processing_time_seconds:.1f}s"
+
+        stage_runs: List[Dict[str, Any]] = execution.get('stage_runs') or []
+
+        table_lines: List[str] = []
+        if stage_runs:
+            table_lines.append("| Workflow | Stage | Status | Deliverables | Notes |")
+            table_lines.append("| --- | --- | --- | --- | --- |")
+            for stage in stage_runs:
+                stage_index = stage.get('index', 0)
+                run_mode = stage.get('run_mode', 'sequential')
+                conflicts = stage.get('blocking_conflicts') or []
+                conflict_text = f"; conflicts: {', '.join(conflicts)}" if conflicts else ""
+                stage_label = f"{stage_index} ({run_mode}){conflict_text}"
+
+                for workflow in stage.get('workflows', []):
+                    workflow_name = workflow.get('workflow_name', 'unknown')
+                    workflow_status = str(workflow.get('status', 'unknown')).lower()
+                    deliverables = workflow.get('created_files') or []
+                    deliverable_text = "<br>".join(f"`{path}`" for path in deliverables) if deliverables else "n/a"
+                    note = (workflow.get('message') or '').replace('|', '\\|') or ' '
+                    table_lines.append(
+                        f"| {workflow_name} | {stage_label} | {workflow_status} | {deliverable_text} | {note} |"
+                    )
+
+        errors = execution.get('errors') or metadata.get('multi_workflow_errors') or []
+        aggregated_files = list(result.created_files or [])
+
+        lines: List[str] = [f"{emoji} **{title}**", ""]
+        if plan_id:
+            lines.append(f"**Plan ID**: `{plan_id}`")
+        if workflow_display:
+            lines.append(f"**Workflows**: {workflow_display}")
+        if stage_count and workflow_count:
+            lines.append(f"**Plan Summary**: {stage_count} stages / {workflow_count} workflows")
+        elif stage_count:
+            lines.append(f"**Plan Summary**: {stage_count} stages")
+        elif workflow_count:
+            lines.append(f"**Plan Summary**: {workflow_count} workflows")
+        lines.append(f"**Status**: {status}")
+        if processing_time:
+            lines.append(f"**Processing Time**: {processing_time}")
+        if selection_message:
+            lines.append(f"**Selection**: {selection_message}")
+        elif selection_reason:
+            lines.append(f"**Selection**: {selection_reason}")
+
+        if table_lines:
+            lines.append("")
+            lines.extend(table_lines)
+
+        if aggregated_files:
+            lines.append("")
+            lines.append("**Generated Deliverables:**")
+            lines.extend(f"- `{path}`" for path in aggregated_files)
+
+        if errors:
+            lines.append("")
+            lines.append("**Errors:**")
+            for err in errors:
+                workflow_name = err.get('workflow_name', 'Unknown')
+                error_text = err.get('error', 'Unknown error')
+                lines.append(f"- **{workflow_name}**: {error_text}")
+
+        lines.append("")
+        lines.append('---')
+        lines.append('*Automated processing by Issue Processor v1.0*')
+
+        return "\n".join(line for line in lines if line is not None)
+
     def _generate_completion_comment(self, result: ProcessingResult) -> str:
         """
         Generate completion comment for successfully processed issue.
-        
+
         Args:
             result: Processing result to comment on
-            
+
         Returns:
             Formatted completion comment
         """
+        execution = (result.metadata or {}).get('multi_workflow_execution')
+        if execution and execution.get('stage_runs'):
+            return self._generate_multi_workflow_completion_comment(result, execution)
+
         files_list = "\n".join([f"- {file}" for file in (result.created_files or [])])
         processing_time = f"{result.processing_time_seconds:.1f}s" if result.processing_time_seconds else "unknown"
-        
+
         return (
             f"✅ **Issue Processing Complete**\n\n"
             f"**Workflow**: {result.workflow_name}\n"
@@ -2436,6 +2546,42 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
             f"---\n"
             f"*Automated processing by Issue Processor v1.0*"
         )
+
+    def _apply_multi_workflow_labels(self, issue_number: int, result: ProcessingResult) -> None:
+        """Attach multi-workflow labels based on execution outcomes."""
+
+        metadata = result.metadata or {}
+        execution = metadata.get('multi_workflow_execution')
+        if not execution:
+            return
+
+        desired_labels = ['workflow::multi']
+        status = str(execution.get('status', '')).lower()
+        has_errors = bool(execution.get('errors') or metadata.get('multi_workflow_errors'))
+        if status in {'partial', 'failed'} or has_errors:
+            desired_labels.append('workflow::partial-complete')
+
+        github_client = getattr(self, 'github', None)
+        if not github_client or not hasattr(github_client, 'add_labels_to_issue'):
+            return
+
+        try:
+            added = github_client.add_labels_to_issue(issue_number, desired_labels)
+            logger = getattr(self, 'logger', None)
+            if logger and added:
+                logger.info(
+                    "Added labels %s to issue #%s for multi-workflow processing",
+                    added,
+                    issue_number,
+                )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger = getattr(self, 'logger', None)
+            if logger:
+                logger.warning(
+                    "Failed to add multi-workflow labels to issue #%s: %s",
+                    issue_number,
+                    exc,
+                )
 
     def _finalize_copilot_handoff(self, issue_number: int, result: ProcessingResult) -> Optional[IssueHandoffPayload]:
         """Update issue metadata and assignment for Copilot handoff."""
