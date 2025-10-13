@@ -23,8 +23,8 @@ variables:
 - **Key Topics**: {{ extraction_metadata.key_topics_display }}
 - **Missing Base Entities**: {% if entity_foundation.missing_display %}{{ entity_foundation.missing_display }}{% else %}None{% endif %}
 
-{% if entity_index.person %}
 ## Credibility Index
+{% if entity_index.person %}
 | Name | Role | Credibility Score | Prior Flags | Conflict Notes |
 | --- | --- | --- | --- | --- |
 {% for person in entity_index.person %}| {{ person.name }} | {{ person.display_role }} | {{ person.risk_score }} | {{ person.risk_flags }} | {{ person.conflicts }} |

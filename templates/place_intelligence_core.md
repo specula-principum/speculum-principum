@@ -35,13 +35,14 @@ variables:
 _No place entities available. Capture venue, district, or facility information to continue mapping._
 {% endif %}
 
-{% if event_timeline %}
 ## Event & Venue Timeline
-
+{% if event_timeline %}
 | Timestamp | Event | Entities Involved | Confidence |
 | --- | --- | --- | --- |
 {% for event in event_timeline %}| {{ event.display_timestamp }} | {{ event.description_display }} | {{ event.entities_display }} | {{ event.confidence }} |
 {% endfor %}
+{% else %}
+_No events captured. Add chronology details or extraction focus to populate the timeline._
 {% endif %}
 
 ## Inter-Agency Considerations

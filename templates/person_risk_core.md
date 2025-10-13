@@ -26,14 +26,12 @@ variables:
 - **Extraction Confidence**: {{ extraction_metadata.confidence }} ({{ extraction_metadata.confidence_percent }})
 - **Missing Base Entities**: {% if entity_foundation.missing_display %}{{ entity_foundation.missing_display }}{% else %}None{% endif %}
 
-{% if entity_index.person %}
 ## Risk Matrix
-
+{% if entity_index.person %}
 | Person | Role | Risk Score | Risk Flags | Conflicts | Confidence |
 | --- | --- | --- | --- | --- | --- |
 {% for person in entity_index.person %}| {{ person.name }} | {{ person.display_role }} | {{ person.risk_score }} | {{ person.risk_flags }} | {{ person.conflicts }} | {{ person.confidence }} |
 {% endfor %}
-
 {% else %}
 _No person entities available. Add defendant, witness, or expert records to continue the assessment._
 {% endif %}

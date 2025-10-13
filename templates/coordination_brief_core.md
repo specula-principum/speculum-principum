@@ -26,8 +26,8 @@ variables:
 - **Urgency Level**: {{ extraction_metadata.urgency_level_display }}
 - **Missing Base Entities**: {% if entity_foundation.missing_display %}{{ entity_foundation.missing_display }}{% else %}None{% endif %}
 
-{% if entity_index.organization %}
 ## Agency Contact Map
+{% if entity_index.organization %}
 | Agency | Role / Context | Confidence | Notes |
 | --- | --- | --- | --- |
 {% for agency in entity_index.organization %}| {{ agency.name }} | {{ agency.display_role }} | {{ agency.confidence }} | {{ agency.display_notes }} |
@@ -36,12 +36,14 @@ variables:
 _No agency entities recorded. Add GAO, DOJ, or partner organizations to continue the brief._
 {% endif %}
 
-{% if event_timeline %}
 ## Decision Timeline
+{% if event_timeline %}
 | Timestamp | Event | Entities Involved | Confidence |
 | --- | --- | --- | --- |
 {% for event in event_timeline %}| {{ event.display_timestamp }} | {{ event.description_display }} | {{ event.entities_display }} | {{ event.confidence }} |
 {% endfor %}
+{% else %}
+_No events recorded. Capture chronology details to enable decision tracking._
 {% endif %}
 
 ## Coordination Tasks
