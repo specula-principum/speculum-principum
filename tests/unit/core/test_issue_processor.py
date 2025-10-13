@@ -415,8 +415,7 @@ output:
             config_path=str(temp_config_dir / "test_config.yaml"),
             telemetry_publishers=[telemetry_events.append],
         )
-        processor.multi_workflow_planning_enabled = True
-        processor.workflow_execution_planner = WorkflowExecutionPlanner()
+        processor.enable_multi_workflow_runtime()
 
         primary_info = WorkflowInfo(
             path="/tmp/primary.yaml",
@@ -534,9 +533,8 @@ output:
                 telemetry_publishers=[telemetry_events.append],
             )
 
-        processor.multi_workflow_planning_enabled = True
+        processor.enable_multi_workflow_runtime()
         processor.multi_workflow_preview_only = False
-        processor.workflow_execution_planner = WorkflowExecutionPlanner()
 
         primary_info = WorkflowInfo(
             path="/tmp/primary.yaml",
