@@ -61,8 +61,8 @@
   },
   "4242": {
     "status": "completed",
-    "updated_at": "2025-10-12T21:15:02.551390",
-    "started_at": "2025-10-12T21:15:02.548195",
+    "updated_at": "2025-10-13T10:54:07.466138",
+    "started_at": "2025-10-13T10:54:07.463247",
     "title": "Multi workflow issue",
     "labels": [
       "site-monitor",
@@ -70,7 +70,7 @@
     ],
     "workflow_selection_message": "Mocked multi-workflow plan",
     "multi_workflow_plan": {
-      "plan_id": "multiwf-7daaa8fbbc53493a905f3e3b94db1502",
+      "plan_id": "multiwf-e89c423a6c994cafa8d9698e2210402c",
       "stage_count": 1,
       "workflow_count": 2,
       "stages": [
@@ -146,17 +146,139 @@
         "conflict_groups": []
       }
     },
-    "plan_generated_at": "2025-10-12T21:15:02.550651",
-    "completed_at": "2025-10-12T21:15:02.551380",
-    "workflow_name": "Primary Workflow",
+    "plan_generated_at": "2025-10-13T10:54:07.464953",
+    "completed_at": "2025-10-13T10:54:07.466131",
+    "workflow_name": "Primary Workflow, Secondary Workflow",
     "created_files": [
       "study/primary/output.md"
     ],
-    "processing_time_seconds": 0.003183,
+    "processing_time_seconds": 0.002881,
     "multi_workflow_execution": {
-      "status": "skipped",
-      "plan_id": "test-plan-id",
-      "stage_runs": []
-    }
+      "plan_id": "multiwf-e89c423a6c994cafa8d9698e2210402c",
+      "stage_count": 1,
+      "workflow_count": 2,
+      "stages": [
+        {
+          "index": 0,
+          "run_mode": "parallel",
+          "workflows": [
+            "Primary Workflow",
+            "Secondary Workflow"
+          ],
+          "blocking_conflicts": [
+            "deliverable:primary",
+            "deliverable:secondary"
+          ]
+        }
+      ],
+      "preview_only": false,
+      "selection_reason": "multiple_matches",
+      "selection_message": "Mocked multi-workflow plan",
+      "allow_partial_success": true,
+      "overall_timeout_seconds": null,
+      "deliverable_manifest": {
+        "strategy": "suffix",
+        "separator": "--",
+        "workflow_count": 2,
+        "deliverable_count": 2,
+        "workflows": [
+          {
+            "workflow_name": "Primary Workflow",
+            "workflow_slug": "primary-workflow",
+            "priority": 1,
+            "order": 0,
+            "deliverables": [
+              {
+                "workflow_name": "Primary Workflow",
+                "workflow_slug": "primary-workflow",
+                "deliverable_name": "primary",
+                "deliverable_slug": "primary",
+                "folder": "study/4242/primary",
+                "base_filename": "primary.md",
+                "final_filename": "primary.md",
+                "base_relative_path": "study/4242/primary/primary.md",
+                "final_relative_path": "study/4242/primary/primary.md",
+                "conflict_group": null,
+                "conflict_index": null,
+                "was_conflict": false
+              }
+            ]
+          },
+          {
+            "workflow_name": "Secondary Workflow",
+            "workflow_slug": "secondary-workflow",
+            "priority": 2,
+            "order": 1,
+            "deliverables": [
+              {
+                "workflow_name": "Secondary Workflow",
+                "workflow_slug": "secondary-workflow",
+                "deliverable_name": "secondary",
+                "deliverable_slug": "secondary",
+                "folder": "study/4242/secondary",
+                "base_filename": "secondary.md",
+                "final_filename": "secondary.md",
+                "base_relative_path": "study/4242/secondary/secondary.md",
+                "final_relative_path": "study/4242/secondary/secondary.md",
+                "conflict_group": null,
+                "conflict_index": null,
+                "was_conflict": false
+              }
+            ]
+          }
+        ],
+        "conflict_groups": []
+      },
+      "stage_runs": [
+        {
+          "index": 0,
+          "run_mode": "parallel",
+          "blocking_conflicts": [
+            "deliverable:primary",
+            "deliverable:secondary"
+          ],
+          "workflows": [
+            {
+              "workflow_name": "Primary Workflow",
+              "status": "executed",
+              "message": "Workflow executed successfully.",
+              "created_files": [
+                "study/primary/output.md"
+              ]
+            },
+            {
+              "workflow_name": "Secondary Workflow",
+              "status": "executed",
+              "message": "Workflow executed successfully.",
+              "created_files": [
+                "study/primary/output.md"
+              ]
+            }
+          ]
+        }
+      ],
+      "status": "executed"
+    },
+    "multi_workflow_results": [
+      {
+        "workflow_name": "Primary Workflow",
+        "created_files": [
+          "study/primary/output.md"
+        ],
+        "output_directory": "study/primary",
+        "git_branch": "agent-4242-primary-workflow",
+        "git_commit": "abc1234"
+      },
+      {
+        "workflow_name": "Primary Workflow",
+        "created_files": [
+          "study/primary/output.md"
+        ],
+        "output_directory": "study/primary",
+        "git_branch": "agent-4242-primary-workflow",
+        "git_commit": "abc1234"
+      }
+    ],
+    "output_directory": "study/primary"
   }
 }
