@@ -139,6 +139,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure git identity for Copilot processing
+        run: |
+          git config --global user.name "${{ secrets.COPILOT_GIT_NAME || 'Speculum Principum Bot' }}"
+          git config --global user.email "${{ secrets.COPILOT_GIT_EMAIL || 'speculum-principum-bot@users.noreply.github.com' }}"
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
