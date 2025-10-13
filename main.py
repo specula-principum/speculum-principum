@@ -1040,6 +1040,7 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         'handoff_summary': result_payload['handoff_summary'],
                         'specialist_guidance': result_payload.get('specialist_guidance'),
                         'copilot_assignment': result_payload.get('copilot_assignment'),
+                        'metadata': result_payload.get('metadata'),
                     })
                     
                     cli_result = CliResult(
@@ -1222,6 +1223,7 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                             'handoff_summary': result_payload['handoff_summary'],
                             'specialist_guidance': result_payload.get('specialist_guidance'),
                             'copilot_assignment': result_payload.get('copilot_assignment'),
+                            'metadata': result_payload.get('metadata'),
                         })
                     
                     # Format batch results
@@ -1261,6 +1263,20 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                                 f"⏰ Next Copilot due at: {next_due}"
                             )
 
+                    multi_summary_lines: list[str] = []
+                    if getattr(batch_metrics, "multi_workflow_count", 0):
+                        multi_summary_lines.append(
+                            f"🔀 Multi-workflow issues: {batch_metrics.multi_workflow_count}"
+                        )
+                    if getattr(batch_metrics, "multi_workflow_partial_success_count", 0):
+                        multi_summary_lines.append(
+                            f"⚠️ Partial multi-workflow completions: {batch_metrics.multi_workflow_partial_success_count}"
+                        )
+                    if getattr(batch_metrics, "multi_workflow_conflict_count", 0):
+                        multi_summary_lines.append(
+                            f"🚧 Plans with conflicts: {batch_metrics.multi_workflow_conflict_count}"
+                        )
+
                     summary_sections = [formatted_results]
                     if show_metrics and metrics_lines.get("taxonomy"):
                         summary_sections.append(
@@ -1276,6 +1292,8 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                         )
                     if copilot_summary_lines:
                         summary_sections.append("\n".join(copilot_summary_lines))
+                    if multi_summary_lines:
+                        summary_sections.append("\n".join(["**Multi-Workflow Overview:**", *multi_summary_lines]))
 
                     formatted_results = "\n\n".join(summary_sections)
                     
@@ -1561,24 +1579,26 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                     total_assigned = 0
 
                     for issue_result in results_list:
-                        assigned_name = issue_result.get('assigned_workflow')
-                        if not assigned_name:
-                            continue
-                        info = matcher.get_workflow_by_name(assigned_name)
-                        if info is None:
-                            unknown_workflows += 1
-                            continue
+                        assigned_names = list(issue_result.get('assigned_workflows') or [])
+                        if not assigned_names and issue_result.get('assigned_workflow'):
+                            assigned_names = [issue_result['assigned_workflow']]
 
-                        total_assigned += 1
-                        if info.is_taxonomy():
-                            taxonomy_assigned += 1
-                        else:
-                            legacy_assigned += 1
+                        for assigned_name in assigned_names:
+                            info = matcher.get_workflow_by_name(assigned_name)
+                            if info is None:
+                                unknown_workflows += 1
+                                continue
 
-                        if info.category:
-                            category_counter[info.category] += 1
-                        else:
-                            category_counter['legacy'] += 1
+                            total_assigned += 1
+                            if info.is_taxonomy():
+                                taxonomy_assigned += 1
+                            else:
+                                legacy_assigned += 1
+
+                            if info.category:
+                                category_counter[info.category] += 1
+                            else:
+                                category_counter['legacy'] += 1
 
                     if total_assigned or category_counter or unknown_workflows:
                         taxonomy_rate = (
@@ -1745,8 +1765,16 @@ def handle_assign_workflows_command(args, github_token: str, repo_name: str) -> 
                         # All results are now from AI agent (dictionary format)
                         action = issue_result.get('action_taken', 'unknown').replace('_', ' ').title()
                         result_lines.append(f"  Issue #{issue_result['issue_number']}: {action}")
-                        if issue_result.get('assigned_workflow'):
-                            result_lines.append(f"    Workflow: {issue_result['assigned_workflow']}")
+                        assigned_names = list(issue_result.get('assigned_workflows') or [])
+                        if not assigned_names and issue_result.get('assigned_workflow'):
+                            assigned_names = [issue_result['assigned_workflow']]
+                        if assigned_names:
+                            if len(assigned_names) == 1:
+                                result_lines.append(f"    Workflow: {assigned_names[0]}")
+                            else:
+                                result_lines.append(
+                                    "    Workflows: " + ", ".join(assigned_names)
+                                )
                         if issue_result.get('labels_added'):
                             result_lines.append(f"    Labels added: {', '.join(issue_result['labels_added'])}")
                         if issue_result.get('message'):

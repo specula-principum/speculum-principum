@@ -159,6 +159,7 @@ class WorkflowAssignmentAgent:
             "issue_number": result.issue_number,
             "action_taken": result.action.value,
             "assigned_workflow": result.workflow_name,
+            "assigned_workflows": [result.workflow_name] if result.workflow_name else [],
             "labels_added": list(result.labels_added or []),
             "labels_removed": list(result.labels_removed or []),
             "dry_run": dry_run,

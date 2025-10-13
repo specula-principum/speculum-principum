@@ -21,6 +21,7 @@ Payload keys are shown with types and notes. Fields marked ⭐ were added or exp
 | `issue_number` | integer | GitHub issue number processed. |
 | `action_taken` | string | `auto_assigned`, `review_requested`, `clarification_requested`, or `error`. |
 | `assigned_workflow` | string&#124;null | Workflow name applied (null when no assignment). |
+| `assigned_workflows` | array[string] | Ordered list of all workflows applied (empty when no assignment). |
 | `labels_added` | array[string] | Labels appended to the issue (e.g., `workflow::person-entity-profiling`). |
 | `dry_run` | boolean | True when run invoked with `--dry-run`. |
 | `duration_seconds` | float | Wall-clock time to process the issue. |
@@ -83,6 +84,7 @@ Payload keys are shown with types and notes. Fields marked ⭐ were added or exp
   "issue_number": 542,
   "action_taken": "auto_assigned",
   "assigned_workflow": "Person Entity Profiling & Risk Flagging",
+  "assigned_workflows": ["Person Entity Profiling & Risk Flagging"],
   "labels_added": ["workflow::person-entity-profiling"],
   "dry_run": false,
   "duration_seconds": 2.74,

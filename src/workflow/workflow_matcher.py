@@ -130,6 +130,41 @@ class WorkflowInfo:
         return bool(self.workflow_version and self.category and not self.legacy_mode)
 
 
+@dataclass(frozen=True)
+class WorkflowCandidate:
+    """Represents a workflow option selected for execution planning."""
+
+    workflow_info: WorkflowInfo
+    priority: int
+    conflict_keys: frozenset[str]
+    dependencies: tuple[str, ...] = ()
+
+    @property
+    def name(self) -> str:
+        """Return the candidate workflow's canonical name."""
+
+        return self.workflow_info.name
+
+
+@dataclass(frozen=True)
+class WorkflowPlan:
+    """Contains the ordered set of workflow candidates for an issue."""
+
+    issue_labels: tuple[str, ...]
+    candidates: tuple[WorkflowCandidate, ...]
+    selection_reason: str
+    selection_message: str
+
+    def has_candidates(self) -> bool:
+        return bool(self.candidates)
+
+    def is_multi_workflow(self) -> bool:
+        return len(self.candidates) > 1
+
+    def primary_workflow(self) -> Optional[WorkflowCandidate]:
+        return self.candidates[0] if self.candidates else None
+
+
 class WorkflowMatcher:
     """
     Matches GitHub issues to appropriate workflow definitions based on labels.
@@ -570,6 +605,123 @@ class WorkflowMatcher:
         message = f"Multiple workflows match ({', '.join(workflow_names)}). Add more specific labels to clarify."
         return None, message
     
+    def get_workflow_plan(
+        self,
+        issue_labels: List[str],
+        *,
+        categories: Optional[Iterable[str]] = None,
+    ) -> WorkflowPlan:
+        """Return the set of workflow candidates for the provided labels."""
+
+        matching_workflows = self.find_matching_workflows(issue_labels, categories=categories)
+
+        if not matching_workflows:
+            message = (
+                "Issue must have 'site-monitor' label to be processed"
+                if 'site-monitor' not in issue_labels
+                else "No workflows match the current labels. Add specific workflow labels."
+            )
+            return WorkflowPlan(
+                issue_labels=tuple(issue_labels),
+                candidates=(),
+                selection_reason="no_match",
+                selection_message=message,
+            )
+
+        # Build deterministic candidates list
+        sorted_workflows = sorted(
+            matching_workflows,
+            key=lambda wf: (
+                self._resolve_candidate_priority(wf),
+                wf.name.lower(),
+            ),
+        )
+
+        candidates: List[WorkflowCandidate] = []
+        for workflow in sorted_workflows:
+            candidate = WorkflowCandidate(
+                workflow_info=workflow,
+                priority=self._resolve_candidate_priority(workflow),
+                conflict_keys=self._extract_conflict_keys(workflow),
+                dependencies=tuple(self._extract_dependencies(workflow)),
+            )
+            candidates.append(candidate)
+
+        if len(candidates) == 1:
+            reason = "single_match"
+            message = f"Selected workflow: {candidates[0].name}"
+        else:
+            reason = "multiple_matches"
+            workflow_names = ", ".join(candidate.name for candidate in candidates)
+            message = (
+                "Multiple workflows match the current labels. "
+                f"Execution plan includes: {workflow_names}."
+            )
+
+        return WorkflowPlan(
+            issue_labels=tuple(issue_labels),
+            candidates=tuple(candidates),
+            selection_reason=reason,
+            selection_message=message,
+        )
+
+    @staticmethod
+    def _resolve_candidate_priority(workflow_info: WorkflowInfo) -> int:
+        """Resolve a deterministic priority value for a workflow."""
+
+        raw_priority = workflow_info.priority or workflow_info.metadata.get("priority")
+        if raw_priority is None:
+            return 100
+
+        try:
+            return int(raw_priority)
+        except (TypeError, ValueError):
+            return 100
+
+    @staticmethod
+    def _extract_conflict_keys(workflow_info: WorkflowInfo) -> frozenset[str]:
+        """Generate conflict keys used for execution planning heuristics."""
+
+        keys: Set[str] = set()
+
+        output_config = workflow_info.output or {}
+        folder_structure = output_config.get("folder_structure")
+        if folder_structure:
+            keys.add(f"folder:{folder_structure}")
+
+        file_pattern = output_config.get("file_pattern")
+        if file_pattern:
+            keys.add(f"file_pattern:{file_pattern}")
+
+        for deliverable in workflow_info.deliverables:
+            name = deliverable.get("name")
+            if name:
+                keys.add(f"deliverable:{name}")
+
+            template = deliverable.get("template")
+            if template:
+                keys.add(f"template:{template}")
+
+        if workflow_info.category:
+            keys.add(f"category:{workflow_info.category.lower()}")
+
+        if workflow_info.legacy_mode:
+            keys.add("mode:legacy")
+
+        return frozenset(keys)
+
+    @staticmethod
+    def _extract_dependencies(workflow_info: WorkflowInfo) -> List[str]:
+        """Extract declared workflow dependencies from metadata, if any."""
+
+        metadata = workflow_info.metadata or {}
+        dependencies = metadata.get("dependencies", [])
+        if not isinstance(dependencies, list):
+            return []
+
+        cleaned = [dep for dep in dependencies if isinstance(dep, str) and dep.strip()]
+        return [dep.strip() for dep in cleaned]
+
     def get_workflow_by_name(self, workflow_name: str) -> Optional[WorkflowInfo]:
         """
         Get a specific workflow by name.

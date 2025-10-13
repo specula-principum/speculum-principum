@@ -17,6 +17,8 @@ from src.agents.ai_workflow_assignment_agent import (
     GitHubModelsAPIError,
     ContentAnalysis,
     AssignmentSignals,
+    AssignmentDecision,
+    AssignmentSelection,
 )
 from src.workflow.workflow_matcher import WorkflowInfo
 
@@ -202,7 +204,7 @@ class TestAIWorkflowAssignmentAgent:
 
         section = AIWorkflowAssignmentAgent._render_ai_assessment_section(
             analysis,
-            assigned_workflow="Person Entity Profiling",
+            assigned_workflows=["Person Entity Profiling"],
         )
 
         assert "Confidence: 92%" in section
@@ -479,15 +481,17 @@ class TestAIWorkflowAssignmentAgent:
         with patch.object(agent, '_load_page_extract', return_value='Primary summary block'):
             with patch.object(agent.ai_client, 'analyze_issue_content', return_value=mock_analysis) as mock_analyze:
                 with patch.object(agent, '_compute_assignment_signals', return_value=signals):
-                    workflow, analysis, message = agent.analyze_issue_with_ai(sample_issue_data)
+                    decision, analysis = agent.analyze_issue_with_ai(sample_issue_data)
 
         mock_analyze.assert_called_once()
         assert mock_analyze.call_args.kwargs.get('page_extract') == 'Primary summary block'
-        assert workflow is not None
+        assert isinstance(decision, AssignmentDecision)
+        assert decision.auto_assignments
+        workflow = decision.auto_assignments[0].workflow
         assert workflow.name == "Person Entity Profiling"
         assert analysis.summary == mock_ai_response["summary"]
         assert analysis.combined_scores.get("Person Entity Profiling") is not None
-        assert "score" in message
+        assert "score" in decision.message
     
     @patch.dict(os.environ, {'GITHUB_ACTIONS': 'true'})
     @patch('src.agents.ai_workflow_assignment_agent.GitHubIssueCreator')
@@ -536,12 +540,25 @@ class TestAIWorkflowAssignmentAgent:
             reason_codes=["PERSON_ENTITY_DETECTED"],
         )
         
-        with patch.object(agent, 'analyze_issue_with_ai', return_value=(sample_workflows[0], mock_analysis, "High confidence")):
+        selection = AssignmentSelection(
+            workflow=sample_workflows[0],
+            score=0.9,
+            threshold=0.8,
+            threshold_type="auto",
+        )
+        decision = AssignmentDecision(
+            auto_assignments=[selection],
+            review_candidates=[],
+            message="High confidence",
+        )
+
+        with patch.object(agent, 'analyze_issue_with_ai', return_value=(decision, mock_analysis)):
             result = agent.process_issue_with_ai(sample_issue_data, dry_run=True)
         
         # Verify auto assignment
         assert result['action_taken'] == 'auto_assigned'
         assert result['assigned_workflow'] == 'Person Entity Profiling'
+        assert result['assigned_workflows'] == ['Person Entity Profiling']
         assert result['issue_number'] == 123
         assert 'ai_analysis' in result
         assert "PERSON_ENTITY_DETECTED" in result['reason_codes']
@@ -594,6 +611,7 @@ class TestAIWorkflowAssignmentAgent:
             'issue_number': 321,
             'action_taken': 'auto_assigned',
             'assigned_workflow': 'Person Entity Profiling',
+            'assigned_workflows': ['Person Entity Profiling'],
             'labels_added': ['workflow::person-entity-profiling'],
             'dry_run': True,
             'reason_codes': ['PERSON_ENTITY_DETECTED'],
@@ -627,6 +645,7 @@ class TestAIWorkflowAssignmentAgent:
         assert issue_event['ai_summary'] == 'High confidence assignment'
         assert issue_event['suggested_workflows'] == ['Person Entity Profiling']
         assert issue_event['confidence_scores']['Person Entity Profiling'] == pytest.approx(0.92)
+        assert issue_event['assigned_workflows'] == ['Person Entity Profiling']
         assert issue_event['reason_codes'] == ['PERSON_ENTITY_DETECTED']
         assert issue_event['assignment_mode'] == 'ai'
         assert 'entity_coverage' in issue_event
@@ -688,7 +707,19 @@ class TestIntegration:
                 content_type="investigative"
             )
             
-            with patch.object(agent, 'analyze_issue_with_ai', return_value=(sample_workflows[0], mock_analysis, "High confidence")):
+            selection = AssignmentSelection(
+                workflow=sample_workflows[0],
+                score=0.85,
+                threshold=0.8,
+                threshold_type="auto",
+            )
+            decision = AssignmentDecision(
+                auto_assignments=[selection],
+                review_candidates=[],
+                message="High confidence",
+            )
+
+            with patch.object(agent, 'analyze_issue_with_ai', return_value=(decision, mock_analysis)):
                 result = agent.process_issues_batch(limit=1, dry_run=True)
         
         # Verify results
@@ -702,6 +733,7 @@ class TestIntegration:
         assert issue_result['issue_number'] == 123
         assert issue_result['action_taken'] == 'auto_assigned'
         assert issue_result['assigned_workflow'] == 'Person Entity Profiling'
+        assert issue_result['assigned_workflows'] == ['Person Entity Profiling']
         assert issue_result['dry_run'] is True
 
 
