@@ -33,8 +33,8 @@ on:
         default: true
   # schedule:
   #   - cron: '5 */4 * * *'
-  issues:
-    types: [labeled]
+  # issues:
+  #   types: [labeled]
 
 concurrency:
   group: ops-issue-processing-${{ github.ref }}
