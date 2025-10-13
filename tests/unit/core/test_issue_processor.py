@@ -415,8 +415,7 @@ output:
             config_path=str(temp_config_dir / "test_config.yaml"),
             telemetry_publishers=[telemetry_events.append],
         )
-        processor.multi_workflow_planning_enabled = True
-        processor.workflow_execution_planner = WorkflowExecutionPlanner()
+        processor.enable_multi_workflow_runtime()
 
         primary_info = WorkflowInfo(
             path="/tmp/primary.yaml",
@@ -506,7 +505,7 @@ output:
         assert result.metadata['multi_workflow_plan']['workflow_count'] == 2
         assert 'deliverable_manifest' in result.metadata['multi_workflow_plan']
         assert result.metadata['multi_workflow_plan']['deliverable_manifest']['workflow_count'] == 2
-        assert result.metadata['workflow_selection_message'] == "Primary workflow selected"
+        assert result.metadata['workflow_selection_message'] == "Mocked multi-workflow plan"
         assert result.metadata['multi_workflow_execution']['status'] == 'skipped'
         assert len(telemetry_events) == 1
         plan_event = telemetry_events[0]
@@ -519,7 +518,7 @@ output:
         assert 'multi_workflow_plan' in state
         assert state['multi_workflow_plan']['workflow_count'] == 2
         assert 'deliverable_manifest' in state['multi_workflow_plan']
-        assert state['workflow_selection_message'] == "Primary workflow selected"
+        assert state['workflow_selection_message'] == "Mocked multi-workflow plan"
         assert state['multi_workflow_execution']['status'] == 'skipped'
 
     def test_multi_workflow_execution_emits_telemetry(self, temp_config_dir):
@@ -534,9 +533,8 @@ output:
                 telemetry_publishers=[telemetry_events.append],
             )
 
-        processor.multi_workflow_planning_enabled = True
+        processor.enable_multi_workflow_runtime()
         processor.multi_workflow_preview_only = False
-        processor.workflow_execution_planner = WorkflowExecutionPlanner()
 
         primary_info = WorkflowInfo(
             path="/tmp/primary.yaml",

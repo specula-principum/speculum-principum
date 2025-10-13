@@ -395,6 +395,11 @@ def setup_process_issues_parser(subparsers) -> None:
         help='Additional labels to filter issues (beyond site-monitor)'
     )
     process_parser.add_argument(
+        '--allow-multi-workflow',
+        action='store_true',
+        help='Enable multi-workflow planning and execution when multiple workflows match'
+    )
+    process_parser.add_argument(
         '--workflow-category',
         choices=TAXONOMY_CATEGORIES,
         nargs='+',
@@ -794,6 +799,7 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                 "assignee_filter": args.assignee_filter,
                 "workflow_category": args.workflow_category,
                 "show_taxonomy_metrics": args.show_taxonomy_metrics,
+                "allow_multi_workflow": args.allow_multi_workflow,
             },
             static_fields={
                 "workflow_stage": "issue-processing",
@@ -844,6 +850,9 @@ def handle_process_issues_command(args, github_token: str, repo_name: str) -> No
                 repository=repo_name,
                 config_path=args.config
             )
+
+            if getattr(args, "allow_multi_workflow", False):
+                processor.enable_multi_workflow_runtime()
             
             # Create orchestrator for batch operations
             orchestrator = ProcessingOrchestrator(

@@ -48,7 +48,7 @@ from ..workflow.issue_handoff_builder import (
     DEFAULT_COPILOT_ASSIGNEE,
 )
 from ..utils.markdown_sections import upsert_section
-from ..utils.config_manager import ConfigManager
+from ..utils.config_manager import ConfigManager, MultiWorkflowProcessingConfig
 from ..clients.github_issue_creator import GitHubIssueCreator
 from ..workflow.deliverable_generator import DeliverableGenerator, DeliverableSpec
 from ..storage.git_manager import GitManager, GitOperationError
@@ -336,24 +336,19 @@ class IssueProcessor:
         processing_config = self.config.agent.processing if self.config.agent else None
         if processing_config:
             try:
-                self.multi_workflow_planning_enabled = bool(getattr(processing_config, 'enable_multi_workflow', False))
                 self._multi_workflow_plan_config = getattr(processing_config, 'multi_workflow', None)
                 if self._multi_workflow_plan_config:
                     self.multi_workflow_preview_only = getattr(self._multi_workflow_plan_config, 'preview_only', False)
 
+                self.multi_workflow_planning_enabled = bool(getattr(processing_config, 'enable_multi_workflow', False))
                 if self.multi_workflow_planning_enabled:
-                    plan_config = self._multi_workflow_plan_config
-                    self.workflow_execution_planner = WorkflowExecutionPlanner(
-                        allow_parallel_stages=getattr(plan_config, 'allow_parallel_stages', True),
-                        max_parallel_workflows=getattr(plan_config, 'max_parallel_workflows', None),
-                        allow_partial_success=getattr(plan_config, 'allow_partial_success', True),
-                        overall_timeout_seconds=getattr(plan_config, 'overall_timeout_seconds', None),
-                    )
+                    self._initialize_multi_workflow_planner()
+                    plan_cfg = self._multi_workflow_plan_config or MultiWorkflowProcessingConfig()
                     self.logger.info(
                         "Multi-workflow planner enabled (preview_only=%s, allow_parallel=%s, max_parallel=%s)",
                         self.multi_workflow_preview_only,
-                        getattr(plan_config, 'allow_parallel_stages', True),
-                        getattr(plan_config, 'max_parallel_workflows', None),
+                        plan_cfg.allow_parallel_stages,
+                        plan_cfg.max_parallel_workflows,
                     )
                 else:
                     self.logger.info("Multi-workflow planner disabled in agent processing configuration")
@@ -852,7 +847,36 @@ class IssueProcessor:
         Returns:
             Tuple of workflow info and status message
         """
+        if getattr(self, 'multi_workflow_planning_enabled', False):
+            try:
+                plan = self.workflow_matcher.get_workflow_plan(issue_data.labels)
+            except Exception as exc:
+                self.logger.warning(
+                    "Failed to build workflow plan for issue #%s: %s",
+                    issue_data.number,
+                    exc,
+                )
+            else:
+                if self._is_valid_workflow_plan(plan):
+                    primary = plan.primary_workflow()
+                    if primary and primary.workflow_info:
+                        return primary.workflow_info, plan.selection_message
+
         return self.workflow_matcher.get_best_workflow_match(issue_data.labels)
+
+    @staticmethod
+    def _is_valid_workflow_plan(plan: Any) -> bool:
+        """Return True when a workflow plan contains concrete candidates."""
+
+        if not isinstance(plan, WorkflowPlan):
+            return False
+
+        candidates = getattr(plan, 'candidates', ())
+        if isinstance(candidates, tuple):
+            return len(candidates) > 0
+        if isinstance(candidates, list):
+            return len(candidates) > 0
+        return False
 
     def _prepare_multi_workflow_plan(
         self,
@@ -880,7 +904,7 @@ class IssueProcessor:
                 )
                 return None, None
 
-        if plan is None or not plan.candidates:
+        if not self._is_valid_workflow_plan(plan):
             return None, None
 
         try:
@@ -1439,6 +1463,65 @@ This deliverable was generated using basic recovery mode due to processing const
             deliverable_spec=spec,
             workflow_info=workflow_info,
             additional_context=additional_context
+        )
+
+    def _initialize_multi_workflow_planner(self) -> None:
+        """Ensure the workflow execution planner is ready for multi-workflow runs."""
+
+        if getattr(self, 'workflow_execution_planner', None):
+            return
+
+        plan_config = self._multi_workflow_plan_config
+        if not isinstance(plan_config, MultiWorkflowProcessingConfig):
+            plan_config = MultiWorkflowProcessingConfig()
+            self._multi_workflow_plan_config = plan_config
+
+        self.workflow_execution_planner = WorkflowExecutionPlanner(
+            allow_parallel_stages=plan_config.allow_parallel_stages,
+            max_parallel_workflows=plan_config.max_parallel_workflows,
+            allow_partial_success=plan_config.allow_partial_success,
+            overall_timeout_seconds=plan_config.overall_timeout_seconds,
+        )
+
+    def enable_multi_workflow_runtime(
+        self,
+        *,
+        allow_parallel_stages: Optional[bool] = None,
+        max_parallel_workflows: Optional[int] = None,
+        allow_partial_success: Optional[bool] = None,
+        overall_timeout_seconds: Optional[int] = None,
+        preview_only: Optional[bool] = None,
+    ) -> None:
+        """Enable multi-workflow planning at runtime, overriding config defaults if provided."""
+
+        plan_config = self._multi_workflow_plan_config
+        if not isinstance(plan_config, MultiWorkflowProcessingConfig):
+            plan_config = MultiWorkflowProcessingConfig()
+            self._multi_workflow_plan_config = plan_config
+
+        if allow_parallel_stages is not None:
+            plan_config.allow_parallel_stages = allow_parallel_stages
+        if max_parallel_workflows is not None:
+            plan_config.max_parallel_workflows = max_parallel_workflows
+        if allow_partial_success is not None:
+            plan_config.allow_partial_success = allow_partial_success
+        if overall_timeout_seconds is not None:
+            plan_config.overall_timeout_seconds = overall_timeout_seconds
+        if preview_only is not None:
+            plan_config.preview_only = bool(preview_only)
+            self.multi_workflow_preview_only = bool(preview_only)
+
+        if preview_only is None:
+            self.multi_workflow_preview_only = plan_config.preview_only
+
+        self.multi_workflow_planning_enabled = True
+        self._initialize_multi_workflow_planner()
+
+        self.logger.info(
+            "Multi-workflow planner enabled via runtime override (preview_only=%s, allow_parallel=%s, max_parallel=%s)",
+            self.multi_workflow_preview_only,
+            plan_config.allow_parallel_stages,
+            plan_config.max_parallel_workflows,
         )
     
     def _extract_issue_content(self, issue_data: IssueData) -> Optional[Any]:

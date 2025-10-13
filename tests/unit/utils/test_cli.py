@@ -215,7 +215,7 @@ class TestIssueResultFormatter:
             'workflow': 'Primary Workflow',
             'files_created': ['study/primary/output.md'],
             'metadata': {
-                'workflow_selection_message': 'Primary workflow selected',
+                'workflow_selection_message': 'Mocked multi-workflow plan',
                 'multi_workflow_plan': {
                     'workflow_count': 2,
                     'stages': [
