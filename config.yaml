@@ -9,7 +9,7 @@ github:
     - automated
     - documentation
   default_assignees:
-    - "${GITHUB_ACTOR:github-actions[bot]}"
+    - "${COPILOT_ASSIGNEE:github-copilot[bot]}"
 search:
   api_key: "${GOOGLE_API_KEY:dummy-google-api-key}"
   search_engine_id: "${GOOGLE_SEARCH_ENGINE_ID:dummy-search-engine-id}"
@@ -17,7 +17,7 @@ search:
   results_per_query: 10
   date_range_days: 365
 agent:
-  username: "${GITHUB_ACTOR:github-actions[bot]}"
+  username: "${COPILOT_ASSIGNEE:github-copilot[bot]}"
   workflow_directory: "docs/workflow/deliverables"
   template_directory: "templates"
   output_directory: "study"

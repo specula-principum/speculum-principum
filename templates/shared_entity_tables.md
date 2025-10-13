@@ -55,13 +55,17 @@ _No events captured. Add chronology details or extraction focus to populate the 
 {% endif %}
 
 ## Extraction Highlights
-{% if extraction_metadata and extraction_metadata.key_topics %}
+{% if extraction_metadata %}
+{% if extraction_metadata.key_topics %}
 
 - **Key Topics**: {{ extraction_metadata.key_topics_display }}
 - **Urgency Level**: {{ extraction_metadata.urgency_level_display }}
 - **Content Type**: {{ extraction_metadata.content_type_display }}
 - **Entity Total**: {{ extraction_metadata.entity_total }}
 
+{% else %}
+_Extraction metadata unavailable. Enable AI extraction or provide analyst highlights manually._
+{% endif %}
 {% else %}
 _Extraction metadata unavailable. Enable AI extraction or provide analyst highlights manually._
 {% endif %}
