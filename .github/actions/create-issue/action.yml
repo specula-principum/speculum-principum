@@ -1,0 +1,50 @@
+name: "Create GitHub Issue"
+description: "Reusable action that creates an issue using a template body"
+author: "GitHub Copilot"
+inputs:
+  token:
+    description: "Token with permission to create issues"
+    required: true
+  title:
+    description: "Title for the new issue"
+    required: true
+  template-path:
+    description: "Path to the issue body template"
+    required: true
+  repository:
+    description: "owner/repo target repository (defaults to workflow repository)"
+    required: false
+  api-url:
+    description: "Base URL for the GitHub API (override for GitHub Enterprise)"
+    required: false
+outputs:
+  issue-number:
+    description: "Number of the created issue"
+    value: ${{ steps.run_script.outputs.issue-number }}
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - id: run_script
+      name: Create issue
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        GITHUB_REPOSITORY: ${{ inputs.repository || github.repository }}
+        PYTHONPATH: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        args=(
+          --title "${{ inputs.title }}"
+          --template "${{ inputs.template-path }}"
+          --output number
+        )
+        if [ -n "${{ inputs.api-url }}" ]; then
+          args+=(--api-url "${{ inputs.api-url }}")
+        fi
+  issue_number=$(python -m main "${args[@]}")
+        echo "issue-number=$issue_number" >> "$GITHUB_OUTPUT"
