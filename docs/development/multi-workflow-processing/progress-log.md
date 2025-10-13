@@ -69,3 +69,18 @@
 ## 2025-10-12 (CLI Surfacing Enhancements)
 - Surfaced multi-workflow plan and execution metadata within CLI single/batch processing outputs for better operator visibility.
 - Added multi-workflow aggregate counters to batch summaries and expanded unit coverage for formatter behaviour.
+
+## 2025-10-12 (Initial Testing Complete)
+- Completed baseline end-to-end dry runs with Copilot ownership, git operations, and guarded deliverable templates.
+- Validated that multi-workflow planning, telemetry emission, and deliverable generation pathways execute without blocking errors.
+- Remaining roadmap items (full sandbox reconciliation, richer content population, telemetry contract hardening) are unblocked and ready for focused implementation.
+
+## 2025-10-12 (Telemetry Contract Kickoff)
+- Captured current multi-workflow telemetry emitters (`multi_workflow.plan_created`, `multi_workflow.execution_summary`) and documented their payload structure for contract review.
+- Outlined required fields, optional metadata, and example payloads in a draft telemetry contract document to unblock schema alignment with the telemetry platform team.
+- Identified follow-up items: confirm correlation requirements (batch IDs vs plan IDs), finalize stage run status vocabulary, and verify BatchMetrics extensions with analytics consumers.
+
+## 2025-10-12 (Runtime Activation)
+- Promoted `_execute_multi_workflow_plan` from sandbox stub to full orchestrator that runs every workflow in the generated execution plan with deliverable manifest overrides applied.
+- Updated `IssueProcessor` to route multi-match issues through the orchestrator, persist aggregated results, and treat full-failure batches as errors while supporting partial-success reporting.
+- Adjusted deliverable generation to honor manifest-derived filenames and removed sandbox placeholders from telemetry, updating the telemetry contract and CLI metadata handling accordingly.

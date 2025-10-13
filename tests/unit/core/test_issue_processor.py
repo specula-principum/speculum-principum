@@ -475,11 +475,8 @@ output:
             'workflow_name': primary_info.name,
             'created_files': ['study/primary/output.md'],
             'output_directory': 'study/primary',
-            'multi_workflow_execution': {
-                'status': 'skipped',
-                'plan_id': 'test-plan-id',
-                'stage_runs': [],
-            },
+            'git_branch': 'agent-4242-primary-workflow',
+            'git_commit': 'abc1234',
         }
         monkeypatch.setattr(
             processor,
@@ -501,17 +498,22 @@ output:
         result = processor.process_issue(issue_data)
 
         assert result.status == IssueProcessingStatus.COMPLETED
+        assert result.workflow_name == 'Primary Workflow, Secondary Workflow'
         assert 'multi_workflow_plan' in result.metadata
         assert result.metadata['multi_workflow_plan']['workflow_count'] == 2
         assert 'deliverable_manifest' in result.metadata['multi_workflow_plan']
         assert result.metadata['multi_workflow_plan']['deliverable_manifest']['workflow_count'] == 2
         assert result.metadata['workflow_selection_message'] == "Mocked multi-workflow plan"
-        assert result.metadata['multi_workflow_execution']['status'] == 'skipped'
-        assert len(telemetry_events) == 1
-        plan_event = telemetry_events[0]
+        assert result.metadata['multi_workflow_execution']['status'] == 'executed'
+        assert len(telemetry_events) == 2
+
+        plan_event = next(event for event in telemetry_events if event['event_type'] == 'multi_workflow.plan_created')
+        summary_event = next(event for event in telemetry_events if event['event_type'] == 'multi_workflow.execution_summary')
         assert plan_event['event_type'] == 'multi_workflow.plan_created'
         assert plan_event['issue_number'] == issue_data.number
         assert plan_event['plan_id'] == result.metadata['multi_workflow_plan']['plan_id']
+        assert summary_event['issue_number'] == issue_data.number
+        assert summary_event['status'] == 'executed'
 
         state = processor.get_issue_processing_state(issue_data.number)
         assert state is not None
@@ -519,7 +521,7 @@ output:
         assert state['multi_workflow_plan']['workflow_count'] == 2
         assert 'deliverable_manifest' in state['multi_workflow_plan']
         assert state['workflow_selection_message'] == "Mocked multi-workflow plan"
-        assert state['multi_workflow_execution']['status'] == 'skipped'
+        assert state['multi_workflow_execution']['status'] == 'executed'
 
     def test_multi_workflow_execution_emits_telemetry(self, temp_config_dir):
         """Multi-workflow plan execution should emit both plan and execution telemetry."""
@@ -590,13 +592,28 @@ output:
             url="https://example.com/issues/5555",
         )
 
+        processor._execute_workflow_with_recovery = Mock(
+            side_effect=[
+                {
+                    'workflow_name': primary_info.name,
+                    'created_files': ['study/5555/primary/report.md'],
+                    'output_directory': 'study/5555/primary',
+                },
+                {
+                    'workflow_name': secondary_info.name,
+                    'created_files': ['study/5555/secondary/summary.md'],
+                    'output_directory': 'study/5555/secondary',
+                },
+            ]
+        )
+
         summary, plan_context = processor._prepare_multi_workflow_plan(issue_data, plan)
         assert summary is not None
         assert plan_context is not None
 
-        execution_overview = processor._execute_multi_workflow_plan(issue_data, plan_context)
-        assert execution_overview is not None
-        assert execution_overview['status'] == 'executed'
+        execution_result = processor._execute_multi_workflow_plan(issue_data, plan_context)
+        assert execution_result is not None
+        assert execution_result['multi_workflow_execution']['status'] == 'executed'
 
         event_types = [event['event_type'] for event in telemetry_events]
         assert event_types.count('multi_workflow.plan_created') == 1

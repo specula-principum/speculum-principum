@@ -22,16 +22,20 @@ variables:
 # Asset & Evidence Cataloguing
 
 ## Summary
-- **Evidence Items Logged**: {{ entity_counts.thing }}
-- **Extraction Confidence**: {{ extraction_metadata.confidence }} ({{ extraction_metadata.confidence_percent }})
-- **Missing Base Entities**: {% if entity_foundation.missing_display %}{{ entity_foundation.missing_display }}{% else %}None{% endif %}
+- **Evidence Items Logged**: {% if entity_counts %}{% if entity_counts.thing %}{{ entity_counts.thing }}{% else %}0{% endif %}{% else %}0{% endif %}
+- **Extraction Confidence**: {% if extraction_metadata %}{{ extraction_metadata.confidence }} ({{ extraction_metadata.confidence_percent }}){% else %}Unavailable{% endif %}
+- **Missing Base Entities**: {% if entity_foundation %}{% if entity_foundation.missing_display %}{{ entity_foundation.missing_display }}{% else %}None{% endif %}{% else %}None{% endif %}
 
-{% if entity_index.thing %}
 ## Evidence Ledger
+{% if entity_index %}
+{% if entity_index.thing %}
 | Asset / Evidence | Custodian / Context | Confidence | Notes |
 | --- | --- | --- | --- |
 {% for asset in entity_index.thing %}| {{ asset.name }} | {{ asset.display_role }} | {{ asset.confidence }} | {{ asset.display_notes }} |
 {% endfor %}
+{% else %}
+_No evidence entities documented. Capture exhibits, digital artifacts, or physical items before proceeding._
+{% endif %}
 {% else %}
 _No evidence entities documented. Capture exhibits, digital artifacts, or physical items before proceeding._
 {% endif %}
@@ -47,8 +51,8 @@ _No evidence entities documented. Capture exhibits, digital artifacts, or physic
 3. Flag mitigation or remediation tasks for questionable items.
 
 ## Analyst Notes
-- **Key Topics**: {{ extraction_metadata.key_topics_display }}
-- **Urgency Level**: {{ extraction_metadata.urgency_level_display }}
+- **Key Topics**: {% if extraction_metadata %}{{ extraction_metadata.key_topics_display }}{% else %}Unavailable{% endif %}
+- **Urgency Level**: {% if extraction_metadata %}{{ extraction_metadata.urgency_level_display }}{% else %}Unavailable{% endif %}
 
 ```yaml
 # Sample custody log entry

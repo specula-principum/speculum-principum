@@ -2,8 +2,8 @@
 Integration tests for command-line interface functionality.
 
 This module tests the CLI components including:
-- Command argument parsing and validation
-- Issue processing command functionality  
+                        {'workflow_name': 'Primary Workflow', 'status': 'executed'},
+                        {'workflow_name': 'Secondary Workflow', 'status': 'failed'},
 - CLI helper utilities
 - Error handling and user feedback
 - Progress reporting and result formatting
@@ -237,8 +237,8 @@ class TestIssueResultFormatter:
                             'index': 0,
                             'run_mode': 'parallel',
                             'workflows': [
-                                {'workflow_name': 'Primary Workflow', 'status': 'success'},
-                                {'workflow_name': 'Secondary Workflow', 'status': 'pending'},
+                                {'workflow_name': 'Primary Workflow', 'status': 'executed'},
+                                {'workflow_name': 'Secondary Workflow', 'status': 'failed'},
                             ],
                         }
                     ],
@@ -249,7 +249,7 @@ class TestIssueResultFormatter:
         formatted = IssueResultFormatter.format_single_result(result)
 
         assert "🔀 Multi-workflow plan (2): Primary Workflow, Secondary Workflow" in formatted
-        assert "Stage 0 [parallel]: Primary Workflow (success), Secondary Workflow (pending)" in formatted
+        assert "Stage 0 [parallel]: Primary Workflow (executed), Secondary Workflow (failed)" in formatted
         assert "Deliverables: 2 deliverables (1 conflict resolved)" in formatted
         assert "🧪 Multi-workflow execution: executed" in formatted
 
