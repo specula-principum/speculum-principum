@@ -23,8 +23,8 @@ variables:
 - **Key Topics**: {{ extraction_metadata.key_topics_display }}
 - **Missing Base Entities**: {% if entity_foundation.missing_display %}{{ entity_foundation.missing_display }}{% else %}None{% endif %}
 
-{% if entity_index.lead %}
 ## Lead Backlog
+{% if entity_index.lead %}
 | Lead | Context | Confidence | Notes |
 | --- | --- | --- | --- |
 {% for lead in entity_index.lead %}| {{ lead.name }} | {{ lead.display_role }} | {{ lead.confidence }} | {{ lead.display_notes }} |

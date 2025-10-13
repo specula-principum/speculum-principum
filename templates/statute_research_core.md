@@ -43,12 +43,18 @@ variables:
 - [ ] Record next review date for regulatory changes.
 - [ ] Capture GAO liaison confirmation of compliance approach.
 
-{% if extraction_metadata.indicators %}
 ## Referenced Indicators
+{% if extraction_metadata %}
+{% if extraction_metadata.indicators %}
 | Type | Value | Confidence | Description |
 | --- | --- | --- | --- |
 {% for indicator in extraction_metadata.indicators %}| {{ indicator.type }} | {{ indicator.value }} | {{ indicator.confidence }} | {{ indicator.description }} |
 {% endfor %}
+{% else %}
+_No indicators captured. Enable extraction or add analyst-sourced indicators to populate this section._
+{% endif %}
+{% else %}
+_No indicators captured. Enable extraction or add analyst-sourced indicators to populate this section._
 {% endif %}
 
 ```yaml
