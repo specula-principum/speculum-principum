@@ -1,1 +1,0 @@
-# Speculum Principum Source Package
