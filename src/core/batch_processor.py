@@ -63,6 +63,9 @@ class BatchMetrics:
     error_count: int = 0
     skipped_count: int = 0
     clarification_count: int = 0
+    multi_workflow_count: int = 0
+    multi_workflow_partial_success_count: int = 0
+    multi_workflow_conflict_count: int = 0
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     processing_times: List[float] = field(default_factory=list)
@@ -129,6 +132,9 @@ class BatchMetrics:
             'error_count': self.error_count,
             'skipped_count': self.skipped_count,
             'clarification_count': self.clarification_count,
+            'multi_workflow_count': self.multi_workflow_count,
+            'multi_workflow_partial_success_count': self.multi_workflow_partial_success_count,
+            'multi_workflow_conflict_count': self.multi_workflow_conflict_count,
             'duration_seconds': self.duration_seconds,
             'average_processing_time': self.average_processing_time,
             'success_rate': self.success_rate,
@@ -637,7 +643,11 @@ class BatchProcessor:
                         processing_time_seconds=0.0
                     )
                 else:
-                    # Get issue data and process
+                    # Prefer GitHub-integrated processing when available so issue updates occur
+                    if hasattr(self.issue_processor, 'process_github_issue'):
+                        return self.issue_processor.process_github_issue(issue_number)  # type: ignore[union-attr]
+
+                    # Fallback to local processing with retrieved issue data
                     issue_data_dict = self.github_client.get_issue_data(issue_number)
                     issue_data = IssueData(
                         number=issue_number,
@@ -696,6 +706,25 @@ class BatchProcessor:
                 metrics.clarification_count += 1
             else:
                 metrics.skipped_count += 1
+
+            metadata = getattr(result, 'metadata', {}) or {}
+            plan_summary = metadata.get('multi_workflow_plan') if isinstance(metadata, dict) else None
+            execution_overview = metadata.get('multi_workflow_execution') if isinstance(metadata, dict) else None
+
+            if isinstance(plan_summary, dict):
+                workflow_count = plan_summary.get('workflow_count')
+                if isinstance(workflow_count, int) and workflow_count > 1:
+                    metrics.multi_workflow_count += 1
+
+                stages = plan_summary.get('stages')
+                if isinstance(stages, list) and any(
+                    isinstance(stage, dict) and stage.get('blocking_conflicts') for stage in stages
+                ):
+                    metrics.multi_workflow_conflict_count += 1
+
+            if isinstance(execution_overview, dict):
+                if execution_overview.get('status') == 'partial_success':
+                    metrics.multi_workflow_partial_success_count += 1
     
     def get_processing_state(self) -> Dict[str, Any]:
         """Get current processing state for monitoring."""

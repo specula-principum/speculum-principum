@@ -234,6 +234,7 @@ def test_cli_pipeline_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, c
                         "issue_number": issue_number,
                         "action_taken": "auto_assigned",
                         "assigned_workflow": workflow_name,
+                        "assigned_workflows": [workflow_name],
                         "labels_added": [
                             f"workflow::{workflow_name.lower().replace(' ', '-')}",
                             "state::assigned",

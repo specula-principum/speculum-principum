@@ -255,6 +255,7 @@ class SiteMonitorService:
                     config_path=config_path,
                     workflow_dir=workflow_dir,
                     output_base_dir=output_dir,
+                    telemetry_publishers=self.telemetry_publishers,
                 )
                 if enable_git is False:
                     self.issue_processor.enable_git = False

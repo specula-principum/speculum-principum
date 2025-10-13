@@ -69,6 +69,25 @@ class AssignmentSignals:
     source: str = "heuristic"
 
 
+@dataclass(frozen=True)
+class AssignmentSelection:
+    """Represents a workflow selection with associated scoring context."""
+
+    workflow: WorkflowInfo
+    score: float
+    threshold: float
+    threshold_type: str = "auto"
+
+
+@dataclass
+class AssignmentDecision:
+    """Decision result produced by AI + label analysis blend."""
+
+    auto_assignments: List[AssignmentSelection]
+    review_candidates: List[AssignmentSelection]
+    message: str
+
+
 class GitHubModelsAPIError(RuntimeError):
     """Raised when a GitHub Models API request fails."""
 
@@ -493,11 +512,15 @@ class AIWorkflowAssignmentAgent:
 
         suggested = (analysis.get('suggested_workflows') or [])[:3]
         confidence_scores = analysis.get('confidence_scores') or {}
+        assigned_workflows = list(result.get('assigned_workflows') or [])
+        if not assigned_workflows and result.get('assigned_workflow'):
+            assigned_workflows = [result['assigned_workflow']]
 
         payload = {
             'issue_number': result.get('issue_number'),
             'action_taken': result.get('action_taken'),
             'assigned_workflow': result.get('assigned_workflow'),
+            'assigned_workflows': assigned_workflows,
             'labels_added': list(result.get('labels_added') or []),
             'dry_run': result.get('dry_run'),
             'duration_seconds': duration_seconds,
@@ -860,8 +883,10 @@ class AIWorkflowAssignmentAgent:
             extract = extract[:max_chars].rsplit(' ', 1)[0].strip() + '…'
         return extract
     
-    def analyze_issue_with_ai(self, 
-                             issue_data: Dict[str, Any]) -> Tuple[Optional[WorkflowInfo], ContentAnalysis, str]:
+    def analyze_issue_with_ai(
+        self,
+        issue_data: Dict[str, Any],
+    ) -> Tuple[AssignmentDecision, ContentAnalysis]:
         """
         Analyze issue using AI to determine best workflow match.
         
@@ -869,7 +894,7 @@ class AIWorkflowAssignmentAgent:
             issue_data: Issue data dictionary
             
         Returns:
-            Tuple of (WorkflowInfo if found, AI analysis, explanation message)
+            Tuple of (assignment decision, AI analysis details)
             
         Raises:
             RuntimeError: If AI is required but unavailable
@@ -917,12 +942,13 @@ class AIWorkflowAssignmentAgent:
             )
             
             # Combine AI analysis with label-based validation
-            return self._combine_ai_and_label_analysis(
+            decision = self._combine_ai_and_label_analysis(
                 issue_data,
                 analysis,
                 available_workflows,
                 page_extract=page_extract,
             )
+            return decision, analysis
             
         except Exception as e:
             error_msg = f"AI analysis failed: {e}"
@@ -1236,13 +1262,15 @@ class AIWorkflowAssignmentAgent:
             review_threshold = max(high_threshold - 0.05, 0.5)
         return review_threshold
 
-    def _combine_ai_and_label_analysis(self,
-                                      issue_data: Dict[str, Any],
-                                      ai_analysis: ContentAnalysis,
-                                      available_workflows: List[WorkflowInfo],
-                                      *,
-                                      page_extract: Optional[str] = None) -> Tuple[Optional[WorkflowInfo], ContentAnalysis, str]:
-        """Combine AI analysis with taxonomy-aware scoring signals."""
+    def _combine_ai_and_label_analysis(
+        self,
+        issue_data: Dict[str, Any],
+        ai_analysis: ContentAnalysis,
+        available_workflows: List[WorkflowInfo],
+        *,
+        page_extract: Optional[str] = None,
+    ) -> AssignmentDecision:
+        """Blend AI analysis with heuristics and label signals to reach a decision."""
 
         combined_scores: Dict[str, float] = {}
 
@@ -1295,36 +1323,87 @@ class AIWorkflowAssignmentAgent:
         ai_analysis.combined_scores = combined_scores
         ai_analysis.reason_codes = list(dict.fromkeys(ai_analysis.reason_codes))
 
-        if combined_scores:
-            best_workflow_name = max(
-                combined_scores.keys(), key=lambda name: combined_scores[name]
-            )
-            best_score = combined_scores[best_workflow_name]
-            best_workflow = next(
-                wf for wf in available_workflows if wf.name == best_workflow_name
-            )
+        auto_assignments: List[AssignmentSelection] = []
+        review_candidates: List[AssignmentSelection] = []
 
-            high_threshold = self._resolve_confidence_threshold(best_workflow)
-            review_threshold = self._resolve_review_threshold(best_workflow, high_threshold)
+        for workflow in available_workflows:
+            score = combined_scores.get(workflow.name)
+            if score is None:
+                continue
 
-            if best_score >= high_threshold:
-                ai_analysis.reason_codes.append("AUTO_ASSIGN_THRESHOLD_MET")
-                ai_analysis.reason_codes = list(dict.fromkeys(ai_analysis.reason_codes))
-                message = (
-                    f"AI analysis selected '{best_workflow_name}' "
-                    f"(score: {best_score:.2f}, threshold: {high_threshold:.2f}, content type: {ai_analysis.content_type})"
+            high_threshold = self._resolve_confidence_threshold(workflow)
+            review_threshold = self._resolve_review_threshold(workflow, high_threshold)
+
+            if score >= high_threshold:
+                auto_assignments.append(
+                    AssignmentSelection(
+                        workflow=workflow,
+                        score=score,
+                        threshold=high_threshold,
+                        threshold_type="auto",
+                    )
                 )
-                return best_workflow, ai_analysis, message
-
-            if best_score >= review_threshold:
-                message = (
-                    f"AI suggests '{best_workflow_name}' "
-                    f"(score: {best_score:.2f}, threshold: {review_threshold:.2f}) but recommends human review"
+            elif score >= review_threshold:
+                review_candidates.append(
+                    AssignmentSelection(
+                        workflow=workflow,
+                        score=score,
+                        threshold=review_threshold,
+                        threshold_type="review",
+                    )
                 )
-                return None, ai_analysis, message
+
+        auto_assignments.sort(key=lambda selection: selection.score, reverse=True)
+        review_candidates.sort(key=lambda selection: selection.score, reverse=True)
+
+        message: str
+        if auto_assignments:
+            ai_analysis.reason_codes.append("AUTO_ASSIGN_THRESHOLD_MET")
+            if len(auto_assignments) > 1:
+                ai_analysis.reason_codes.append("MULTI_WORKFLOW_AUTO_ASSIGNMENT")
+            ai_analysis.reason_codes = list(dict.fromkeys(ai_analysis.reason_codes))
+
+            if len(auto_assignments) == 1:
+                selection = auto_assignments[0]
+                message = (
+                    f"AI analysis selected '{selection.workflow.name}' "
+                    f"(score: {selection.score:.2f}, threshold: {selection.threshold:.2f}, "
+                    f"content type: {ai_analysis.content_type})"
+                )
+            else:
+                formatted = ", ".join(
+                    f"{sel.workflow.name} (score: {sel.score:.2f}, threshold: {sel.threshold:.2f})"
+                    for sel in auto_assignments
+                )
+                message = f"AI analysis selected multiple workflows for automatic assignment: {formatted}"
+
+            return AssignmentDecision(
+                auto_assignments=auto_assignments,
+                review_candidates=review_candidates,
+                message=message,
+            )
+
+        if review_candidates:
+            ai_analysis.reason_codes.append("REVIEW_THRESHOLD_MET")
+            ai_analysis.reason_codes = list(dict.fromkeys(ai_analysis.reason_codes))
+
+            top = review_candidates[0]
+            message = (
+                f"AI suggests '{top.workflow.name}' "
+                f"(score: {top.score:.2f}, threshold: {top.threshold:.2f}) but recommends human review"
+            )
+            return AssignmentDecision(
+                auto_assignments=[],
+                review_candidates=review_candidates,
+                message=message,
+            )
 
         message = "AI analysis inconclusive - no workflow has sufficient confidence"
-        return None, ai_analysis, message
+        return AssignmentDecision(
+            auto_assignments=[],
+            review_candidates=[],
+            message=message,
+        )
     
     def _get_historical_success_rate(self, 
                                     workflow_name: str,
@@ -1479,7 +1558,7 @@ class AIWorkflowAssignmentAgent:
     @staticmethod
     def _render_ai_assessment_section(
         analysis: ContentAnalysis,
-        assigned_workflow: Optional[str] = None,
+        assigned_workflows: Optional[Iterable[str]] = None,
     ) -> str:
         """Build the Markdown content for the AI Assessment section."""
 
@@ -1490,6 +1569,7 @@ class AIWorkflowAssignmentAgent:
         lines.append("")
 
         lines.append("**Recommended Workflows**")
+        assigned_set = {name for name in assigned_workflows} if assigned_workflows else set()
         if analysis.suggested_workflows:
             for workflow_name in analysis.suggested_workflows[:5]:
                 confidence = analysis.confidence_scores.get(workflow_name)
@@ -1498,7 +1578,7 @@ class AIWorkflowAssignmentAgent:
                     if confidence is not None
                     else ""
                 )
-                suffix = " (assigned)" if assigned_workflow and workflow_name == assigned_workflow else ""
+                suffix = " (assigned)" if workflow_name in assigned_set else ""
                 rationale = AIWorkflowAssignmentAgent._build_workflow_rationale(analysis)
                 lines.append(
                     f"- {workflow_name}{confidence_text} — Rationale: {rationale}{suffix}"
@@ -1549,52 +1629,62 @@ class AIWorkflowAssignmentAgent:
         issue_number = issue_data['number']
         
         # Analyze with AI
-        workflow, ai_analysis, message = self.analyze_issue_with_ai(issue_data)
+        decision, ai_analysis = self.analyze_issue_with_ai(issue_data)
         
         result = {
             'issue_number': issue_number,
             'ai_analysis': asdict(ai_analysis),
-            'message': message,
+            'message': decision.message,
             'action_taken': None,
             'assigned_workflow': None,
+            'assigned_workflows': [],
             'labels_added': [],
             'dry_run': dry_run,
             'reason_codes': list(ai_analysis.reason_codes),
         }
-        
-        best_score = None
-        threshold = None
-        if workflow:
-            threshold = self._resolve_confidence_threshold(workflow)
-            best_score = ai_analysis.combined_scores.get(workflow.name)
-            if best_score is None:
-                best_score = ai_analysis.confidence_scores.get(workflow.name)
 
-        if workflow and threshold is not None and (best_score is not None and best_score >= threshold):
-            # High confidence - assign automatically
-            labels_added = self._assign_workflow_with_ai_context(
-                issue_number, workflow, ai_analysis, dry_run
-            )
+        if decision.auto_assignments:
+            if len(decision.auto_assignments) == 1:
+                selection = decision.auto_assignments[0]
+                labels_added = self._assign_workflow_with_ai_context(
+                    issue_number,
+                    selection.workflow,
+                    ai_analysis,
+                    dry_run,
+                )
+            else:
+                labels_added = self._assign_multiple_workflows_with_ai_context(
+                    issue_number,
+                    decision.auto_assignments,
+                    ai_analysis,
+                    dry_run,
+                )
+
+            assigned_names = [sel.workflow.name for sel in decision.auto_assignments]
             result['action_taken'] = 'auto_assigned'
-            result['assigned_workflow'] = workflow.name
+            result['assigned_workflows'] = assigned_names
+            result['assigned_workflow'] = assigned_names[0]
             result['labels_added'] = labels_added
-            
-        elif ai_analysis.suggested_workflows:
-            # Medium confidence - request human review
+
+        elif decision.review_candidates:
             labels_added = self._request_review_with_ai_context(
-                issue_number, ai_analysis, dry_run
+                issue_number,
+                ai_analysis,
+                decision.review_candidates,
+                dry_run,
             )
             result['action_taken'] = 'review_requested'
             result['labels_added'] = labels_added
-            
+
         else:
-            # Low confidence - request more information
             labels_added = self._request_clarification_with_ai_context(
-                issue_number, ai_analysis, dry_run
+                issue_number,
+                ai_analysis,
+                dry_run,
             )
             result['action_taken'] = 'clarification_requested'
             result['labels_added'] = labels_added
-        
+
         return result
     
     def _assign_workflow_with_ai_context(self,
@@ -1627,7 +1717,7 @@ class AIWorkflowAssignmentAgent:
 
         assessment_section = self._render_ai_assessment_section(
             analysis,
-            assigned_workflow=workflow.name,
+            assigned_workflows=[workflow.name],
         )
 
         if not dry_run:
@@ -1663,12 +1753,132 @@ AI assessment details have been recorded in the issue body under `## AI Assessme
 """
             issue.create_comment(comment)
 
-        return labels_added
+        return sorted(labels_added, key=str.lower)
+
+    def _assign_multiple_workflows_with_ai_context(
+        self,
+        issue_number: int,
+        selections: List[AssignmentSelection],
+        analysis: ContentAnalysis,
+        dry_run: bool = False,
+    ) -> List[str]:
+        """Assign multiple workflows with consolidated AI context."""
+
+        if not selections:
+            return []
+
+        issue = self.github.repo.get_issue(issue_number)
+        current_labels = self._extract_label_names(issue.labels)
+
+        def _dedupe_preserve(items: Iterable[str]) -> List[str]:
+            seen: Set[str] = set()
+            ordered: List[str] = []
+            for item in items:
+                if not item:
+                    continue
+                key = item.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                ordered.append(item)
+            return ordered
+
+        workflow_slugs = _dedupe_preserve(
+            [self._slugify_label(selection.workflow.name) for selection in selections]
+        )
+        specialist_labels = _dedupe_preserve(
+            filter(
+                None,
+                (
+                    self._determine_specialist_label(selection.workflow)
+                    for selection in selections
+                ),
+            )
+        )
+        extra_labels = _dedupe_preserve(
+            label
+            for selection in selections
+            for label in (selection.workflow.trigger_labels or [])
+            if isinstance(label, str)
+        )
+
+        transition_plan = plan_state_transition(
+            current_labels,
+            WorkflowState.ASSIGNED,
+            ensure_labels=workflow_slugs,
+            specialist_labels=specialist_labels,
+            clear_temporary=True,
+        )
+
+        final_labels, labels_added = self._apply_transition_plan(
+            current_labels,
+            transition_plan,
+            extra_labels=extra_labels,
+        )
+
+        assigned_names = [selection.workflow.name for selection in selections]
+        assessment_section = self._render_ai_assessment_section(
+            analysis,
+            assigned_workflows=assigned_names,
+        )
+
+        if not dry_run:
+            updated_body = upsert_section(issue.body or "", "AI Assessment", assessment_section)
+            edit_kwargs: Dict[str, Any] = {"labels": final_labels}
+            if updated_body != (issue.body or ""):
+                edit_kwargs["body"] = updated_body
+            issue.edit(**edit_kwargs)
+
+            reason_codes_text = (
+                ", ".join(analysis.reason_codes) if analysis.reason_codes else "None recorded"
+            )
+
+            assigned_lines = []
+            for selection in selections:
+                name = selection.workflow.name
+                combined_score = analysis.combined_scores.get(name)
+                if combined_score is None:
+                    if selection.score is not None:
+                        combined_score = selection.score
+                    else:
+                        combined_score = analysis.confidence_scores.get(name)
+                if combined_score is not None:
+                    assigned_lines.append(f"- {name} — Confidence: {combined_score:.0%}")
+                else:
+                    assigned_lines.append(f"- {name}")
+
+            comment = f"""🤖 **AI Workflow Assignment**
+
+**Assigned Workflows:**
+{chr(10).join(assigned_lines)}
+
+**Content Type:** {analysis.content_type}
+**Urgency:** {analysis.urgency_level}
+**Labels Applied:** {', '.join(sorted(labels_added, key=str.lower)) if labels_added else 'None (labels already present)'}
+**Reason Codes:** {reason_codes_text}
+
+AI assessment details have been recorded in the issue body under `## AI Assessment`.
+
+**Key Topics Identified:**
+{', '.join(analysis.key_topics) if analysis.key_topics else 'None identified'}
+
+**Technical Indicators:**
+{', '.join(analysis.technical_indicators) if analysis.technical_indicators else 'None identified'}
+
+---
+*This assignment was made using GitHub Models AI analysis combined with label matching.*
+"""
+            issue.create_comment(comment)
+
+        return sorted(labels_added, key=str.lower)
     
-    def _request_review_with_ai_context(self,
-                                       issue_number: int,
-                                       analysis: ContentAnalysis,
-                                       dry_run: bool = False) -> List[str]:
+    def _request_review_with_ai_context(
+        self,
+        issue_number: int,
+        analysis: ContentAnalysis,
+        candidates: Optional[List[AssignmentSelection]] = None,
+        dry_run: bool = False,
+    ) -> List[str]:
         """Request human review with AI suggestions"""
         
         labels_added: List[str] = []
@@ -1687,18 +1897,33 @@ AI assessment details have been recorded in the issue body under `## AI Assessme
             if updated_body != (issue.body or ""):
                 issue.edit(body=updated_body)
 
-            suggestions = []
-            for workflow_name in analysis.suggested_workflows[:3]:  # Top 3
-                combined = analysis.combined_scores.get(workflow_name)
-                confidence = analysis.confidence_scores.get(workflow_name, 0)
-                if combined is not None:
-                    suggestions.append(
-                        f"- **{workflow_name}** (score: {combined:.0%}, AI confidence: {confidence:.0%})"
-                    )
-                else:
-                    suggestions.append(
-                        f"- **{workflow_name}** (AI confidence: {confidence:.0%})"
-                    )
+            suggestions: List[str] = []
+            if candidates:
+                for selection in candidates[:3]:
+                    name = selection.workflow.name
+                    combined = selection.score
+                    if combined is None:
+                        combined = analysis.combined_scores.get(name)
+                    confidence = analysis.confidence_scores.get(name)
+                    parts: List[str] = []
+                    if combined is not None:
+                        parts.append(f"score: {combined:.0%}")
+                    if confidence is not None:
+                        parts.append(f"AI confidence: {confidence:.0%}")
+                    suffix = f" ({', '.join(parts)})" if parts else ""
+                    suggestions.append(f"- **{name}**{suffix}")
+            else:
+                for workflow_name in analysis.suggested_workflows[:3]:  # Top 3
+                    combined = analysis.combined_scores.get(workflow_name)
+                    confidence = analysis.confidence_scores.get(workflow_name, 0)
+                    if combined is not None:
+                        suggestions.append(
+                            f"- **{workflow_name}** (score: {combined:.0%}, AI confidence: {confidence:.0%})"
+                        )
+                    else:
+                        suggestions.append(
+                            f"- **{workflow_name}** (AI confidence: {confidence:.0%})"
+                        )
 
             reason_codes_text = (
                 ", ".join(analysis.reason_codes) if analysis.reason_codes else "None recorded"
@@ -1931,6 +2156,7 @@ The AI assessment details have been recorded under `## AI Assessment` for refere
                         'message': error_message,
                         'ai_analysis': {},
                         'assigned_workflow': None,
+                        'assigned_workflows': [],
                         'labels_added': [],
                         'dry_run': dry_run,
                     }

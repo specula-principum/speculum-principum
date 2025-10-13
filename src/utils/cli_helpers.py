@@ -248,6 +248,8 @@ class IssueResultFormatter:
         # Base message
         message = f"{icon} Issue #{issue_number}: {status}"
         
+        metadata = result.get('metadata') if isinstance(result, dict) else None
+
         # Add additional details based on status
         if status == 'completed':
             workflow = result.get('workflow', 'Unknown workflow')
@@ -294,6 +296,10 @@ class IssueResultFormatter:
             assignee = result.get('assignee', 'unknown')
             message += f"\n  👤 Assigned to: {assignee}"
         
+        multi_lines = IssueResultFormatter._render_multi_workflow_metadata(metadata)
+        for line in multi_lines:
+            message += f"\n  {line}"
+
         return message
     
     @staticmethod
@@ -334,6 +340,117 @@ class IssueResultFormatter:
                 summary_lines.append(indented)
         
         return "\n".join(summary_lines)
+
+    @staticmethod
+    def _render_multi_workflow_metadata(metadata: Optional[Dict[str, Any]]) -> List[str]:
+        """Render multi-workflow metadata, if available, into human-friendly lines."""
+
+        if not metadata or not isinstance(metadata, dict):
+            return []
+
+        plan = metadata.get('multi_workflow_plan')
+        execution = metadata.get('multi_workflow_execution')
+        selection_message = metadata.get('workflow_selection_message')
+
+        lines: List[str] = []
+
+        plan_dict = plan if isinstance(plan, dict) else {}
+
+        plan_count_value = plan_dict.get('workflow_count')
+        plan_count = plan_count_value if isinstance(plan_count_value, int) else None
+
+        plan_stages_obj = plan_dict.get('stages')
+        plan_stages: List[Dict[str, Any]] = plan_stages_obj if isinstance(plan_stages_obj, list) else []
+
+        planned_workflows: List[str] = []
+        for stage in plan_stages:
+            stage_workflows = stage.get('workflows') if isinstance(stage, dict) else None
+            if not isinstance(stage_workflows, list):
+                continue
+            for name in stage_workflows:
+                if isinstance(name, str) and name not in planned_workflows:
+                    planned_workflows.append(name)
+
+        manifest_obj = plan_dict.get('deliverable_manifest')
+        manifest: Dict[str, Any] = manifest_obj if isinstance(manifest_obj, dict) else {}
+
+        deliverable_count_value = manifest.get('deliverable_count')
+        deliverable_count = deliverable_count_value if isinstance(deliverable_count_value, int) else None
+
+        conflict_groups_obj = manifest.get('conflict_groups')
+        conflict_groups: List[Any] = conflict_groups_obj if isinstance(conflict_groups_obj, list) else []
+        conflict_count = len(conflict_groups)
+
+        if plan_count and plan_count > 1:
+            workflow_summary = ", ".join(planned_workflows) if planned_workflows else str(plan_count)
+            lines.append(f"🔀 Multi-workflow plan ({plan_count}): {workflow_summary}")
+        elif plan_count == 1 and planned_workflows:
+            lines.append(f"🔀 Multi-workflow plan: {planned_workflows[0]}")
+
+        if selection_message and isinstance(selection_message, str):
+            trimmed_message = selection_message.strip()
+            if trimmed_message:
+                lines.append(f"💡 Selection: {trimmed_message}")
+
+        stage_lines_source: List[Dict[str, Any]] = []
+        execution_dict = execution if isinstance(execution, dict) else {}
+        stage_runs_obj = execution_dict.get('stage_runs')
+        stage_runs: List[Dict[str, Any]] = stage_runs_obj if isinstance(stage_runs_obj, list) else []
+
+        if stage_runs:
+            stage_lines_source = stage_runs
+        elif plan_stages:
+            stage_lines_source = plan_stages
+
+        max_stage_lines = 2
+        rendered_stage_count = 0
+        for stage in stage_lines_source:
+            if rendered_stage_count >= max_stage_lines:
+                break
+            if not isinstance(stage, dict):
+                continue
+            stage_index = stage.get('index')
+            stage_mode = stage.get('run_mode', 'sequential')
+
+            workflow_entries: List[str] = []
+            stage_workflows = stage.get('workflows')
+            if isinstance(stage_workflows, list):
+                for entry in stage_workflows:
+                    if isinstance(entry, dict):
+                        wf_name = entry.get('workflow_name')
+                        wf_status = entry.get('status')
+                        if wf_name:
+                            if wf_status:
+                                workflow_entries.append(f"{wf_name} ({wf_status})")
+                            else:
+                                workflow_entries.append(wf_name)
+                    elif isinstance(entry, str):
+                        workflow_entries.append(entry)
+
+            if not workflow_entries:
+                continue
+
+            index_display = stage_index if stage_index is not None else rendered_stage_count
+            workflows_display = ", ".join(workflow_entries)
+            lines.append(f"    - Stage {index_display} [{stage_mode}]: {workflows_display}")
+            rendered_stage_count += 1
+
+        extra_stage_count = len(stage_lines_source) - rendered_stage_count
+        if extra_stage_count > 0:
+            lines.append(f"    - … {extra_stage_count} more stage(s)")
+
+        if deliverable_count:
+            descriptor = f"{deliverable_count} deliverable{'s' if deliverable_count != 1 else ''}"
+            if conflict_count:
+                descriptor += f" ({conflict_count} conflict{'s' if conflict_count != 1 else ''} resolved)"
+            lines.append(f"    - Deliverables: {descriptor}")
+
+        execution_status = execution_dict.get('status') if isinstance(execution_dict.get('status'), str) else None
+        if execution_status:
+            status_display = execution_status.replace('_', ' ')
+            lines.append(f"🧪 Multi-workflow execution: {status_display}")
+
+        return lines
 
 
 class BatchProcessor:

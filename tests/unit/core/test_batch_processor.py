@@ -74,6 +74,9 @@ class TestBatchMetrics:
         assert metrics.error_count == 0
         assert metrics.skipped_count == 0
         assert metrics.clarification_count == 0
+        assert metrics.multi_workflow_count == 0
+        assert metrics.multi_workflow_partial_success_count == 0
+        assert metrics.multi_workflow_conflict_count == 0
         assert metrics.start_time is None
         assert metrics.end_time is None
         assert metrics.processing_times == []
@@ -133,6 +136,9 @@ class TestBatchMetrics:
         assert metrics_dict['copilot_assignments']['assignees'] == ['github-copilot[bot]']
         assert metrics_dict['copilot_assignments']['due_dates'] == ['2025-10-02T09:00:00Z']
         assert metrics_dict['copilot_assignments']['next_due_at'] == '2025-10-02T09:00:00Z'
+        assert metrics_dict['multi_workflow_count'] == 0
+        assert metrics_dict['multi_workflow_partial_success_count'] == 0
+        assert metrics_dict['multi_workflow_conflict_count'] == 0
 
 
 class TestBatchProgressReporter:
@@ -202,6 +208,7 @@ class TestProcessingResultSerialization:
         assert result_dict['copilot_assignee'] == 'github-copilot[bot]'
         assert result_dict['copilot_due_at'] == '2025-10-02T12:00:00Z'
         assert result_dict['handoff_summary'] == '🚀 Summary heading'
+        assert result_dict['metadata'] == {}
 class TestBatchProcessor:
     """Test BatchProcessor functionality."""
     
@@ -611,6 +618,39 @@ class TestBatchProcessor:
         assert metrics.copilot_assignment_count == 2
         assert metrics.copilot_due_dates == ['2025-10-02T09:00:00Z', '2025-10-03T09:00:00Z']
         assert metrics.next_copilot_due_at == '2025-10-02T09:00:00Z'
+        assert metrics.multi_workflow_count == 0
+        assert metrics.multi_workflow_conflict_count == 0
+        assert metrics.multi_workflow_partial_success_count == 0
+
+    def test_update_metrics_from_batch_tracks_multi_workflow(self, batch_processor):
+        """Ensure multi-workflow metadata contributes to batch metrics."""
+        metrics = BatchMetrics()
+        multi_result = ProcessingResult(
+            issue_number=999,
+            status=IssueProcessingStatus.COMPLETED,
+            processing_time_seconds=2.0,
+            metadata={
+                'multi_workflow_plan': {
+                    'workflow_count': 2,
+                    'stages': [
+                        {
+                            'index': 0,
+                            'run_mode': 'parallel',
+                            'blocking_conflicts': ['deliverable:report'],
+                        }
+                    ],
+                },
+                'multi_workflow_execution': {
+                    'status': 'partial_success',
+                },
+            },
+        )
+
+        batch_processor._update_metrics_from_batch(metrics, [multi_result])
+
+        assert metrics.multi_workflow_count == 1
+        assert metrics.multi_workflow_conflict_count == 1
+        assert metrics.multi_workflow_partial_success_count == 1
     
     def test_save_batch_results(self, batch_processor, tmp_path):
         """Test saving batch results to file."""

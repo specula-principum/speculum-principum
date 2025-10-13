@@ -9,7 +9,7 @@
       "site-monitor",
       "automated"
     ],
-  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #23**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #23**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   },
   "24": {
     "status": "needs_clarification",
@@ -21,7 +21,7 @@
       "site-monitor",
       "automated"
     ],
-  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #24**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #24**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   },
   "25": {
     "status": "needs_clarification",
@@ -33,7 +33,7 @@
       "site-monitor",
       "automated"
     ],
-  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #25**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Witness & Expert Reliability Assessment`: Scores credibility and flags conflicts for key testimony\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #25**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Witness & Expert Reliability Assessment`: Scores credibility and flags conflicts for key testimony\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   },
   "26": {
     "status": "needs_clarification",
@@ -45,7 +45,7 @@
       "site-monitor",
       "automated"
     ],
-  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #26**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Place Intelligence Mapping`: Reviews venues, jurisdictional nuances, and inter-agency considerations\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #26**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Person Entity Profiling & Risk Flagging`: Profiles primary individuals, risk posture, and conflicts\n- `Place Intelligence Mapping`: Reviews venues, jurisdictional nuances, and inter-agency considerations\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
   },
   "27": {
     "status": "needs_clarification",
@@ -57,6 +57,106 @@
       "site-monitor",
       "automated"
     ],
-  "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #27**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n- `Inter-Agency Coordination Briefs`: Summarizes coordination touchpoints, contact hierarchies, and decision timelines\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+    "clarification_message": "\ud83e\udd16 **Workflow Selection Required for Issue #27**\n\nMultiple workflows could apply to this issue, or no specific workflow was found.\nCurrent labels: documentation, site-monitor, automated\n\nAvailable taxonomy workflows:\n- `Statutory & Regulatory Research Tracker`: Aggregates applicable statutes and compliance checkpoints\n- `Inter-Agency Coordination Briefs`: Summarizes coordination touchpoints, contact hierarchies, and decision timelines\n\nPlease add additional labels to clarify which workflow should be used.\nYou can find workflow definitions in `docs/workflow/deliverables/`"
+  },
+  "4242": {
+    "status": "completed",
+    "updated_at": "2025-10-12T18:23:58.278506",
+    "started_at": "2025-10-12T18:23:58.275531",
+    "title": "Multi workflow issue",
+    "labels": [
+      "site-monitor",
+      "multi-label"
+    ],
+    "workflow_selection_message": "Primary workflow selected",
+    "multi_workflow_plan": {
+      "plan_id": "multiwf-c059e484f8c64952bde9710d849272c6",
+      "stage_count": 1,
+      "workflow_count": 2,
+      "stages": [
+        {
+          "index": 0,
+          "run_mode": "parallel",
+          "workflows": [
+            "Primary Workflow",
+            "Secondary Workflow"
+          ],
+          "blocking_conflicts": [
+            "deliverable:primary",
+            "deliverable:secondary"
+          ]
+        }
+      ],
+      "preview_only": false,
+      "selection_reason": "multiple_matches",
+      "selection_message": "Mocked multi-workflow plan",
+      "allow_partial_success": true,
+      "overall_timeout_seconds": null,
+      "deliverable_manifest": {
+        "strategy": "suffix",
+        "separator": "--",
+        "workflow_count": 2,
+        "deliverable_count": 2,
+        "workflows": [
+          {
+            "workflow_name": "Primary Workflow",
+            "workflow_slug": "primary-workflow",
+            "priority": 1,
+            "order": 0,
+            "deliverables": [
+              {
+                "workflow_name": "Primary Workflow",
+                "workflow_slug": "primary-workflow",
+                "deliverable_name": "primary",
+                "deliverable_slug": "primary",
+                "folder": "study/4242/primary",
+                "base_filename": "primary.md",
+                "final_filename": "primary.md",
+                "base_relative_path": "study/4242/primary/primary.md",
+                "final_relative_path": "study/4242/primary/primary.md",
+                "conflict_group": null,
+                "conflict_index": null,
+                "was_conflict": false
+              }
+            ]
+          },
+          {
+            "workflow_name": "Secondary Workflow",
+            "workflow_slug": "secondary-workflow",
+            "priority": 2,
+            "order": 1,
+            "deliverables": [
+              {
+                "workflow_name": "Secondary Workflow",
+                "workflow_slug": "secondary-workflow",
+                "deliverable_name": "secondary",
+                "deliverable_slug": "secondary",
+                "folder": "study/4242/secondary",
+                "base_filename": "secondary.md",
+                "final_filename": "secondary.md",
+                "base_relative_path": "study/4242/secondary/secondary.md",
+                "final_relative_path": "study/4242/secondary/secondary.md",
+                "conflict_group": null,
+                "conflict_index": null,
+                "was_conflict": false
+              }
+            ]
+          }
+        ],
+        "conflict_groups": []
+      }
+    },
+    "plan_generated_at": "2025-10-12T18:23:58.277696",
+    "completed_at": "2025-10-12T18:23:58.278495",
+    "workflow_name": "Primary Workflow",
+    "created_files": [
+      "study/primary/output.md"
+    ],
+    "processing_time_seconds": 0.002961,
+    "multi_workflow_execution": {
+      "status": "skipped",
+      "plan_id": "test-plan-id",
+      "stage_runs": []
+    }
   }
 }

@@ -51,13 +51,33 @@ class GitHubConfig:
 
 
 @dataclass
+class MultiWorkflowProcessingConfig:
+    """Configuration for multi-workflow processing behaviour."""
+
+    allow_parallel_stages: bool = True
+    max_parallel_workflows: Optional[int] = None
+    allow_partial_success: bool = True
+    overall_timeout_seconds: Optional[int] = None
+    preview_only: bool = False
+    conflict_resolution: str = "suffix"
+    suffix_separator: str = "--"
+
+
+@dataclass
 class AgentProcessingConfig:
     """Agent processing configuration"""
+
     default_timeout_minutes: int = 60
     max_concurrent_issues: int = 3
     retry_attempts: int = 2
     require_review: bool = True
     auto_create_pr: bool = False
+    enable_multi_workflow: bool = False
+    multi_workflow: Optional[MultiWorkflowProcessingConfig] = None
+
+    def __post_init__(self):
+        if self.multi_workflow is None:
+            self.multi_workflow = MultiWorkflowProcessingConfig()
 
 
 @dataclass
@@ -390,7 +410,38 @@ class ConfigLoader:
                             "max_concurrent_issues": {"type": "integer", "minimum": 1},
                             "retry_attempts": {"type": "integer", "minimum": 0},
                             "require_review": {"type": "boolean"},
-                            "auto_create_pr": {"type": "boolean"}
+                            "auto_create_pr": {"type": "boolean"},
+                            "enable_multi_workflow": {"type": "boolean"},
+                            "multi_workflow": {
+                                "type": "object",
+                                "properties": {
+                                    "allow_parallel_stages": {"type": "boolean"},
+                                    "max_parallel_workflows": {
+                                        "anyOf": [
+                                            {"type": "integer", "minimum": 1},
+                                            {"type": "null"}
+                                        ]
+                                    },
+                                    "allow_partial_success": {"type": "boolean"},
+                                    "overall_timeout_seconds": {
+                                        "anyOf": [
+                                            {"type": "integer", "minimum": 1},
+                                            {"type": "null"}
+                                        ]
+                                    },
+                                    "preview_only": {"type": "boolean"},
+                                    "conflict_resolution": {
+                                        "type": "string",
+                                        "enum": ["suffix"]
+                                    },
+                                    "suffix_separator": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 8
+                                    }
+                                },
+                                "additionalProperties": False
+                            }
                         },
                         "additionalProperties": False
                     },
@@ -638,12 +689,28 @@ class ConfigLoader:
             processing = AgentProcessingConfig()
             if 'processing' in agent_data:
                 proc_data = agent_data['processing']
+
+                multi_workflow_config: Optional[MultiWorkflowProcessingConfig] = None
+                if 'multi_workflow' in proc_data:
+                    multi_data = proc_data['multi_workflow'] or {}
+                    multi_workflow_config = MultiWorkflowProcessingConfig(
+                        allow_parallel_stages=multi_data.get('allow_parallel_stages', True),
+                        max_parallel_workflows=multi_data.get('max_parallel_workflows'),
+                        allow_partial_success=multi_data.get('allow_partial_success', True),
+                        overall_timeout_seconds=multi_data.get('overall_timeout_seconds'),
+                        preview_only=multi_data.get('preview_only', False),
+                        conflict_resolution=multi_data.get('conflict_resolution', 'suffix'),
+                        suffix_separator=multi_data.get('suffix_separator', '--'),
+                    )
+
                 processing = AgentProcessingConfig(
                     default_timeout_minutes=proc_data.get('default_timeout_minutes', 60),
                     max_concurrent_issues=proc_data.get('max_concurrent_issues', 3),
                     retry_attempts=proc_data.get('retry_attempts', 2),
                     require_review=proc_data.get('require_review', True),
-                    auto_create_pr=proc_data.get('auto_create_pr', False)
+                    auto_create_pr=proc_data.get('auto_create_pr', False),
+                    enable_multi_workflow=proc_data.get('enable_multi_workflow', False),
+                    multi_workflow=multi_workflow_config,
                 )
             
             # Build git config

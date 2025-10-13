@@ -207,6 +207,52 @@ class TestIssueResultFormatter:
         formatted = IssueResultFormatter.format_batch_results([])
         assert "📭 No issues processed" in formatted
 
+    def test_format_multi_workflow_metadata(self):
+        """Ensure multi-workflow metadata is rendered when present."""
+        result = {
+            'status': 'completed',
+            'issue': 321,
+            'workflow': 'Primary Workflow',
+            'files_created': ['study/primary/output.md'],
+            'metadata': {
+                'workflow_selection_message': 'Primary workflow selected',
+                'multi_workflow_plan': {
+                    'workflow_count': 2,
+                    'stages': [
+                        {
+                            'index': 0,
+                            'run_mode': 'parallel',
+                            'workflows': ['Primary Workflow', 'Secondary Workflow'],
+                        }
+                    ],
+                    'deliverable_manifest': {
+                        'deliverable_count': 2,
+                        'conflict_groups': [{'group': 'study/primary/output.md'}],
+                    },
+                },
+                'multi_workflow_execution': {
+                    'status': 'executed',
+                    'stage_runs': [
+                        {
+                            'index': 0,
+                            'run_mode': 'parallel',
+                            'workflows': [
+                                {'workflow_name': 'Primary Workflow', 'status': 'success'},
+                                {'workflow_name': 'Secondary Workflow', 'status': 'pending'},
+                            ],
+                        }
+                    ],
+                },
+            },
+        }
+
+        formatted = IssueResultFormatter.format_single_result(result)
+
+        assert "🔀 Multi-workflow plan (2): Primary Workflow, Secondary Workflow" in formatted
+        assert "Stage 0 [parallel]: Primary Workflow (success), Secondary Workflow (pending)" in formatted
+        assert "Deliverables: 2 deliverables (1 conflict resolved)" in formatted
+        assert "🧪 Multi-workflow execution: executed" in formatted
+
 
 class TestBatchProcessor:
     """Test batch processing functionality."""

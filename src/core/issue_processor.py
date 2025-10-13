@@ -20,14 +20,22 @@ import logging
 import time
 import functools
 import re
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Optional, Tuple, Any, Union, Iterable
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime, timezone
 import json
 
-from ..workflow.workflow_matcher import WorkflowMatcher, WorkflowLoadError, WorkflowInfo
+from ..workflow.workflow_matcher import WorkflowMatcher, WorkflowLoadError, WorkflowInfo, WorkflowPlan
+from ..workflow.execution_planner import (
+    WorkflowExecutionPlan,
+    WorkflowExecutionPlanner,
+    WorkflowPlanningError,
+    build_plan_created_event,
+)
+from ..workflow.deliverable_namer import MultiWorkflowDeliverableNamer
+from ..workflow.sandbox_execution import execute_workflow_in_sandbox, prepare_sandbox
 from ..workflow.workflow_state_manager import (
     WORKFLOW_LABEL_PREFIX,
     SPECIALIST_LABEL_PREFIX,
@@ -45,6 +53,7 @@ from ..clients.github_issue_creator import GitHubIssueCreator
 from ..workflow.deliverable_generator import DeliverableGenerator, DeliverableSpec
 from ..storage.git_manager import GitManager, GitOperationError
 from ..utils.logging_config import get_logger, log_exception, log_retry_attempt
+from ..utils.telemetry import TelemetryPublisher, normalize_publishers, publish_telemetry_event
 
 
 class IssueProcessingError(Exception):
@@ -77,6 +86,15 @@ class DeliverableGenerationError(IssueProcessingError):
 class ProcessingTimeoutError(IssueProcessingError):
     """Exception raised when processing times out."""
     pass
+
+
+@dataclass(frozen=True)
+class _PlanExecutionContext:
+    """Internal container linking planning artefacts for multi-workflow runs."""
+
+    plan: WorkflowPlan
+    execution_plan: WorkflowExecutionPlan
+    deliverable_manifest: Optional[Dict[str, Any]] = None
 
 
 def retry_on_exception(
@@ -183,11 +201,14 @@ class ProcessingResult:
     handoff_summary: Optional[str] = None
     specialist_guidance: Optional[str] = None
     copilot_assignment: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
         """Initialize empty lists if None."""
         if self.created_files is None:
             self.created_files = []
+        if self.metadata is None:
+            self.metadata = {}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert processing result to a JSON-serializable dictionary."""
@@ -207,6 +228,7 @@ class ProcessingResult:
             'handoff_summary': self.handoff_summary,
             'specialist_guidance': self.specialist_guidance,
             'copilot_assignment': self.copilot_assignment,
+            'metadata': dict(self.metadata or {}),
         }
 
 
@@ -230,7 +252,8 @@ class IssueProcessor:
                  workflow_dir: Optional[str] = None,
                  output_base_dir: Optional[str] = None,
                  enable_git: bool = True,
-                 enable_state_saving: bool = True):
+                 enable_state_saving: bool = True,
+                 telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None):
         """
         Initialize the issue processor.
         
@@ -246,6 +269,7 @@ class IssueProcessor:
         """
         self.logger = get_logger(__name__)
         self.logger.info("Initializing IssueProcessor")
+        self.telemetry_publishers = normalize_publishers(telemetry_publishers)
         
         # Load configuration with error handling
         try:
@@ -302,6 +326,43 @@ class IssueProcessor:
             error_msg = f"Failed to initialize deliverable generator: {e}"
             log_exception(self.logger, error_msg, e)
             raise IssueProcessingError(error_msg, error_code="DELIVERABLE_GENERATOR_ERROR") from e
+
+        # Multi-workflow planner configuration
+        self.multi_workflow_planning_enabled = False
+        self.multi_workflow_preview_only = False
+        self.workflow_execution_planner: Optional[WorkflowExecutionPlanner] = None
+        self._multi_workflow_plan_config = None
+
+        processing_config = self.config.agent.processing if self.config.agent else None
+        if processing_config:
+            try:
+                self.multi_workflow_planning_enabled = bool(getattr(processing_config, 'enable_multi_workflow', False))
+                self._multi_workflow_plan_config = getattr(processing_config, 'multi_workflow', None)
+                if self._multi_workflow_plan_config:
+                    self.multi_workflow_preview_only = getattr(self._multi_workflow_plan_config, 'preview_only', False)
+
+                if self.multi_workflow_planning_enabled:
+                    plan_config = self._multi_workflow_plan_config
+                    self.workflow_execution_planner = WorkflowExecutionPlanner(
+                        allow_parallel_stages=getattr(plan_config, 'allow_parallel_stages', True),
+                        max_parallel_workflows=getattr(plan_config, 'max_parallel_workflows', None),
+                        allow_partial_success=getattr(plan_config, 'allow_partial_success', True),
+                        overall_timeout_seconds=getattr(plan_config, 'overall_timeout_seconds', None),
+                    )
+                    self.logger.info(
+                        "Multi-workflow planner enabled (preview_only=%s, allow_parallel=%s, max_parallel=%s)",
+                        self.multi_workflow_preview_only,
+                        getattr(plan_config, 'allow_parallel_stages', True),
+                        getattr(plan_config, 'max_parallel_workflows', None),
+                    )
+                else:
+                    self.logger.info("Multi-workflow planner disabled in agent processing configuration")
+            except Exception as exc:
+                self.logger.warning("Failed to initialize multi-workflow planner: %s", exc)
+                self.multi_workflow_planning_enabled = False
+                self.workflow_execution_planner = None
+        else:
+            self.logger.info("No agent processing configuration; multi-workflow planner disabled")
 
         # Initialize content extraction agent if AI is configured
         self.content_extraction_agent: Optional['ContentExtractionAgent'] = None
@@ -480,6 +541,7 @@ class IssueProcessor:
         issue_number = issue_data.number
         
         self.logger.info(f"Starting processing for issue #{issue_number}: {issue_data.title}")
+        result_metadata: Dict[str, Any] = {}
         
         try:
             # Validate issue data
@@ -494,7 +556,8 @@ class IssueProcessor:
                 self.logger.info(f"Issue #{issue_number} already being processed")
                 return ProcessingResult(
                     issue_number=issue_number,
-                    status=IssueProcessingStatus.PROCESSING
+                    status=IssueProcessingStatus.PROCESSING,
+                    metadata=result_metadata,
                 )
             
             # Update status to processing
@@ -511,7 +574,8 @@ class IssueProcessor:
                 return ProcessingResult(
                     issue_number=issue_number,
                     status=IssueProcessingStatus.PENDING,
-                    error_message="Issue does not have required 'site-monitor' label"
+                    error_message="Issue does not have required 'site-monitor' label",
+                    metadata=result_metadata,
                 )
 
             # Perform AI content extraction if enabled
@@ -539,10 +603,35 @@ class IssueProcessor:
                 return ProcessingResult(
                     issue_number=issue_number,
                     status=IssueProcessingStatus.ERROR,
-                    error_message=error_msg
+                    error_message=error_msg,
+                    metadata=result_metadata,
                 )
             
             workflow_info, status_message = workflow_result
+
+            if status_message:
+                result_metadata['workflow_selection_message'] = status_message
+
+            plan_summary, plan_context = self._prepare_multi_workflow_plan(issue_data)
+            if plan_summary:
+                result_metadata['multi_workflow_plan'] = plan_summary
+
+            selection_state_update: Dict[str, Any] = {}
+            if status_message:
+                selection_state_update['workflow_selection_message'] = status_message
+            if plan_summary:
+                selection_state_update.update(
+                    {
+                        'multi_workflow_plan': plan_summary,
+                        'plan_generated_at': datetime.now().isoformat(),
+                    }
+                )
+            if selection_state_update:
+                self._update_issue_status(
+                    issue_number,
+                    IssueProcessingStatus.PROCESSING,
+                    selection_state_update,
+                )
             
             if workflow_info is None:
                 # Need clarification
@@ -553,12 +642,18 @@ class IssueProcessor:
                 return ProcessingResult(
                     issue_number=issue_number,
                     status=IssueProcessingStatus.NEEDS_CLARIFICATION,
-                    clarification_needed=clarification_msg
+                    clarification_needed=clarification_msg,
+                    metadata=result_metadata,
                 )
             
             # Execute workflow with comprehensive error handling
             try:
-                execution_result = self._execute_workflow_with_recovery(issue_data, workflow_info, extracted_content)
+                execution_result = self._execute_workflow_with_recovery(
+                    issue_data,
+                    workflow_info,
+                    extracted_content,
+                    plan_context=plan_context,
+                )
             except WorkflowExecutionError as e:
                 error_msg = f"Workflow execution failed: {e}"
                 self.logger.error(error_msg)
@@ -572,7 +667,8 @@ class IssueProcessor:
                     issue_number=issue_number,
                     status=IssueProcessingStatus.ERROR,
                     error_message=error_msg,
-                    workflow_name=workflow_info.name
+                    workflow_name=workflow_info.name,
+                    metadata=result_metadata,
                 )
             except Exception as e:
                 error_msg = f"Unexpected error during workflow execution: {e}"
@@ -587,19 +683,31 @@ class IssueProcessor:
                     issue_number=issue_number,
                     status=IssueProcessingStatus.ERROR,
                     error_message=error_msg,
-                    workflow_name=workflow_info.name
+                    workflow_name=workflow_info.name,
+                    metadata=result_metadata,
                 )
             
+            if execution_result.get('multi_workflow_execution'):
+                result_metadata['multi_workflow_execution'] = execution_result['multi_workflow_execution']
+
             # Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds()
             
             # Update status to completed
-            self._update_issue_status(issue_number, IssueProcessingStatus.COMPLETED, {
+            completed_state = {
                 'completed_at': datetime.now().isoformat(),
                 'workflow_name': workflow_info.name,
                 'created_files': execution_result['created_files'],
                 'processing_time_seconds': processing_time
-            })
+            }
+            if execution_result.get('multi_workflow_execution'):
+                completed_state['multi_workflow_execution'] = execution_result['multi_workflow_execution']
+
+            self._update_issue_status(
+                issue_number,
+                IssueProcessingStatus.COMPLETED,
+                completed_state,
+            )
             
             self.logger.info(f"Successfully processed issue #{issue_number} in {processing_time:.2f}s")
             
@@ -611,7 +719,8 @@ class IssueProcessor:
                 processing_time_seconds=processing_time,
                 output_directory=execution_result.get('output_directory'),
                 git_branch=execution_result.get('git_branch'),
-                git_commit=execution_result.get('git_commit')
+                git_commit=execution_result.get('git_commit'),
+                metadata=result_metadata,
             )
             
         except ProcessingTimeoutError as e:
@@ -625,7 +734,8 @@ class IssueProcessor:
             return ProcessingResult(
                 issue_number=issue_number,
                 status=IssueProcessingStatus.ERROR,
-                error_message=error_msg
+                error_message=error_msg,
+                metadata=result_metadata,
             )
         except IssueProcessingError as e:
             error_msg = f"Issue processing error: {e}"
@@ -638,7 +748,8 @@ class IssueProcessor:
             return ProcessingResult(
                 issue_number=issue_number,
                 status=IssueProcessingStatus.ERROR,
-                error_message=error_msg
+                error_message=error_msg,
+                metadata=result_metadata,
             )
         except Exception as e:
             error_msg = f"Unexpected error processing issue #{issue_number}: {e}"
@@ -652,7 +763,8 @@ class IssueProcessor:
             return ProcessingResult(
                 issue_number=issue_number,
                 status=IssueProcessingStatus.ERROR,
-                error_message=str(e)
+                error_message=str(e),
+                metadata=result_metadata,
             )
         finally:
             # Always save state changes
@@ -742,7 +854,273 @@ class IssueProcessor:
         """
         return self.workflow_matcher.get_best_workflow_match(issue_data.labels)
 
-    def _execute_workflow_with_recovery(self, issue_data: IssueData, workflow_info, extracted_content=None) -> Dict[str, Any]:
+    def _prepare_multi_workflow_plan(
+        self,
+        issue_data: IssueData,
+        workflow_plan: Optional[WorkflowPlan] = None,
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[_PlanExecutionContext]]:
+        """Return plan summary and execution context when planning is enabled."""
+
+        if not getattr(self, 'multi_workflow_planning_enabled', False):
+            return None, None
+
+        planner = getattr(self, 'workflow_execution_planner', None)
+        if not planner:
+            return None, None
+
+        plan = workflow_plan
+        if plan is None:
+            try:
+                plan = self.workflow_matcher.get_workflow_plan(issue_data.labels)
+            except Exception as exc:
+                self.logger.warning(
+                    "Failed to generate workflow plan for issue #%s: %s",
+                    issue_data.number,
+                    exc,
+                )
+                return None, None
+
+        if plan is None or not plan.candidates:
+            return None, None
+
+        try:
+            execution_plan = planner.build_execution_plan(plan)
+        except WorkflowPlanningError as exc:
+            candidate_names = [candidate.name for candidate in plan.candidates]
+            self.logger.warning(
+                "Execution planning failed for issue #%s (candidates=%s): %s",
+                issue_data.number,
+                candidate_names,
+                exc,
+            )
+            summary = {
+                'error': str(exc),
+                'selection_reason': plan.selection_reason,
+                'selection_message': plan.selection_message,
+                'candidate_names': candidate_names,
+                'preview_only': getattr(self, 'multi_workflow_preview_only', False),
+            }
+            return summary, None
+
+        deliverable_manifest: Optional[Dict[str, Any]] = None
+        try:
+            plan_config = getattr(self, '_multi_workflow_plan_config', None)
+            manifest_strategy = getattr(plan_config, 'conflict_resolution', 'suffix') if plan_config else 'suffix'
+            manifest_separator = getattr(plan_config, 'suffix_separator', '--') if plan_config else '--'
+            namer = MultiWorkflowDeliverableNamer(
+                strategy=manifest_strategy,
+                separator=manifest_separator,
+            )
+            deliverable_manifest = namer.build_manifest(
+                issue_number=issue_data.number,
+                issue_title=issue_data.title,
+                plan=plan,
+            )
+        except Exception as naming_error:  # pragma: no cover - defensive guard
+            self.logger.warning(
+                "Failed to compute deliverable manifest for issue #%s: %s",
+                issue_data.number,
+                naming_error,
+            )
+
+        plan_context = _PlanExecutionContext(
+            plan=plan,
+            execution_plan=execution_plan,
+            deliverable_manifest=deliverable_manifest,
+        )
+
+        preview_only = getattr(self, 'multi_workflow_preview_only', False)
+
+        summary = execution_plan.to_summary()
+        summary.update(
+            {
+                'preview_only': preview_only,
+                'selection_reason': plan.selection_reason,
+                'selection_message': plan.selection_message,
+                'allow_partial_success': execution_plan.allow_partial_success,
+                'overall_timeout_seconds': execution_plan.overall_timeout_seconds,
+            }
+        )
+        if deliverable_manifest:
+            summary['deliverable_manifest'] = deliverable_manifest
+
+        self.logger.info(
+            "Generated multi-workflow execution plan for issue #%s: %s",
+            issue_data.number,
+            summary,
+        )
+
+        self._emit_plan_created_event(issue_data, plan_context)
+
+        return summary, plan_context
+
+    def _maybe_build_execution_plan_summary(
+        self,
+        issue_data: IssueData,
+        workflow_plan: Optional[WorkflowPlan] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return execution plan summary when multi-workflow planning is enabled."""
+        summary, _ = self._prepare_multi_workflow_plan(issue_data, workflow_plan)
+        return summary
+
+    def _publish_telemetry_event(self, event_type: str, payload: Dict[str, Any]) -> None:
+        """Safely emit telemetry events when publishers are configured."""
+
+        if not self.telemetry_publishers:
+            return
+
+        publish_telemetry_event(
+            self.telemetry_publishers,
+            event_type,
+            payload,
+            logger=self.logger,
+        )
+
+    def _emit_plan_created_event(
+        self,
+        issue_data: IssueData,
+        plan_context: _PlanExecutionContext,
+    ) -> None:
+        """Emit telemetry for newly created multi-workflow plans."""
+
+        if not self.telemetry_publishers:
+            return
+
+        try:
+            event_payload = build_plan_created_event(
+                plan_context.execution_plan,
+                issue_number=issue_data.number,
+            )
+            event_type = str(event_payload.pop("event_type", "multi_workflow.plan_created"))
+            event_payload.update(
+                {
+                    "preview_only": getattr(self, 'multi_workflow_preview_only', False),
+                    "selection_reason": plan_context.plan.selection_reason,
+                    "selection_message": plan_context.plan.selection_message,
+                }
+            )
+            self._publish_telemetry_event(event_type, event_payload)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            self.logger.warning(
+                "Failed to emit multi-workflow plan telemetry for issue #%s: %s",
+                issue_data.number,
+                exc,
+            )
+
+    def _emit_execution_summary_event(
+        self,
+        issue_data: IssueData,
+        overview: Dict[str, Any],
+    ) -> None:
+        """Emit telemetry summarizing sandbox execution stages."""
+
+        if not self.telemetry_publishers:
+            return
+
+        try:
+            payload = dict(overview)
+            payload.setdefault("issue_number", issue_data.number)
+            self._publish_telemetry_event("multi_workflow.execution_summary", payload)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            self.logger.warning(
+                "Failed to emit multi-workflow execution telemetry for issue #%s: %s",
+                issue_data.number,
+                exc,
+            )
+
+    def _execute_multi_workflow_plan(
+        self,
+        issue_data: IssueData,
+        plan_context: Optional[_PlanExecutionContext],
+    ) -> Optional[Dict[str, Any]]:
+        """Execute the sandbox plan when available and return execution metadata."""
+
+        if not plan_context:
+            return None
+
+        execution_plan = plan_context.execution_plan
+        overview = execution_plan.to_summary()
+        preview_only = getattr(self, 'multi_workflow_preview_only', False)
+        overview.update(
+            {
+                'preview_only': preview_only,
+                'selection_reason': plan_context.plan.selection_reason,
+                'selection_message': plan_context.plan.selection_message,
+                'allow_partial_success': execution_plan.allow_partial_success,
+                'overall_timeout_seconds': execution_plan.overall_timeout_seconds,
+            }
+        )
+
+        if plan_context.deliverable_manifest:
+            overview['deliverable_manifest'] = plan_context.deliverable_manifest
+
+        stage_runs: List[Dict[str, Any]] = []
+
+        if preview_only:
+            for stage in execution_plan.stages:
+                stage_runs.append(
+                    {
+                        'index': stage.index,
+                        'run_mode': stage.run_mode,
+                        'blocking_conflicts': sorted(stage.blocking_conflicts),
+                        'workflows': [
+                            {
+                                'workflow_name': run_spec.name,
+                                'status': 'skipped',
+                                'sandbox_path': None,
+                                'message': 'Multi-workflow execution skipped due to preview-only mode.',
+                            }
+                            for run_spec in stage.workflows
+                        ],
+                    }
+                )
+
+            overview['stage_runs'] = stage_runs
+            overview['status'] = 'skipped'
+            overview['skip_reason'] = 'preview_only_guard'
+            self._emit_execution_summary_event(issue_data, overview)
+            return overview
+
+        sandbox_root = self.output_base_dir / f"issue_{issue_data.number}" / "multi_workflow_sandboxes"
+        sandbox_root.mkdir(parents=True, exist_ok=True)
+
+        for stage in execution_plan.stages:
+            workflow_entries: List[Dict[str, Any]] = []
+            for run_spec in stage.workflows:
+                sandbox_context = prepare_sandbox(sandbox_root, run_spec)
+                sandbox_result = execute_workflow_in_sandbox(sandbox_context)
+                workflow_entries.append(
+                    {
+                        'workflow_name': sandbox_result.workflow_name,
+                        'status': sandbox_result.status,
+                        'sandbox_path': str(sandbox_result.sandbox_path),
+                        'message': sandbox_result.message,
+                    }
+                )
+
+            stage_runs.append(
+                {
+                    'index': stage.index,
+                    'run_mode': stage.run_mode,
+                    'blocking_conflicts': sorted(stage.blocking_conflicts),
+                    'workflows': workflow_entries,
+                }
+            )
+
+        overview['stage_runs'] = stage_runs
+        overview['status'] = 'executed'
+        overview['sandbox_root'] = str(sandbox_root)
+        self._emit_execution_summary_event(issue_data, overview)
+        return overview
+
+    def _execute_workflow_with_recovery(
+        self,
+        issue_data: IssueData,
+        workflow_info,
+        extracted_content=None,
+        *,
+        plan_context: Optional[_PlanExecutionContext] = None,
+    ) -> Dict[str, Any]:
         """
         Execute workflow with error recovery and partial success handling.
         
@@ -760,13 +1138,23 @@ class IssueProcessor:
         self.logger.info(f"Executing workflow '{workflow_info.name}' for issue #{issue_data.number}")
         
         try:
-            return self._execute_workflow(issue_data, workflow_info, extracted_content)
+            return self._execute_workflow(
+                issue_data,
+                workflow_info,
+                extracted_content,
+                plan_context=plan_context,
+            )
         except Exception as e:
             # Try to recover by falling back to basic workflow execution
             self.logger.warning(f"Primary workflow execution failed, attempting recovery: {e}")
             
             try:
-                return self._execute_basic_workflow(issue_data, workflow_info, extracted_content)
+                return self._execute_basic_workflow(
+                    issue_data,
+                    workflow_info,
+                    extracted_content,
+                    plan_context=plan_context,
+                )
             except Exception as recovery_error:
                 error_msg = f"Workflow execution and recovery both failed: {recovery_error}"
                 log_exception(self.logger, error_msg, recovery_error)
@@ -776,7 +1164,14 @@ class IssueProcessor:
                     error_code="WORKFLOW_EXECUTION_FAILED"
                 ) from recovery_error
 
-    def _execute_basic_workflow(self, issue_data: IssueData, workflow_info, extracted_content=None) -> Dict[str, Any]:
+    def _execute_basic_workflow(
+        self,
+        issue_data: IssueData,
+        workflow_info,
+        extracted_content=None,
+        *,
+        plan_context: Optional[_PlanExecutionContext] = None,
+    ) -> Dict[str, Any]:
         """
         Execute a basic version of the workflow with minimal dependencies.
         
@@ -791,6 +1186,7 @@ class IssueProcessor:
             Dictionary with execution results
         """
         self.logger.info(f"Executing basic workflow for issue #{issue_data.number}")
+        multi_workflow_execution = self._execute_multi_workflow_plan(issue_data, plan_context)
         
         # Create basic output directory
         output_dir = self.output_base_dir / f"issue_{issue_data.number}"
@@ -824,12 +1220,16 @@ class IssueProcessor:
                 error_code="NO_DELIVERABLES_CREATED"
             )
         
-        return {
+        result = {
             'workflow_name': workflow_info.name,
             'created_files': created_files,
             'output_directory': str(output_dir),
             'execution_mode': 'basic_recovery'
         }
+        if multi_workflow_execution:
+            result['multi_workflow_execution'] = multi_workflow_execution
+
+        return result
 
     def _generate_basic_deliverable_content(self, issue_data: IssueData, deliverable_spec: Dict[str, Any]) -> str:
         """
@@ -886,7 +1286,14 @@ This deliverable was generated using basic recovery mode due to processing const
             f"You can find workflow definitions in `docs/workflow/deliverables/`"
         )
     
-    def _execute_workflow(self, issue_data: IssueData, workflow_info, extracted_content=None) -> Dict[str, Any]:
+    def _execute_workflow(
+        self,
+        issue_data: IssueData,
+        workflow_info,
+        extracted_content=None,
+        *,
+        plan_context: Optional[_PlanExecutionContext] = None,
+    ) -> Dict[str, Any]:
         """
         Execute the matched workflow for the given issue.
         
@@ -923,7 +1330,9 @@ This deliverable was generated using basic recovery mode due to processing const
             title_slug=self._slugify(issue_data.title)
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        multi_workflow_execution = self._execute_multi_workflow_plan(issue_data, plan_context)
+
         # Process deliverables
         created_files = []
         
@@ -977,6 +1386,8 @@ This deliverable was generated using basic recovery mode due to processing const
             'created_files': created_files,
             'output_directory': str(output_dir)
         }
+        if multi_workflow_execution:
+            result['multi_workflow_execution'] = multi_workflow_execution
         
         # Add git information if available
         if branch_info:
@@ -1211,7 +1622,8 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
                  repository: str,
                  config_path: str = "config.yaml",
                  workflow_dir: Optional[str] = None,
-                 output_base_dir: Optional[str] = None):
+                 output_base_dir: Optional[str] = None,
+                 telemetry_publishers: Optional[Iterable[TelemetryPublisher]] = None):
         """
         Initialize GitHub-integrated issue processor.
         
@@ -1223,7 +1635,12 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
             output_base_dir: Override for output base directory
         """
         # Initialize base processor
-        super().__init__(config_path, workflow_dir, output_base_dir)
+        super().__init__(
+            config_path,
+            workflow_dir,
+            output_base_dir,
+            telemetry_publishers=telemetry_publishers,
+        )
         
         # Initialize GitHub client
         try:
@@ -1287,7 +1704,7 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
                 error_message=f"Failed to analyse workflow for preview: {exc}",
             )
 
-        workflow_info, _ = workflow_result
+        workflow_info, status_message = workflow_result
         if workflow_info is None:
             clarification_msg = self._generate_clarification_message(issue_data)
             return ProcessingResult(
@@ -1301,6 +1718,12 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
             'git_branch': self._build_preview_branch_name(issue_data, workflow_info),
             'preview': True,
         }
+        if status_message:
+            metadata['workflow_selection_message'] = status_message
+
+        plan_summary = self._maybe_build_execution_plan_summary(issue_data)
+        if plan_summary:
+            metadata['multi_workflow_plan'] = plan_summary
 
         payload: Optional[IssueHandoffPayload] = None
         if self.handoff_builder:
@@ -1323,6 +1746,7 @@ class GitHubIntegratedIssueProcessor(IssueProcessor):
             status=IssueProcessingStatus.PREVIEW,
             workflow_name=workflow_info.name,
             created_files=preview_files,
+            metadata=metadata,
         )
 
         if payload:

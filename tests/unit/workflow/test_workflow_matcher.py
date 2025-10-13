@@ -10,7 +10,14 @@ from pathlib import Path
 from unittest.mock import patch, Mock
 from datetime import datetime, timedelta
 
-from src.workflow.workflow_matcher import WorkflowMatcher, WorkflowInfo, WorkflowValidationError, WorkflowLoadError
+from src.workflow.workflow_matcher import (
+    WorkflowMatcher,
+    WorkflowInfo,
+    WorkflowValidationError,
+    WorkflowLoadError,
+    WorkflowPlan,
+    WorkflowCandidate,
+)
 
 
 class TestWorkflowMatcher:
@@ -198,7 +205,56 @@ class TestWorkflowMatcher:
 
         assert workflow is not None
         assert workflow.name == "Person Entity Profiling"
-        assert "Selected workflow" in message
+
+    def test_get_workflow_plan_single_match(self, temp_workflow_dir):
+        matcher = WorkflowMatcher(temp_workflow_dir)
+
+        labels = ["site-monitor", "person-entity-profiling"]
+        plan = matcher.get_workflow_plan(labels)
+
+        assert isinstance(plan, WorkflowPlan)
+        assert plan.has_candidates()
+        assert not plan.is_multi_workflow()
+        assert plan.selection_reason == "single_match"
+        primary = plan.primary_workflow()
+        assert primary is not None
+        assert primary.name == "Person Entity Profiling"
+
+    def test_get_workflow_plan_no_matches(self, temp_workflow_dir):
+        matcher = WorkflowMatcher(temp_workflow_dir)
+
+        labels = ["site-monitor", "unknown-label"]
+        plan = matcher.get_workflow_plan(labels)
+
+        assert not plan.has_candidates()
+        assert plan.selection_reason == "no_match"
+        assert "No workflows match" in plan.selection_message
+
+    def test_get_workflow_plan_multiple_matches(self, temp_workflow_dir):
+        matcher = WorkflowMatcher(temp_workflow_dir)
+
+        profiling_workflow = None
+        for workflow in matcher._workflow_cache.values():
+            if workflow.name == "Person Entity Profiling":
+                profiling_workflow = workflow
+                break
+
+        assert profiling_workflow is not None
+        profiling_workflow.trigger_labels.append("witness-expert-reliability-assessment")
+
+        labels = ["site-monitor", "witness-expert-reliability-assessment"]
+        plan = matcher.get_workflow_plan(labels)
+
+        assert plan.has_candidates()
+        assert plan.is_multi_workflow()
+        candidate_names = [candidate.name for candidate in plan.candidates]
+        assert sorted(candidate_names) == sorted([
+            "Person Entity Profiling",
+            "Witness Expert Reliability Assessment",
+        ])
+        for candidate in plan.candidates:
+            assert isinstance(candidate, WorkflowCandidate)
+            assert candidate.conflict_keys  # conflict metadata should not be empty
 
     def test_get_best_workflow_match_no_site_monitor(self, temp_workflow_dir):
         matcher = WorkflowMatcher(temp_workflow_dir)

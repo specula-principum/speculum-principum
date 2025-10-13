@@ -8,13 +8,20 @@ import tempfile
 import json
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Any, Dict, List
 from unittest.mock import Mock, patch, MagicMock
 
 from src.core.issue_processor import (
     IssueProcessor, IssueProcessingStatus, ProcessingResult, IssueData,
     IssueProcessingError, ProcessingTimeoutError
 )
-from src.workflow.workflow_matcher import WorkflowInfo, WorkflowValidationError
+from src.workflow.workflow_matcher import (
+    WorkflowInfo,
+    WorkflowValidationError,
+    WorkflowPlan,
+    WorkflowCandidate,
+)
+from src.workflow.execution_planner import WorkflowExecutionPlanner
 
 
 class TestIssueData:
@@ -70,6 +77,7 @@ class TestProcessingResult:
         assert result.status == IssueProcessingStatus.COMPLETED
         assert result.created_files == []
         assert result.workflow_name is None
+        assert result.metadata == {}
     
     def test_processing_result_with_files(self):
         """Test ProcessingResult with created files."""
@@ -82,6 +90,7 @@ class TestProcessingResult:
         assert result.created_files is not None
         assert len(result.created_files) == 2
         assert "file1.md" in result.created_files
+        assert result.metadata == {}
 
 
 class TestIssueProcessor:
@@ -397,6 +406,203 @@ output:
             
             # Verify all states are gone
             assert len(processor.list_processing_issues()) == 0
+
+    def test_process_issue_records_multi_workflow_metadata(self, temp_config_dir, monkeypatch):
+        """Ensure multi-workflow planning metadata is captured during processing."""
+
+        telemetry_events: List[Dict[str, Any]] = []
+        processor = IssueProcessor(
+            config_path=str(temp_config_dir / "test_config.yaml"),
+            telemetry_publishers=[telemetry_events.append],
+        )
+        processor.multi_workflow_planning_enabled = True
+        processor.workflow_execution_planner = WorkflowExecutionPlanner()
+
+        primary_info = WorkflowInfo(
+            path="/tmp/primary.yaml",
+            name="Primary Workflow",
+            description="",
+            version="1.0.0",
+            trigger_labels=["multi-label"],
+            deliverables=[{"name": "primary", "template": "primary.md"}],
+            processing={},
+            validation={},
+            output={"folder_structure": "study/{issue_number}/primary"},
+        )
+        secondary_info = WorkflowInfo(
+            path="/tmp/secondary.yaml",
+            name="Secondary Workflow",
+            description="",
+            version="1.0.0",
+            trigger_labels=["multi-label"],
+            deliverables=[{"name": "secondary", "template": "secondary.md"}],
+            processing={},
+            validation={},
+            output={"folder_structure": "study/{issue_number}/secondary"},
+        )
+
+        candidate_primary = WorkflowCandidate(
+            workflow_info=primary_info,
+            priority=1,
+            conflict_keys=frozenset({"deliverable:primary"}),
+            dependencies=(),
+        )
+        candidate_secondary = WorkflowCandidate(
+            workflow_info=secondary_info,
+            priority=2,
+            conflict_keys=frozenset({"deliverable:secondary"}),
+            dependencies=(),
+        )
+
+        workflow_plan = WorkflowPlan(
+            issue_labels=("site-monitor", "multi-label"),
+            candidates=(candidate_primary, candidate_secondary),
+            selection_reason="multiple_matches",
+            selection_message="Mocked multi-workflow plan",
+        )
+
+        monkeypatch.setattr(
+            processor.workflow_matcher,
+            "get_best_workflow_match",
+            lambda labels: (primary_info, "Primary workflow selected"),
+        )
+        monkeypatch.setattr(
+            processor.workflow_matcher,
+            "get_workflow_plan",
+            lambda labels: workflow_plan,
+        )
+
+        execution_payload = {
+            'workflow_name': primary_info.name,
+            'created_files': ['study/primary/output.md'],
+            'output_directory': 'study/primary',
+            'multi_workflow_execution': {
+                'status': 'skipped',
+                'plan_id': 'test-plan-id',
+                'stage_runs': [],
+            },
+        }
+        monkeypatch.setattr(
+            processor,
+            "_execute_workflow_with_recovery",
+            Mock(return_value=execution_payload),
+        )
+
+        issue_data = IssueData(
+            number=4242,
+            title="Multi workflow issue",
+            body="Issue body",
+            labels=["site-monitor", "multi-label"],
+            assignees=[],
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            url="https://example.com/issues/4242",
+        )
+
+        result = processor.process_issue(issue_data)
+
+        assert result.status == IssueProcessingStatus.COMPLETED
+        assert 'multi_workflow_plan' in result.metadata
+        assert result.metadata['multi_workflow_plan']['workflow_count'] == 2
+        assert 'deliverable_manifest' in result.metadata['multi_workflow_plan']
+        assert result.metadata['multi_workflow_plan']['deliverable_manifest']['workflow_count'] == 2
+        assert result.metadata['workflow_selection_message'] == "Primary workflow selected"
+        assert result.metadata['multi_workflow_execution']['status'] == 'skipped'
+        assert len(telemetry_events) == 1
+        plan_event = telemetry_events[0]
+        assert plan_event['event_type'] == 'multi_workflow.plan_created'
+        assert plan_event['issue_number'] == issue_data.number
+        assert plan_event['plan_id'] == result.metadata['multi_workflow_plan']['plan_id']
+
+        state = processor.get_issue_processing_state(issue_data.number)
+        assert state is not None
+        assert 'multi_workflow_plan' in state
+        assert state['multi_workflow_plan']['workflow_count'] == 2
+        assert 'deliverable_manifest' in state['multi_workflow_plan']
+        assert state['workflow_selection_message'] == "Primary workflow selected"
+        assert state['multi_workflow_execution']['status'] == 'skipped'
+
+    def test_multi_workflow_execution_emits_telemetry(self, temp_config_dir):
+        """Multi-workflow plan execution should emit both plan and execution telemetry."""
+
+        telemetry_events: List[Dict[str, Any]] = []
+
+        with patch('src.core.issue_processor.WorkflowMatcher'):
+            processor = IssueProcessor(
+                config_path=str(temp_config_dir / "test_config.yaml"),
+                output_base_dir=str(temp_config_dir / "study"),
+                telemetry_publishers=[telemetry_events.append],
+            )
+
+        processor.multi_workflow_planning_enabled = True
+        processor.multi_workflow_preview_only = False
+        processor.workflow_execution_planner = WorkflowExecutionPlanner()
+
+        primary_info = WorkflowInfo(
+            path="/tmp/primary.yaml",
+            name="Primary Workflow",
+            description="",
+            version="1.0.0",
+            trigger_labels=["multi-label"],
+            deliverables=[{"name": "primary", "template": "primary.md"}],
+            processing={},
+            validation={},
+            output={"folder_structure": "study/{issue_number}/primary"},
+        )
+        secondary_info = WorkflowInfo(
+            path="/tmp/secondary.yaml",
+            name="Secondary Workflow",
+            description="",
+            version="1.0.0",
+            trigger_labels=["multi-label"],
+            deliverables=[{"name": "secondary", "template": "secondary.md"}],
+            processing={},
+            validation={},
+            output={"folder_structure": "study/{issue_number}/secondary"},
+        )
+
+        plan = WorkflowPlan(
+            issue_labels=("site-monitor", "multi-label"),
+            candidates=(
+                WorkflowCandidate(
+                    workflow_info=primary_info,
+                    priority=1,
+                    conflict_keys=frozenset({"deliverable:primary"}),
+                    dependencies=(),
+                ),
+                WorkflowCandidate(
+                    workflow_info=secondary_info,
+                    priority=2,
+                    conflict_keys=frozenset({"deliverable:secondary"}),
+                    dependencies=(),
+                ),
+            ),
+            selection_reason="multiple_matches",
+            selection_message="Mocked multi-workflow plan",
+        )
+
+        issue_data = IssueData(
+            number=5555,
+            title="Telemetry issue",
+            body="Issue body",
+            labels=["site-monitor", "multi-label"],
+            assignees=[],
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            url="https://example.com/issues/5555",
+        )
+
+        summary, plan_context = processor._prepare_multi_workflow_plan(issue_data, plan)
+        assert summary is not None
+        assert plan_context is not None
+
+        execution_overview = processor._execute_multi_workflow_plan(issue_data, plan_context)
+        assert execution_overview is not None
+        assert execution_overview['status'] == 'executed'
+
+        event_types = [event['event_type'] for event in telemetry_events]
+        assert event_types.count('multi_workflow.plan_created') == 1
+        assert event_types.count('multi_workflow.execution_summary') == 1
     
     def test_generate_deliverable_content(self, temp_config_dir, sample_issue_data, mock_workflow_matcher):
         """Test deliverable content generation."""
