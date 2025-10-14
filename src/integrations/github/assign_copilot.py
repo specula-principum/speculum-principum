@@ -123,6 +123,8 @@ def run_gh_command(
     env["COPILOT_TOKEN"] = token
     if not env.get("GITHUB_TOKEN"):
         env["GITHUB_TOKEN"] = token
+    if not env.get("GH_TOKEN"):
+        env["GH_TOKEN"] = token
 
     try:
         return subprocess.run(  # type: ignore[return-value]
