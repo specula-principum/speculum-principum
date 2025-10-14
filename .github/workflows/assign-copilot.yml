@@ -47,11 +47,13 @@ jobs:
             os.environ.get("COPILOT_TOKEN")
             or os.environ.get("GITHUB_TOKEN")
           )
+          
           if not token:
             raise RuntimeError("Missing COPILOT_TOKEN, or GITHUB_TOKEN")
-              label = os.environ.get("COPILOT_LABEL", "ready-for-copilot")
-              base_branch = os.environ.get("COPILOT_BASE_BRANCH") or None
-              extra_instructions = os.environ.get("COPILOT_EXTRA_INSTRUCTIONS") or None
+          
+          label = os.environ.get("COPILOT_LABEL", "ready-for-copilot")
+          base_branch = os.environ.get("COPILOT_BASE_BRANCH") or None
+          extra_instructions = os.environ.get("COPILOT_EXTRA_INSTRUCTIONS") or None
 
           result = handoff_issue_to_copilot(
               token=token,
