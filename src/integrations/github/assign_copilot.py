@@ -150,6 +150,60 @@ def run_gh_command(
         raise GitHubIssueError(message) from exc
 
 
+def _branch_exists(
+    *,
+    token: str,
+    repository: str,
+    branch_name: str,
+    api_url: str = DEFAULT_API_URL,
+) -> bool:
+    owner, name = normalize_repository(repository)
+    encoded = parse.quote(branch_name, safe="")
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/branches/{encoded}"
+    req = request.Request(url, method="GET")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+
+    try:
+        with request.urlopen(req) as response:  # type: ignore[no-any-unimported]
+            response.read()
+    except error.HTTPError as exc:
+        if exc.code == 404:
+            return False
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+    return True
+
+
+def _checkout_existing_branch(branch_name: str) -> None:
+    commands = [
+        ["git", "fetch", "origin", branch_name],
+        ["git", "checkout", "-B", branch_name, f"origin/{branch_name}"],
+    ]
+    for args in commands:
+        try:
+            subprocess.run(
+                args,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            stdout = (exc.stdout or "").strip()
+            stderr = (exc.stderr or "").strip()
+            details = "\n".join(part for part in (stdout, stderr) if part)
+            message = f"Command '{' '.join(args)}' failed"
+            if details:
+                message = f"{message}: {details}"
+            raise GitHubIssueError(message) from exc
+
+
 def create_branch_for_issue(
     *,
     token: str,
@@ -157,6 +211,7 @@ def create_branch_for_issue(
     issue_number: int,
     branch_name: str,
     base_branch: str | None = None,
+    api_url: str = DEFAULT_API_URL,
 ) -> None:
     """Create and checkout a development branch linked to the issue."""
 
@@ -172,7 +227,24 @@ def create_branch_for_issue(
     ]
     if base_branch:
         args.extend(["--base", base_branch])
-    run_gh_command(args, token=token, capture_output=True)
+    try:
+        run_gh_command(args, token=token, capture_output=True)
+    except GitHubIssueError as exc:
+        try:
+            exists = _branch_exists(
+                token=token,
+                repository=repository,
+                branch_name=branch_name,
+                api_url=api_url,
+            )
+        except GitHubIssueError:
+            raise exc
+
+        if not exists:
+            raise exc
+
+        _checkout_existing_branch(branch_name)
+        print(f"Reusing existing branch '{branch_name}'.")
 
 
 def compose_agent_prompt(
@@ -284,6 +356,7 @@ def handoff_issue_to_copilot(
         issue_number=issue.number,
         branch_name=branch_name,
         base_branch=base_branch,
+        api_url=api_url,
     )
 
     prompt = compose_agent_prompt(issue, branch_name, extra_instructions)
