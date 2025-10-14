@@ -19,7 +19,7 @@ jobs:
       COPILOT_LABEL: ready-for-copilot
       COPILOT_BASE_BRANCH: ${{ vars.COPILOT_BASE_BRANCH }}
       COPILOT_EXTRA_INSTRUCTIONS: ${{ vars.COPILOT_EXTRA_INSTRUCTIONS }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
@@ -43,10 +43,15 @@ jobs:
 
           repo = os.environ["TARGET_REPO"]
           issue_number = int(os.environ["ISSUE_NUMBER"])
-          token = os.environ["GH_TOKEN"]
-          label = os.environ.get("COPILOT_LABEL", "ready-for-copilot")
-          base_branch = os.environ.get("COPILOT_BASE_BRANCH") or None
-          extra_instructions = os.environ.get("COPILOT_EXTRA_INSTRUCTIONS") or None
+          token = (
+            os.environ.get("COPILOT_TOKEN")
+            or os.environ.get("GITHUB_TOKEN")
+          )
+          if not token:
+            raise RuntimeError("Missing COPILOT_TOKEN, or GITHUB_TOKEN")
+              label = os.environ.get("COPILOT_LABEL", "ready-for-copilot")
+              base_branch = os.environ.get("COPILOT_BASE_BRANCH") or None
+              extra_instructions = os.environ.get("COPILOT_EXTRA_INSTRUCTIONS") or None
 
           result = handoff_issue_to_copilot(
               token=token,
