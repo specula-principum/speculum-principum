@@ -1,0 +1,29 @@
+name: Assign Copilot Agent
+
+on:
+  issues:
+    types:
+      - labeled
+
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    if: github.event.label.name == 'ready-for-copilot'
+    runs-on: ubuntu-latest
+    env:
+      TARGET_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      COPILOT_ASSIGNEE_OVERRIDE: ${{ vars.GITHUB_COPILOT_ASSIGNEE }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Assign GitHub Copilot agent
+        run: |
+          login="${COPILOT_ASSIGNEE_OVERRIDE:-copilot}"
+          current=$(gh issue view "$ISSUE_NUMBER" --repo "$TARGET_REPO" --json assignees --jq '.assignees[].login' || echo "")
+          if printf '%s\n' "$current" | grep -Fx "$login" >/dev/null; then
+            echo "Issue already assigned to $login"
+            exit 0
+          fi
+          gh issue edit "$ISSUE_NUMBER" --repo "$TARGET_REPO" --add-assignee "$login"
