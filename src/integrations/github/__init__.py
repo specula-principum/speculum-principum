@@ -1,18 +1,18 @@
 """GitHub integration utilities."""
 
 from .assign_copilot import (
-	AssignmentOutcome,
-	assign_issue_to_copilot,
+	CopilotHandoffResult,
 	assign_issues_to_copilot,
-	resolve_copilot_assignee,
+	compose_agent_prompt,
+	generate_branch_name,
 )
 from .search_issues import GitHubIssueSearcher, IssueSearchResult
 
 __all__ = [
-	"AssignmentOutcome",
+	"CopilotHandoffResult",
 	"GitHubIssueSearcher",
 	"IssueSearchResult",
-	"assign_issue_to_copilot",
 	"assign_issues_to_copilot",
-	"resolve_copilot_assignee",
+	"compose_agent_prompt",
+	"generate_branch_name",
 ]
