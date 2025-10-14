@@ -120,8 +120,9 @@ def run_gh_command(
     """Run a GitHub CLI command with the provided token."""
 
     env = os.environ.copy()
-    env.setdefault("GH_TOKEN", token)
-    env.setdefault("GITHUB_TOKEN", token)
+    env["COPILOT_TOKEN"] = token
+    if not env.get("GITHUB_TOKEN"):
+        env["GITHUB_TOKEN"] = token
 
     try:
         return subprocess.run(  # type: ignore[return-value]
@@ -139,6 +140,11 @@ def run_gh_command(
         message = f"Command '{command}' failed"
         if details:
             message = f"{message}: {details}"
+        if "requires an OAuth token" in details:
+            message = (
+                f"{message}. Provide a Copilot-enabled personal access token via "
+                "the COPILOT_TOKEN environment variable."
+            )
         raise GitHubIssueError(message) from exc
 
 
