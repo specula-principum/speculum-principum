@@ -43,13 +43,10 @@ jobs:
 
           repo = os.environ["TARGET_REPO"]
           issue_number = int(os.environ["ISSUE_NUMBER"])
-          token = (
-            os.environ.get("COPILOT_TOKEN")
-            or os.environ.get("GITHUB_TOKEN")
-          )
+          token = os.environ.get("COPILOT_TOKEN")
           
           if not token:
-            raise RuntimeError("Missing COPILOT_TOKEN, or GITHUB_TOKEN")
+            raise RuntimeError("Missing COPILOT_TOKEN")
           
           label = os.environ.get("COPILOT_LABEL", "ready-for-copilot")
           base_branch = os.environ.get("COPILOT_BASE_BRANCH") or None
