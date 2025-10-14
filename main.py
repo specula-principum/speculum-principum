@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Iterable
 
 from src.integrations.github.assign_copilot import (
-    AssignmentOutcome,
+    CopilotHandoffResult,
     assign_issues_to_copilot,
-    resolve_copilot_assignee,
+    generate_branch_name,
 )
 from src.integrations.github.issues import (
     DEFAULT_API_URL,
@@ -143,7 +143,7 @@ def build_search_parser() -> argparse.ArgumentParser:
 
 def build_assign_copilot_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Assign labeled issues to the GitHub Copilot code assistant.",
+        description="Hand off labeled issues to the GitHub Copilot coding agent via the GitHub CLI.",
         prog="python -m main assign-copilot",
     )
     parser.add_argument(
@@ -171,8 +171,12 @@ def build_assign_copilot_parser() -> argparse.ArgumentParser:
         help="Maximum number of labeled issues to evaluate (1-100).",
     )
     parser.add_argument(
-        "--assignee",
-        help="Override the Copilot login. Defaults to copilot or $GITHUB_COPILOT_ASSIGNEE.",
+        "--base",
+        help="Base branch to use when creating working branches (defaults to the repository's default branch).",
+    )
+    parser.add_argument(
+        "--instructions",
+        help="Additional free-form guidance appended to the Copilot prompt.",
     )
     parser.add_argument(
         "--output",
@@ -184,11 +188,6 @@ def build_assign_copilot_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Preview the assignment plan without performing API calls.",
-    )
-    parser.add_argument(
-        "--include-assigned",
-        action="store_true",
-        help="Assign even when the Copilot assistant is already on the issue.",
     )
     return parser
 
@@ -264,38 +263,54 @@ def format_search_results(results: Iterable[IssueSearchResult], mode: str) -> st
     return "\n".join(lines)
 
 
-def format_assignment_preview(issue_numbers: Iterable[int], assignee: str, mode: str) -> str:
-    issues = [int(number) for number in issue_numbers]
+def format_handoff_preview(results: Iterable[IssueSearchResult], mode: str) -> str:
+    preview = [
+        {
+            "number": result.number,
+            "title": result.title,
+            "branch": generate_branch_name(result.number, result.title),
+        }
+        for result in results
+    ]
+
     if mode == OUTPUT_JSON:
-        return json.dumps({
-            "assignee": assignee,
-            "issues": issues,
-            "dry_run": True,
-        }, indent=2)
+        return json.dumps({"dry_run": True, "issues": preview}, indent=2)
 
-    formatted = ", ".join(f"#{number}" for number in issues)
-    if not formatted:
-        formatted = "no issues"
-    return f"Would assign {formatted} to {assignee}."
+    if not preview:
+        return "No issues qualify for Copilot handoff."
+
+    lines = []
+    for entry in preview:
+        lines.append(
+            f"Would hand off #{entry['number']} '{entry['title']}' using branch '{entry['branch']}'."
+        )
+    return "\n".join(lines)
 
 
-def format_assignment_results(outcomes: Iterable[AssignmentOutcome], mode: str) -> str:
+def format_handoff_results(outcomes: Iterable[CopilotHandoffResult], mode: str) -> str:
     materialized = list(outcomes)
 
     if mode == OUTPUT_JSON:
         return json.dumps([
             {
-                "number": outcome.number,
-                "url": outcome.url,
-                "assignees": list(outcome.assignees),
+                "number": outcome.issue_number,
+                "branch": outcome.branch_name,
+                "label_removed": outcome.label_removed,
+                "agent_output": outcome.agent_output,
             }
             for outcome in materialized
         ], indent=2)
 
+    if not materialized:
+        return "No Copilot handoffs performed."
+
     lines = []
     for outcome in materialized:
-        assignees = ", ".join(outcome.assignees) if outcome.assignees else "unassigned"
-        lines.append(f"Assigned #{outcome.number} -> {assignees}")
+        status = "label removed" if outcome.label_removed else "label already absent"
+        agent_summary = outcome.agent_output.splitlines()[0] if outcome.agent_output else "no agent output"
+        lines.append(
+            f"Handed off #{outcome.issue_number} via '{outcome.branch_name}' ({status}); agent: {agent_summary}"
+        )
     return "\n".join(lines)
 
 
@@ -323,9 +338,11 @@ def search_issues_cli(args: argparse.Namespace) -> int:
 def assign_copilot_cli(args: argparse.Namespace) -> int:
     repository = resolve_repository(args.repo)
     token = resolve_token(args.token)
-    assignee = resolve_copilot_assignee(args.assignee)
     limit = args.limit if args.limit is not None else 30
     limit = max(1, min(limit, 100))
+
+    base_branch = args.base
+    extra_instructions = args.instructions
 
     searcher = GitHubIssueSearcher(token=token, repository=repository, api_url=args.api_url)
 
@@ -335,32 +352,32 @@ def assign_copilot_cli(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    if not args.include_assigned:
-        results = [result for result in results if result.assignee != assignee]
-
+    results = list(results)
     if not results:
         print(f"No open issues labeled '{args.label}' require Copilot assignment.")
         return 0
 
-    issue_numbers = [result.number for result in results]
-
     if args.dry_run:
-        print(format_assignment_preview(issue_numbers, assignee, args.output))
+        print(format_handoff_preview(results, args.output))
         return 0
+
+    issue_numbers = [result.number for result in results]
 
     try:
         outcomes = assign_issues_to_copilot(
             token=token,
             repository=repository,
             issue_numbers=issue_numbers,
+            label=args.label,
             api_url=args.api_url,
-            assignee=assignee,
+            base_branch=base_branch,
+            extra_instructions=extra_instructions,
         )
     except GitHubIssueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(format_assignment_results(outcomes, args.output))
+    print(format_handoff_results(outcomes, args.output))
     return 0
 
 

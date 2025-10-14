@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,133 +11,121 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.integrations.github.assign_copilot import (  # noqa: E402
-    AssignmentOutcome,
-    COPILOT_ASSIGNEE,
-    COPILOT_ASSIGNMENT_UNSUPPORTED_ERROR,
-    assign_issue,
-    assign_issue_to_copilot,
+    CopilotHandoffResult,
+    IssueDetails,
     assign_issues_to_copilot,
-    resolve_copilot_assignee,
+    compose_agent_prompt,
+    generate_branch_name,
+    handoff_issue_to_copilot,
 )
-from src.integrations.github.issues import GitHubIssueError  # noqa: E402
 
 
-class DummyResponse:
-    def __init__(self, payload: dict[str, Any]):
-        self._payload = payload
-
-    def read(self) -> bytes:
-        return json.dumps(self._payload).encode("utf-8")
-
-    def __enter__(self) -> "DummyResponse":
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        return None
+def test_generate_branch_name_slugifies_title() -> None:
+    branch = generate_branch_name(12, "Fix: Spaces & Accents à la carte")
+    assert branch.startswith("copilot/issue-12-fix-spaces-accents-a-la-carte")
+    assert " " not in branch
 
 
-def make_issue_payload(number: int = 42, assignees: list[str] | None = None) -> dict[str, Any]:
-    raw_assignees = assignees if assignees is not None else [COPILOT_ASSIGNEE]
-    return {
-        "number": number,
-        "html_url": f"https://example.test/{number}",
-        "assignees": [{"login": login} for login in raw_assignees],
-    }
-
-
-def test_assign_issue_posts_to_assignees(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, Any] = {}
-
-    def fake_urlopen(req: Any):
-        captured["url"] = req.full_url
-        captured["method"] = req.get_method()
-        captured["payload"] = json.loads(req.data.decode("utf-8"))
-        return DummyResponse(make_issue_payload(assignees=["octocat"]))
-
-    monkeypatch.setattr("src.integrations.github.assign_copilot.request.urlopen", fake_urlopen)
-
-    outcome = assign_issue(
-        token="token",
-        repository="octocat/hello-world",
-        issue_number=99,
-        assignees=["octocat"],
+def test_compose_agent_prompt_includes_context() -> None:
+    issue = IssueDetails(
+        number=7,
+        title="Improve logging",
+        body="Please improve logging details.\n",
+        url="https://example.test/7",
+        labels=("ready-for-copilot", "enhancement"),
     )
 
-    assert captured["url"].endswith("/issues/99/assignees")
-    assert captured["method"] == "POST"
-    assert captured["payload"] == {"assignees": ["octocat"]}
-    assert isinstance(outcome, AssignmentOutcome)
-    assert outcome.assignees == ("octocat",)
+    prompt = compose_agent_prompt(issue, "copilot/issue-7-improve-logging", "Focus on auth flows.")
+
+    assert "Improve logging" in prompt
+    assert "Issue URL" in prompt
+    assert "ready-for-copilot" in prompt
+    assert "Focus on auth flows" in prompt
 
 
-def test_assign_issue_errors_when_github_ignores_assignee(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(req: Any):
-        return DummyResponse(make_issue_payload(assignees=[]))
+def test_handoff_issue_to_copilot_runs_sequence(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict[str, Any] = {}
 
-    monkeypatch.setattr("src.integrations.github.assign_copilot.request.urlopen", fake_urlopen)
-
-    with pytest.raises(GitHubIssueError):
-        assign_issue(
-            token="token",
-            repository="octocat/hello-world",
-            issue_number=1,
-            assignees=[COPILOT_ASSIGNEE],
+    def fake_fetch_issue_details(**kwargs: Any) -> IssueDetails:
+        calls.setdefault("fetch", []).append(kwargs)
+        return IssueDetails(
+            number=kwargs["issue_number"],
+            title="Refactor subsystem",
+            body="Detailed steps",
+            url="https://example.test/1",
+            labels=("ready-for-copilot",),
         )
 
+    def fake_create_branch_for_issue(**kwargs: Any) -> None:
+        calls.setdefault("branch", []).append(kwargs)
 
-def test_assign_issue_requires_positive_issue_number() -> None:
-    with pytest.raises(GitHubIssueError):
-        assign_issue(
-            token="token",
-            repository="octocat/hello-world",
-            issue_number=0,
-            assignees=[COPILOT_ASSIGNEE],
+    def fake_create_agent_task(**kwargs: Any) -> str:
+        calls.setdefault("agent", []).append(kwargs)
+        return "https://github.com/org/repo/actions/runs/1"
+
+    def fake_remove_issue_label(**kwargs: Any) -> bool:
+        calls.setdefault("remove", []).append(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        "src.integrations.github.assign_copilot.fetch_issue_details",
+        fake_fetch_issue_details,
+    )
+    monkeypatch.setattr(
+        "src.integrations.github.assign_copilot.create_branch_for_issue",
+        fake_create_branch_for_issue,
+    )
+    monkeypatch.setattr(
+        "src.integrations.github.assign_copilot.create_agent_task",
+        fake_create_agent_task,
+    )
+    monkeypatch.setattr(
+        "src.integrations.github.assign_copilot.remove_issue_label",
+        fake_remove_issue_label,
+    )
+
+    outcome = handoff_issue_to_copilot(
+        token="token",
+        repository="octocat/hello-world",
+        issue_number=1,
+        label="ready-for-copilot",
+        api_url="https://api.example.test",
+        base_branch="main",
+        extra_instructions="Please keep changes minimal.",
+    )
+
+    assert isinstance(outcome, CopilotHandoffResult)
+    assert outcome.issue_number == 1
+    assert outcome.branch_name.startswith("copilot/issue-1-refactor-subsystem")
+    assert outcome.agent_output == "https://github.com/org/repo/actions/runs/1"
+    assert outcome.label_removed is True
+    assert calls["branch"][0]["base_branch"] == "main"
+    assert calls["agent"][0]["base_branch"] == "main"
+
+
+def test_assign_issues_to_copilot_processes_multiple(monkeypatch: pytest.MonkeyPatch) -> None:
+    handoff_calls: list[int] = []
+
+    def fake_handoff_issue_to_copilot(**kwargs: Any) -> CopilotHandoffResult:
+        handoff_calls.append(kwargs["issue_number"])
+        return CopilotHandoffResult(
+            issue_number=kwargs["issue_number"],
+            branch_name=f"copilot/issue-{kwargs['issue_number']}",
+            agent_output="ok",
+            label_removed=True,
         )
 
+    monkeypatch.setattr(
+        "src.integrations.github.assign_copilot.handoff_issue_to_copilot",
+        fake_handoff_issue_to_copilot,
+    )
 
-def test_assign_issue_to_copilot_raises_informative_error() -> None:
-    with pytest.raises(GitHubIssueError) as excinfo:
-        assign_issue_to_copilot(
-            token="token",
-            repository="octocat/hello-world",
-            issue_number=1,
-        )
+    outcomes = assign_issues_to_copilot(
+        token="token",
+        repository="octocat/hello-world",
+        issue_numbers=[10, 11],
+        label="ready-for-copilot",
+    )
 
-    assert "cannot be assigned via the REST API" in str(excinfo.value)
-    assert "ready-for-copilot" in str(excinfo.value)
-
-
-def test_assign_issues_to_copilot_raises_informative_error() -> None:
-    with pytest.raises(GitHubIssueError) as excinfo:
-        assign_issues_to_copilot(
-            token="token",
-            repository="octocat/hello-world",
-            issue_numbers=[1, 2, 3],
-        )
-
-    assert str(excinfo.value) == COPILOT_ASSIGNMENT_UNSUPPORTED_ERROR.format(login=COPILOT_ASSIGNEE)
-
-
-def test_resolve_copilot_assignee_prefers_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_COPILOT_ASSIGNEE", "ignored")
-    assert resolve_copilot_assignee("custom-user") == "custom-user"
-
-
-def test_resolve_copilot_assignee_uses_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_COPILOT_ASSIGNEE", "env-user")
-    assert resolve_copilot_assignee(None) == "env-user"
-
-
-def test_resolve_copilot_assignee_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GITHUB_COPILOT_ASSIGNEE", raising=False)
-    assert resolve_copilot_assignee(None) == COPILOT_ASSIGNEE
-
-
-def test_assign_issue_rejects_blank_assignee() -> None:
-    with pytest.raises(GitHubIssueError):
-        assign_issue(
-            token="token",
-            repository="octocat/hello-world",
-            issue_number=5,
-            assignees=[""],
-        )
+    assert [out.issue_number for out in outcomes] == [10, 11]
+    assert handoff_calls == [10, 11]
