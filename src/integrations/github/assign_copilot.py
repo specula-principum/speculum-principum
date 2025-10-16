@@ -105,7 +105,6 @@ def _ascii_slug(text: str) -> str:
 def _build_cli_env(token: str) -> dict[str, str]:
     env = os.environ.copy()
     if token:
-        env["COPILOT_TOKEN"] = token
         env.setdefault("GITHUB_TOKEN", token)
         env.setdefault("GH_TOKEN", token)
     return env
@@ -152,7 +151,7 @@ def run_gh_command(
         if "requires an OAuth token" in details:
             message = (
                 f"{message}. Provide a Copilot-enabled personal access token via "
-                "the COPILOT_TOKEN environment variable."
+                "the GITHUB_TOKEN environment variable."
             )
         raise GitHubIssueError(message) from exc
 

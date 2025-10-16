@@ -29,14 +29,10 @@ DEFAULT_READY_LABEL = "ready-for-copilot"
 
 
 def resolve_agent_token(explicit_token: str | None) -> str:
-    """Prefer an explicit token, then COPILOT_TOKEN, then fall back to GITHUB_TOKEN."""
+    """Prefer an explicit token, then fall back to GITHUB_TOKEN."""
 
     if explicit_token:
         return explicit_token
-
-    copilot_token = os.environ.get("COPILOT_TOKEN")
-    if copilot_token:
-        return copilot_token
 
     return resolve_token(None)
 
@@ -162,7 +158,7 @@ def build_run_agent_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--token",
-        help="GitHub token. Defaults to $COPILOT_TOKEN, then $GITHUB_TOKEN.",
+        help="GitHub token. Defaults to $GITHUB_TOKEN.",
     )
     parser.add_argument(
         "--api-url",
