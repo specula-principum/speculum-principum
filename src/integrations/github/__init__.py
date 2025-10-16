@@ -1,18 +1,18 @@
 """GitHub integration utilities."""
 
-from .assign_copilot import (
-	CopilotHandoffResult,
-	assign_issues_to_copilot,
-	compose_agent_prompt,
-	generate_branch_name,
+from .assign_copilot import (  # noqa: F401
+    LocalAgentRunResult,
+    compose_agent_prompt,
+    generate_branch_name,
+    run_issue_with_local_copilot,
 )
 from .search_issues import GitHubIssueSearcher, IssueSearchResult
 
 __all__ = [
-	"CopilotHandoffResult",
-	"GitHubIssueSearcher",
-	"IssueSearchResult",
-	"assign_issues_to_copilot",
-	"compose_agent_prompt",
-	"generate_branch_name",
+    "GitHubIssueSearcher",
+    "IssueSearchResult",
+    "LocalAgentRunResult",
+    "compose_agent_prompt",
+    "generate_branch_name",
+    "run_issue_with_local_copilot",
 ]
