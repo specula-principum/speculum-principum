@@ -26,12 +26,15 @@ class IssueDetails:
 
 
 @dataclass(frozen=True)
-class CopilotHandoffResult:
-    """Represents the outcome of handing an issue to the Copilot agent."""
+class LocalAgentRunResult:
+    """Outcome details for a locally executed Copilot agent run."""
 
     issue_number: int
+    issue_title: str
     branch_name: str
-    agent_output: str
+    prompt: str
+    push_output: str | None
+    pr_output: str | None
     label_removed: bool
 
 
@@ -99,6 +102,15 @@ def _ascii_slug(text: str) -> str:
     return ascii_text or "issue"
 
 
+def _build_cli_env(token: str) -> dict[str, str]:
+    env = os.environ.copy()
+    if token:
+        env["COPILOT_TOKEN"] = token
+        env.setdefault("GITHUB_TOKEN", token)
+        env.setdefault("GH_TOKEN", token)
+    return env
+
+
 def generate_branch_name(issue_number: int, title: str, *, prefix: str = "copilot") -> str:
     """Return a predictable branch name for the Copilot handoff."""
 
@@ -119,12 +131,7 @@ def run_gh_command(
 ) -> subprocess.CompletedProcess[str]:
     """Run a GitHub CLI command with the provided token."""
 
-    env = os.environ.copy()
-    env["COPILOT_TOKEN"] = token
-    if not env.get("GITHUB_TOKEN"):
-        env["GITHUB_TOKEN"] = token
-    if not env.get("GH_TOKEN"):
-        env["GH_TOKEN"] = token
+    env = _build_cli_env(token)
 
     try:
         return subprocess.run(  # type: ignore[return-value]
@@ -237,8 +244,8 @@ def create_branch_for_issue(
                 branch_name=branch_name,
                 api_url=api_url,
             )
-        except GitHubIssueError:
-            raise exc
+        except GitHubIssueError as inner_exc:
+            raise exc from inner_exc
 
         if not exists:
             raise exc
@@ -275,18 +282,81 @@ def compose_agent_prompt(
     return "\n".join(lines).strip()
 
 
-def create_agent_task(
+def run_copilot_prompt(
+    *,
+    token: str,
+    prompt: str,
+    copilot_command: str = "copilot",
+    copilot_args: Sequence[str] | None = None,
+    allow_all_tools: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """Invoke the GitHub Copilot CLI with the supplied prompt."""
+
+    if copilot_args and any(option in {"--prompt", "-p"} for option in copilot_args):
+        raise GitHubIssueError("Provide Copilot CLI flags without --prompt; it is managed automatically.")
+
+    command: list[str] = [copilot_command]
+    if copilot_args:
+        command.extend(copilot_args)
+    if allow_all_tools:
+        command.append("--allow-all-tools")
+    command.extend(["--prompt", prompt])
+
+    try:
+        return subprocess.run(  # type: ignore[return-value]
+            command,
+            env=_build_cli_env(token),
+            check=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:  # pragma: no cover - defensive
+        raise GitHubIssueError(f"Command '{' '.join(command)}' failed") from exc
+
+
+def _push_branch(branch_name: str) -> str:
+    try:
+        completed = subprocess.run(  # type: ignore[return-value]
+            ["git", "push", "--set-upstream", "origin", branch_name],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:  # pragma: no cover - defensive
+        stdout = (exc.stdout or "").strip()
+        stderr = (exc.stderr or "").strip()
+        details = "\n".join(part for part in (stdout, stderr) if part)
+        message = f"Command 'git push --set-upstream origin {branch_name}' failed"
+        if details:
+            message = f"{message}: {details}"
+        raise GitHubIssueError(message) from exc
+
+    output = (completed.stdout or "").strip()
+    if completed.stderr:
+        output = "\n".join(filter(None, [output, completed.stderr.strip()]))
+    return output.strip() or "Branch pushed successfully."
+
+
+def create_pull_request_for_branch(
     *,
     token: str,
     repository: str,
-    prompt: str,
+    branch_name: str,
     base_branch: str | None = None,
+    draft: bool = False,
 ) -> str:
-    """Start a Copilot agent task using the GitHub CLI."""
-
-    args: list[str] = ["agent-task", "create", prompt, "--repo", repository]
+    args: list[str] = [
+        "pr",
+        "create",
+        "--head",
+        branch_name,
+        "--repo",
+        repository,
+        "--fill",
+    ]
     if base_branch:
         args.extend(["--base", base_branch])
+    if draft:
+        args.append("--draft")
 
     completed = run_gh_command(args, token=token, capture_output=True)
     stdout = (completed.stdout or "").strip()
@@ -294,6 +364,86 @@ def create_agent_task(
     if stdout and stderr:
         return f"{stdout}\n{stderr}".strip()
     return stdout or stderr
+
+
+def run_issue_with_local_copilot(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    label_to_remove: str | None,
+    api_url: str = DEFAULT_API_URL,
+    base_branch: str | None = None,
+    extra_instructions: str | None = None,
+    copilot_command: str = "copilot",
+    copilot_args: Sequence[str] | None = None,
+    allow_all_tools: bool = True,
+    push_branch_before_pr: bool = True,
+    create_pr: bool = True,
+    pr_draft: bool = False,
+) -> LocalAgentRunResult:
+    issue = fetch_issue_details(
+        token=token,
+        repository=repository,
+        issue_number=issue_number,
+        api_url=api_url,
+    )
+    branch_name = generate_branch_name(issue.number, issue.title)
+
+    create_branch_for_issue(
+        token=token,
+        repository=repository,
+        issue_number=issue.number,
+        branch_name=branch_name,
+        base_branch=base_branch,
+        api_url=api_url,
+    )
+
+    prompt = compose_agent_prompt(issue, branch_name, extra_instructions)
+
+    run_copilot_prompt(
+        token=token,
+        prompt=prompt,
+        copilot_command=copilot_command,
+        copilot_args=copilot_args,
+        allow_all_tools=allow_all_tools,
+    )
+
+    push_output: str | None = None
+    if push_branch_before_pr:
+        push_output = _push_branch(branch_name)
+
+    pr_output: str | None = None
+    if create_pr:
+        if push_output is None:
+            push_output = _push_branch(branch_name)
+        pr_output = create_pull_request_for_branch(
+            token=token,
+            repository=repository,
+            branch_name=branch_name,
+            base_branch=base_branch,
+            draft=pr_draft,
+        )
+
+    label_removed = False
+    if label_to_remove:
+        label_removed = remove_issue_label(
+            token=token,
+            repository=repository,
+            issue_number=issue.number,
+            label=label_to_remove,
+            api_url=api_url,
+        )
+
+    return LocalAgentRunResult(
+        issue_number=issue.number,
+        issue_title=issue.title,
+        branch_name=branch_name,
+        prompt=prompt,
+        push_output=push_output,
+        pr_output=pr_output,
+        label_removed=label_removed,
+    )
 
 
 def remove_issue_label(
@@ -329,83 +479,3 @@ def remove_issue_label(
 
     return True
 
-
-def handoff_issue_to_copilot(
-    *,
-    token: str,
-    repository: str,
-    issue_number: int,
-    label: str,
-    api_url: str = DEFAULT_API_URL,
-    base_branch: str | None = None,
-    extra_instructions: str | None = None,
-) -> CopilotHandoffResult:
-    """Perform the branch creation, agent task, and label cleanup for an issue."""
-
-    issue = fetch_issue_details(
-        token=token,
-        repository=repository,
-        issue_number=issue_number,
-        api_url=api_url,
-    )
-    branch_name = generate_branch_name(issue.number, issue.title)
-
-    create_branch_for_issue(
-        token=token,
-        repository=repository,
-        issue_number=issue.number,
-        branch_name=branch_name,
-        base_branch=base_branch,
-        api_url=api_url,
-    )
-
-    prompt = compose_agent_prompt(issue, branch_name, extra_instructions)
-    agent_output = create_agent_task(
-        token=token,
-        repository=repository,
-        prompt=prompt,
-        base_branch=base_branch,
-    )
-
-    label_removed = remove_issue_label(
-        token=token,
-        repository=repository,
-        issue_number=issue.number,
-        label=label,
-        api_url=api_url,
-    )
-
-    return CopilotHandoffResult(
-        issue_number=issue.number,
-        branch_name=branch_name,
-        agent_output=agent_output,
-        label_removed=label_removed,
-    )
-
-
-def assign_issues_to_copilot(
-    *,
-    token: str,
-    repository: str,
-    issue_numbers: Sequence[int],
-    label: str,
-    api_url: str = DEFAULT_API_URL,
-    base_branch: str | None = None,
-    extra_instructions: str | None = None,
-) -> list[CopilotHandoffResult]:
-    """Hand off multiple issues to the Copilot coding agent."""
-
-    outcomes: list[CopilotHandoffResult] = []
-    for issue_number in issue_numbers:
-        outcomes.append(
-            handoff_issue_to_copilot(
-                token=token,
-                repository=repository,
-                issue_number=issue_number,
-                label=label,
-                api_url=api_url,
-                base_branch=base_branch,
-                extra_instructions=extra_instructions,
-            )
-        )
-    return outcomes

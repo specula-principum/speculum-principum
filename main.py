@@ -8,11 +8,7 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-from src.integrations.github.assign_copilot import (
-    CopilotHandoffResult,
-    assign_issues_to_copilot,
-    generate_branch_name,
-)
+from src.integrations.github.assign_copilot import run_issue_with_local_copilot
 from src.integrations.github.issues import (
     DEFAULT_API_URL,
     GitHubIssueError,
@@ -141,10 +137,10 @@ def build_search_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def build_assign_copilot_parser() -> argparse.ArgumentParser:
+def build_run_agent_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Hand off labeled issues to the GitHub Copilot coding agent via the GitHub CLI.",
-        prog="python -m main assign-copilot",
+        description="Run a Copilot agent locally for the next issue labeled 'ready-for-copilot'.",
+        prog="python -m main run-agent",
     )
     parser.add_argument(
         "--repo",
@@ -162,32 +158,51 @@ def build_assign_copilot_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--label",
         default=DEFAULT_READY_LABEL,
-        help="Issue label to search before assigning. Defaults to 'ready-for-copilot'.",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=30,
-        help="Maximum number of labeled issues to evaluate (1-100).",
+        help="Issue label to target. Defaults to 'ready-for-copilot'.",
     )
     parser.add_argument(
         "--base",
-        help="Base branch to use when creating working branches (defaults to the repository's default branch).",
+        help="Base branch for the working branch and pull request (defaults to the repository's default branch).",
     )
     parser.add_argument(
         "--instructions",
         help="Additional free-form guidance appended to the Copilot prompt.",
     )
     parser.add_argument(
-        "--output",
-        choices=[OUTPUT_TEXT, OUTPUT_JSON],
-        default=OUTPUT_TEXT,
-        help="Output format: friendly text or JSON.",
+        "--copilot-bin",
+        default="copilot",
+        help="Copilot CLI executable to invoke. Defaults to 'copilot'.",
     )
     parser.add_argument(
-        "--dry-run",
+        "--copilot-arg",
+        action="append",
+        default=[],
+        help="Extra flag to pass to the Copilot CLI. Repeat for multiple flags.",
+    )
+    parser.add_argument(
+        "--no-allow-all-tools",
         action="store_true",
-        help="Preview the assignment plan without performing API calls.",
+        help="Do not pass --allow-all-tools to the Copilot CLI.",
+    )
+    parser.add_argument(
+        "--skip-push",
+        action="store_true",
+        help="Skip pushing the branch to origin after the agent run.",
+    )
+    parser.add_argument(
+        "--skip-pr",
+        action="store_true",
+        help="Skip creating a pull request after the agent run.",
+    )
+    parser.add_argument(
+        "--draft",
+        action="store_true",
+        help="Create the pull request as a draft.",
+    )
+    parser.add_argument(
+        "--keep-label",
+        action="store_true",
+        help="Leave the label on the issue instead of removing it after the run.",
     )
     return parser
 
@@ -263,57 +278,6 @@ def format_search_results(results: Iterable[IssueSearchResult], mode: str) -> st
     return "\n".join(lines)
 
 
-def format_handoff_preview(results: Iterable[IssueSearchResult], mode: str) -> str:
-    preview = [
-        {
-            "number": result.number,
-            "title": result.title,
-            "branch": generate_branch_name(result.number, result.title),
-        }
-        for result in results
-    ]
-
-    if mode == OUTPUT_JSON:
-        return json.dumps({"dry_run": True, "issues": preview}, indent=2)
-
-    if not preview:
-        return "No issues qualify for Copilot handoff."
-
-    lines = []
-    for entry in preview:
-        lines.append(
-            f"Would hand off #{entry['number']} '{entry['title']}' using branch '{entry['branch']}'."
-        )
-    return "\n".join(lines)
-
-
-def format_handoff_results(outcomes: Iterable[CopilotHandoffResult], mode: str) -> str:
-    materialized = list(outcomes)
-
-    if mode == OUTPUT_JSON:
-        return json.dumps([
-            {
-                "number": outcome.issue_number,
-                "branch": outcome.branch_name,
-                "label_removed": outcome.label_removed,
-                "agent_output": outcome.agent_output,
-            }
-            for outcome in materialized
-        ], indent=2)
-
-    if not materialized:
-        return "No Copilot handoffs performed."
-
-    lines = []
-    for outcome in materialized:
-        status = "label removed" if outcome.label_removed else "label already absent"
-        agent_summary = outcome.agent_output.splitlines()[0] if outcome.agent_output else "no agent output"
-        lines.append(
-            f"Handed off #{outcome.issue_number} via '{outcome.branch_name}' ({status}); agent: {agent_summary}"
-        )
-    return "\n".join(lines)
-
-
 def search_issues_cli(args: argparse.Namespace) -> int:
     repository = resolve_repository(args.repo)
     token = resolve_token(args.token)
@@ -335,49 +299,58 @@ def search_issues_cli(args: argparse.Namespace) -> int:
     return 0
 
 
-def assign_copilot_cli(args: argparse.Namespace) -> int:
+def run_agent_cli(args: argparse.Namespace) -> int:
     repository = resolve_repository(args.repo)
     token = resolve_token(args.token)
-    limit = args.limit if args.limit is not None else 30
-    limit = max(1, min(limit, 100))
-
-    base_branch = args.base
-    extra_instructions = args.instructions
 
     searcher = GitHubIssueSearcher(token=token, repository=repository, api_url=args.api_url)
 
     try:
-        results = searcher.search_by_label(args.label, limit=limit)
+        results = list(searcher.search_by_label(args.label, limit=1))
     except GitHubIssueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    results = list(results)
     if not results:
-        print(f"No open issues labeled '{args.label}' require Copilot assignment.")
+        print(f"No open issues labeled '{args.label}' are available for Copilot.")
         return 0
 
-    if args.dry_run:
-        print(format_handoff_preview(results, args.output))
-        return 0
-
-    issue_numbers = [result.number for result in results]
+    issue = results[0]
+    print(f"Selected issue #{issue.number}: {issue.title}")
 
     try:
-        outcomes = assign_issues_to_copilot(
+        outcome = run_issue_with_local_copilot(
             token=token,
             repository=repository,
-            issue_numbers=issue_numbers,
-            label=args.label,
+            issue_number=issue.number,
+            label_to_remove=None if args.keep_label else args.label,
             api_url=args.api_url,
-            base_branch=base_branch,
-            extra_instructions=extra_instructions,
+            base_branch=args.base,
+            extra_instructions=args.instructions,
+            copilot_command=args.copilot_bin,
+            copilot_args=args.copilot_arg or None,
+            allow_all_tools=not args.no_allow_all_tools,
+            push_branch_before_pr=not args.skip_push,
+            create_pr=not args.skip_pr,
+            pr_draft=args.draft,
         )
     except GitHubIssueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(format_handoff_results(outcomes, args.output))
+    print(f"Working branch: {outcome.branch_name}")
+    print("\nPrompt passed to Copilot CLI:\n")
+    print(outcome.prompt)
+
+    if outcome.push_output:
+        print("\nGit push output:\n" + outcome.push_output)
+    if outcome.pr_output:
+        print("\nPull request creation output:\n" + outcome.pr_output)
+
+    if not args.keep_label:
+        label_status = "removed" if outcome.label_removed else "already absent"
+        print(f"\nLabel '{args.label}' {label_status}.")
+
     return 0
 
 
@@ -392,13 +365,13 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(str(exc))
         return search_issues_cli(args)
 
-    if raw_args and raw_args[0] == "assign-copilot":
-        parser = build_assign_copilot_parser()
+    if raw_args and raw_args[0] == "run-agent":
+        parser = build_run_agent_parser()
         try:
             args = parser.parse_args(raw_args[1:])
         except argparse.ArgumentError as exc:
             parser.error(str(exc))
-        return assign_copilot_cli(args)
+        return run_agent_cli(args)
 
     if raw_args and raw_args[0] == "create":
         raw_args = raw_args[1:]
