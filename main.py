@@ -184,6 +184,11 @@ def build_run_agent_parser() -> argparse.ArgumentParser:
         help="Copilot CLI executable to invoke. Defaults to 'copilot'.",
     )
     parser.add_argument(
+        "--copilot-model",
+        default="Grok Code Fast 1",
+        help="Model to use for the Copilot agent run. Defaults to 'Grok Code Fast 1'.",
+    )
+    parser.add_argument(
         "--copilot-arg",
         action="append",
         default=[],
@@ -338,6 +343,7 @@ def run_agent_cli(args: argparse.Namespace) -> int:
             base_branch=args.base,
             extra_instructions=args.instructions,
             copilot_command=args.copilot_bin,
+            copilot_model=args.copilot_model,
             copilot_args=args.copilot_arg or None,
             allow_all_tools=not args.no_allow_all_tools,
             push_branch_before_pr=not args.skip_push,
