@@ -288,6 +288,7 @@ def run_copilot_prompt(
     copilot_command: str = "copilot",
     copilot_args: Sequence[str] | None = None,
     allow_all_tools: bool = True,
+    model: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke the GitHub Copilot CLI with the supplied prompt."""
 
@@ -299,6 +300,8 @@ def run_copilot_prompt(
         command.extend(copilot_args)
     if allow_all_tools:
         command.append("--allow-all-tools")
+    if model:
+        command.extend(["--model", model])
     command.extend(["--prompt", prompt])
 
     try:
@@ -335,6 +338,47 @@ def _push_branch(branch_name: str) -> str:
     return output.strip() or "Branch pushed successfully."
 
 
+def _discover_existing_pull_request(
+    *,
+    token: str,
+    repository: str,
+    branch_name: str,
+) -> tuple[int, str] | None:
+    args = [
+        "pr",
+        "view",
+        "--head",
+        branch_name,
+        "--repo",
+        repository,
+        "--json",
+        "number,url",
+    ]
+    completed = subprocess.run(  # type: ignore[return-value]
+        ["gh", *args],
+        env=_build_cli_env(token),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+
+    try:
+        payload = json.loads((completed.stdout or "{}").strip() or "{}")
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, Mapping):
+        return None
+
+    number = payload.get("number")
+    url = payload.get("url")
+    if isinstance(number, int) and isinstance(url, str) and url:
+        return number, url
+    return None
+
+
 def create_pull_request_for_branch(
     *,
     token: str,
@@ -343,6 +387,15 @@ def create_pull_request_for_branch(
     base_branch: str | None = None,
     draft: bool = False,
 ) -> str:
+    existing = _discover_existing_pull_request(
+        token=token,
+        repository=repository,
+        branch_name=branch_name,
+    )
+    if existing:
+        number, url = existing
+        return f"Pull request already exists: #{number} {url}"
+
     args: list[str] = [
         "pr",
         "create",
@@ -357,7 +410,18 @@ def create_pull_request_for_branch(
     if draft:
         args.append("--draft")
 
-    completed = run_gh_command(args, token=token, capture_output=True)
+    try:
+        completed = run_gh_command(args, token=token, capture_output=True)
+    except GitHubIssueError:
+        existing = _discover_existing_pull_request(
+            token=token,
+            repository=repository,
+            branch_name=branch_name,
+        )
+        if existing:
+            number, url = existing
+            return f"Pull request already exists: #{number} {url}"
+        raise
     stdout = (completed.stdout or "").strip()
     stderr = (completed.stderr or "").strip()
     if stdout and stderr:
@@ -375,6 +439,7 @@ def run_issue_with_local_copilot(
     base_branch: str | None = None,
     extra_instructions: str | None = None,
     copilot_command: str = "copilot",
+    copilot_model: str | None = "Grok Code Fast 1",
     copilot_args: Sequence[str] | None = None,
     allow_all_tools: bool = True,
     push_branch_before_pr: bool = True,
@@ -406,6 +471,7 @@ def run_issue_with_local_copilot(
         copilot_command=copilot_command,
         copilot_args=copilot_args,
         allow_all_tools=allow_all_tools,
+        model=copilot_model,
     )
 
     push_output: str | None = None
