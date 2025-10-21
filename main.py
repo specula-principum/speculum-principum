@@ -188,8 +188,8 @@ def build_run_agent_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--copilot-model",
-        default="Grok Code Fast 1",
-        help="Model to use for the Copilot agent run. Defaults to 'Grok Code Fast 1'.",
+        default="claude-haiku-4.5",
+        help="Model to use for the Copilot agent run. Defaults to 'claude-haiku-4.5'.",
     )
     parser.add_argument(
         "--copilot-arg",
