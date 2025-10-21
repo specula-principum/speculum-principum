@@ -8,7 +8,7 @@ import re
 import subprocess
 import unicodedata
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 from urllib import error, parse, request
 
 from .issues import API_VERSION, DEFAULT_API_URL, GitHubIssueError, normalize_repository
@@ -36,6 +36,36 @@ class LocalAgentRunResult:
     push_output: str | None
     pr_output: str | None
     label_removed: bool
+
+
+DEFAULT_ALLOWED_COPILOT_TOOLS: tuple[str, ...] = (
+    "write",
+    "github-mcp-server(web_search)",
+    "github-mcp-server(list_issues)",
+    "github-mcp-server(get_issue)",
+    "shell(gh issue:*)",
+    "shell(gh pr create)",
+)
+
+
+def _normalize_allowed_tools(allowed_tools: Sequence[str] | None) -> tuple[str, ...]:
+    """Return a de-duplicated tuple of allowed tool identifiers."""
+
+    if allowed_tools is None:
+        items: Iterable[str] = DEFAULT_ALLOWED_COPILOT_TOOLS
+    elif isinstance(allowed_tools, str):
+        items = (allowed_tools,)
+    else:
+        items = allowed_tools
+
+    unique: list[str] = []
+    for tool in items:
+        value = tool.strip()
+        if not value:
+            continue
+        if value not in unique:
+            unique.append(value)
+    return tuple(unique)
 
 
 def fetch_issue_details(
@@ -287,7 +317,7 @@ def run_copilot_prompt(
     prompt: str,
     copilot_command: str = "copilot",
     copilot_args: Sequence[str] | None = None,
-    allow_all_tools: bool = True,
+    allowed_tools: Sequence[str] | None = DEFAULT_ALLOWED_COPILOT_TOOLS,
     model: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke the GitHub Copilot CLI with the supplied prompt."""
@@ -298,8 +328,9 @@ def run_copilot_prompt(
     command: list[str] = [copilot_command]
     if copilot_args:
         command.extend(copilot_args)
-    if allow_all_tools:
-        command.append("--allow-all-tools")
+    tools_to_allow = _normalize_allowed_tools(allowed_tools)
+    for tool in tools_to_allow:
+        command.extend(["--allow-tool", tool])
     if model:
         command.extend(["--model", model])
     command.extend(["--prompt", prompt])
@@ -439,9 +470,9 @@ def run_issue_with_local_copilot(
     base_branch: str | None = None,
     extra_instructions: str | None = None,
     copilot_command: str = "copilot",
-    copilot_model: str | None = "Grok Code Fast 1",
+    copilot_model: str | None = "claude-haiku-4.5",
     copilot_args: Sequence[str] | None = None,
-    allow_all_tools: bool = True,
+    allowed_tools: Sequence[str] | None = DEFAULT_ALLOWED_COPILOT_TOOLS,
     push_branch_before_pr: bool = True,
     create_pr: bool = True,
     pr_draft: bool = False,
@@ -470,7 +501,7 @@ def run_issue_with_local_copilot(
         prompt=prompt,
         copilot_command=copilot_command,
         copilot_args=copilot_args,
-        allow_all_tools=allow_all_tools,
+        allowed_tools=allowed_tools,
         model=copilot_model,
     )
 

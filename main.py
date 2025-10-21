@@ -9,7 +9,10 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-from src.integrations.github.assign_copilot import run_issue_with_local_copilot
+from src.integrations.github.assign_copilot import (
+    DEFAULT_ALLOWED_COPILOT_TOOLS,
+    run_issue_with_local_copilot,
+)
 from src.integrations.github.issues import (
     DEFAULT_API_URL,
     GitHubIssueError,
@@ -195,9 +198,18 @@ def build_run_agent_parser() -> argparse.ArgumentParser:
         help="Extra flag to pass to the Copilot CLI. Repeat for multiple flags.",
     )
     parser.add_argument(
-        "--no-allow-all-tools",
+        "--copilot-allow-tool",
+        action="append",
+        default=[],
+        help=(
+            "Additional tool permission to grant the Copilot CLI. Repeat for multiple "
+            "patterns (e.g. shell(git:*))"
+        ),
+    )
+    parser.add_argument(
+        "--copilot-no-default-tools",
         action="store_true",
-        help="Do not pass --allow-all-tools to the Copilot CLI.",
+        help="Disable the default Copilot tool permissions (file edits, web search, GitHub issue access, PR creation).",
     )
     parser.add_argument(
         "--skip-push",
@@ -333,6 +345,20 @@ def run_agent_cli(args: argparse.Namespace) -> int:
     issue = results[0]
     print(f"Selected issue #{issue.number}: {issue.title}")
 
+    additional_tools = tuple(tool for tool in args.copilot_allow_tool if tool)
+    if args.copilot_no_default_tools:
+        allowed_tools = additional_tools
+    else:
+        base_tools: tuple[str, ...] = DEFAULT_ALLOWED_COPILOT_TOOLS
+        if additional_tools:
+            ordered: list[str] = []
+            for tool in (*base_tools, *additional_tools):
+                if tool not in ordered:
+                    ordered.append(tool)
+            allowed_tools = tuple(ordered)
+        else:
+            allowed_tools = base_tools
+
     try:
         outcome = run_issue_with_local_copilot(
             token=token,
@@ -345,7 +371,7 @@ def run_agent_cli(args: argparse.Namespace) -> int:
             copilot_command=args.copilot_bin,
             copilot_model=args.copilot_model,
             copilot_args=args.copilot_arg or None,
-            allow_all_tools=not args.no_allow_all_tools,
+            allowed_tools=allowed_tools,
             push_branch_before_pr=not args.skip_push,
             create_pr=not args.skip_pr,
             pr_draft=args.draft,
