@@ -374,39 +374,49 @@ def _discover_existing_pull_request(
     token: str,
     repository: str,
     branch_name: str,
+    api_url: str = DEFAULT_API_URL,
 ) -> tuple[int, str] | None:
-    args = [
-        "pr",
-        "view",
-        "--head",
-        branch_name,
-        "--repo",
-        repository,
-        "--json",
-        "number,url",
-    ]
-    completed = subprocess.run(  # type: ignore[return-value]
-        ["gh", *args],
-        env=_build_cli_env(token),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        return None
+    owner, name = normalize_repository(repository)
+    params = parse.urlencode({
+        "head": f"{owner}:{branch_name}",
+        "state": "all",
+        "per_page": "1",
+    })
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/pulls?{params}"
+    req = request.Request(url, method="GET")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
 
     try:
-        payload = json.loads((completed.stdout or "{}").strip() or "{}")
+        with request.urlopen(req) as response:  # type: ignore[no-any-unimported]
+            raw = response.read().decode("utf-8")
+    except error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+    try:
+        payload = json.loads(raw)
     except json.JSONDecodeError:
         return None
 
-    if not isinstance(payload, Mapping):
+    if not isinstance(payload, Sequence):
         return None
 
-    number = payload.get("number")
-    url = payload.get("url")
-    if isinstance(number, int) and isinstance(url, str) and url:
-        return number, url
+    for entry in payload:
+        if not isinstance(entry, Mapping):
+            continue
+        number = entry.get("number")
+        url_value = entry.get("html_url") or entry.get("url")
+        if isinstance(number, int) and isinstance(url_value, str) and url_value:
+            return number, url_value
     return None
 
 
@@ -417,11 +427,13 @@ def create_pull_request_for_branch(
     branch_name: str,
     base_branch: str | None = None,
     draft: bool = False,
+    api_url: str = DEFAULT_API_URL,
 ) -> str:
     existing = _discover_existing_pull_request(
         token=token,
         repository=repository,
         branch_name=branch_name,
+        api_url=api_url,
     )
     if existing:
         number, url = existing
@@ -448,6 +460,7 @@ def create_pull_request_for_branch(
             token=token,
             repository=repository,
             branch_name=branch_name,
+            api_url=api_url,
         )
         if existing:
             number, url = existing
@@ -519,6 +532,7 @@ def run_issue_with_local_copilot(
             branch_name=branch_name,
             base_branch=base_branch,
             draft=pr_draft,
+            api_url=api_url,
         )
 
     label_removed = False
