@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -383,6 +382,11 @@ def run_agent_cli(args: argparse.Namespace) -> int:
     print(f"Working branch: {outcome.branch_name}")
     print("\nPrompt passed to Copilot CLI:\n")
     print(outcome.prompt)
+
+    if outcome.commit_output:
+        print("\nGit commit output:\n" + outcome.commit_output)
+    elif not outcome.changes_committed:
+        print("\nNo repository changes detected after the agent run; skipping commit, push, and pull request steps.")
 
     if outcome.push_output:
         print("\nGit push output:\n" + outcome.push_output)
