@@ -93,6 +93,7 @@ def test_create_pull_request_detects_existing_before_creation(monkeypatch: pytes
         {
             "number": 112,
             "html_url": "https://example.test/pr/112",
+            "state": "open",
         }
     ]).encode()
 
@@ -123,6 +124,7 @@ def test_create_pull_request_returns_existing_after_cli_error(monkeypatch: pytes
             {
                 "number": 113,
                 "html_url": "https://example.test/pr/113",
+                "state": "open",
             }
         ]).encode(),
     ]
@@ -150,3 +152,36 @@ def test_create_pull_request_returns_existing_after_cli_error(monkeypatch: pytes
     )
 
     assert message == "Pull request already exists: #113 https://example.test/pr/113"
+
+
+def test_create_pull_request_reopens_closed_existing(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = json.dumps([
+        {
+            "number": 17,
+            "html_url": "https://example.test/pr/17",
+            "state": "closed",
+        }
+    ]).encode()
+
+    def fake_urlopen(_req: object) -> _FakeHTTPResponse:
+        return _FakeHTTPResponse(payload)
+
+    monkeypatch.setattr(assign_copilot.request, "urlopen", fake_urlopen)
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_gh_command(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["args"] = args
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(assign_copilot, "run_gh_command", fake_run_gh_command)
+
+    message = assign_copilot.create_pull_request_for_branch(
+        token="token",
+        repository="owner/repo",
+        branch_name="branch",
+        api_url="https://api.github.com",
+    )
+
+    assert message == "Reopened existing pull request: #17 https://example.test/pr/17"
+    assert captured["args"][:2] == ["pr", "reopen"]

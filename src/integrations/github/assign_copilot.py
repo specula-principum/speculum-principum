@@ -414,7 +414,7 @@ def _discover_existing_pull_request(
     repository: str,
     branch_name: str,
     api_url: str = DEFAULT_API_URL,
-) -> tuple[int, str] | None:
+) -> tuple[int, str, str | None] | None:
     owner, name = normalize_repository(repository)
     params = parse.urlencode({
         "head": f"{owner}:{branch_name}",
@@ -454,9 +454,34 @@ def _discover_existing_pull_request(
             continue
         number = entry.get("number")
         url_value = entry.get("html_url") or entry.get("url")
+        state_value = entry.get("state")
+        state = state_value if isinstance(state_value, str) else None
         if isinstance(number, int) and isinstance(url_value, str) and url_value:
-            return number, url_value
+            return number, url_value, state
     return None
+
+
+def reopen_pull_request(
+    *,
+    token: str,
+    repository: str,
+    pr_number: int,
+) -> bool:
+    try:
+        run_gh_command(
+            [
+                "pr",
+                "reopen",
+                str(pr_number),
+                "--repo",
+                repository,
+            ],
+            token=token,
+            capture_output=True,
+        )
+    except GitHubIssueError:
+        return False
+    return True
 
 
 def create_pull_request_for_branch(
@@ -475,8 +500,11 @@ def create_pull_request_for_branch(
         api_url=api_url,
     )
     if existing:
-        number, url = existing
-        return f"Pull request already exists: #{number} {url}"
+        number, url, state = existing
+        if state and state.lower() == "open":
+            return f"Pull request already exists: #{number} {url}"
+        if reopen_pull_request(token=token, repository=repository, pr_number=number):
+            return f"Reopened existing pull request: #{number} {url}"
 
     args: list[str] = [
         "pr",
@@ -502,7 +530,7 @@ def create_pull_request_for_branch(
             api_url=api_url,
         )
         if existing:
-            number, url = existing
+            number, url, _state = existing
             return f"Pull request already exists: #{number} {url}"
         raise
     stdout = (completed.stdout or "").strip()
