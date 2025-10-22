@@ -33,18 +33,16 @@ class LocalAgentRunResult:
     issue_title: str
     branch_name: str
     prompt: str
+    commit_output: str | None
     push_output: str | None
     pr_output: str | None
     label_removed: bool
+    changes_committed: bool
 
 
 DEFAULT_ALLOWED_COPILOT_TOOLS: tuple[str, ...] = (
     "write",
     "github-mcp-server(web_search)",
-    "github-mcp-server(list_issues)",
-    "github-mcp-server(get_issue)",
-    "shell(gh issue:*)",
-    "shell(gh pr create)",
 )
 
 
@@ -293,7 +291,8 @@ def compose_agent_prompt(
     lines = [
         f"Work on GitHub issue #{issue.number}: {issue.title}.",
         f"Use the existing branch '{branch_name}' for your changes.",
-        "Create a pull request that resolves this issue when you are done.",
+        "Focus exclusively on editing repository files to resolve the issue.",
+        "Do not run git, push, or pull-request commands; the automation handles those steps.",
         "",
         f"Issue URL: {issue.url}",
     ]
@@ -367,6 +366,46 @@ def _push_branch(branch_name: str) -> str:
     if completed.stderr:
         output = "\n".join(filter(None, [output, completed.stderr.strip()]))
     return output.strip() or "Branch pushed successfully."
+
+
+def _run_git_command(
+    args: Sequence[str],
+    *,
+    capture_output: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    command = ["git", *args]
+    try:
+        return subprocess.run(  # type: ignore[return-value]
+            command,
+            check=True,
+            text=True,
+            capture_output=capture_output,
+        )
+    except subprocess.CalledProcessError as exc:  # pragma: no cover - defensive
+        stdout = (exc.stdout or "").strip()
+        stderr = (exc.stderr or "").strip()
+        details = "\n".join(part for part in (stdout, stderr) if part)
+        message = f"Command '{' '.join(command)}' failed"
+        if details:
+            message = f"{message}: {details}"
+        raise GitHubIssueError(message) from exc
+
+
+def _commit_copilot_changes(issue_number: int) -> tuple[bool, str | None]:
+    status = _run_git_command(["status", "--porcelain"])
+    changes = (status.stdout or "").strip()
+    if not changes:
+        return False, None
+
+    _run_git_command(["add", "--all"])
+    message = f"chore: apply Copilot changes for issue #{issue_number}"
+    completed = _run_git_command(["commit", "-m", message])
+    stdout = (completed.stdout or "").strip()
+    stderr = (completed.stderr or "").strip()
+    output = "\n".join(part for part in (stdout, stderr) if part)
+    if not output:
+        output = f"Committed changes with message: {message}"
+    return True, output
 
 
 def _discover_existing_pull_request(
@@ -518,22 +557,26 @@ def run_issue_with_local_copilot(
         model=copilot_model,
     )
 
-    push_output: str | None = None
-    if push_branch_before_pr:
-        push_output = _push_branch(branch_name)
+    committed, commit_output = _commit_copilot_changes(issue.number)
 
+    push_output: str | None = None
     pr_output: str | None = None
-    if create_pr:
-        if push_output is None:
+
+    if committed:
+        if push_branch_before_pr:
             push_output = _push_branch(branch_name)
-        pr_output = create_pull_request_for_branch(
-            token=token,
-            repository=repository,
-            branch_name=branch_name,
-            base_branch=base_branch,
-            draft=pr_draft,
-            api_url=api_url,
-        )
+
+        if create_pr:
+            if push_output is None:
+                push_output = _push_branch(branch_name)
+            pr_output = create_pull_request_for_branch(
+                token=token,
+                repository=repository,
+                branch_name=branch_name,
+                base_branch=base_branch,
+                draft=pr_draft,
+                api_url=api_url,
+            )
 
     label_removed = False
     if label_to_remove:
@@ -550,9 +593,11 @@ def run_issue_with_local_copilot(
         issue_title=issue.title,
         branch_name=branch_name,
         prompt=prompt,
+        commit_output=commit_output,
         push_output=push_output,
         pr_output=pr_output,
         label_removed=label_removed,
+        changes_committed=committed,
     )
 
 
