@@ -1,0 +1,198 @@
+"""Web page parser implementation using trafilatura."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable
+
+import requests
+from requests import Response, Session
+from requests.exceptions import RequestException
+import trafilatura
+
+from . import utils
+from .base import ParsedDocument, ParseTarget, ParserError
+from .markdown import document_to_markdown
+from .registry import registry
+
+_HTML_SUFFIXES = (".html", ".htm", ".xhtml")
+_HTML_MEDIA_TYPES = ("text/html", "application/xhtml+xml")
+_DEFAULT_USER_AGENT = "speculum-principum-web-parser/1.0"
+
+
+@dataclass(slots=True)
+class WebParser:
+    """Concrete :class:`DocumentParser` for HTML sources and URLs."""
+
+    name: str = "web"
+    timeout: float = 10.0
+    delay_seconds: float = 0.0
+    wait_callback: Callable[[ParseTarget], None] | None = None
+    user_agent: str = _DEFAULT_USER_AGENT
+    _session: Session | None = field(default=None, init=False, repr=False)
+
+    def detect(self, target: ParseTarget) -> bool:
+        is_url = utils.is_http_url(target.source)
+        if target.is_remote or is_url:
+            return is_url
+        try:
+            path = target.to_path()
+        except ValueError:
+            return False
+        if not path.exists() or not path.is_file():
+            return False
+        if path.suffix.lower() in _HTML_SUFFIXES:
+            return True
+        media_type = (target.media_type or utils.guess_media_type(path) or "").lower()
+        return media_type in _HTML_MEDIA_TYPES
+
+    def extract(self, target: ParseTarget) -> ParsedDocument:
+        is_url = utils.is_http_url(target.source)
+        if target.is_remote or is_url:
+            return self._extract_remote(target)
+        return self._extract_local(target)
+
+    def to_markdown(self, document: ParsedDocument) -> str:
+        return document_to_markdown(document)
+
+    def _extract_remote(self, target: ParseTarget) -> ParsedDocument:
+        self._apply_rate_limit(target)
+        response = self._fetch(target.source)
+        fetched_at = datetime.now(timezone.utc)
+        media_type = _clean_content_type(response.headers.get("Content-Type"))
+
+        document_target = ParseTarget(
+            source=target.source,
+            is_remote=True,
+            media_type=media_type,
+        )
+        checksum = utils.sha256_bytes(response.content)
+        document = ParsedDocument(target=document_target, checksum=checksum, parser_name=self.name)
+
+        document.metadata.update(
+            {
+                "status_code": response.status_code,
+                "fetched_at": fetched_at.isoformat(),
+                "url": target.source,
+                "final_url": response.url,
+                "content_type": media_type,
+                "encoding": response.encoding,
+                "content_length": _response_content_length(response),
+            }
+        )
+
+        self._populate_segments(document, response.text, document_target)
+        return document
+
+    def _extract_local(self, target: ParseTarget) -> ParsedDocument:
+        path = self._require_local_file(target)
+        checksum = utils.sha256_path(path)
+        raw = path.read_bytes()
+        html, encoding = _decode_html(raw)
+
+        document = ParsedDocument(target=target, checksum=checksum, parser_name=self.name)
+        media_type = (target.media_type or utils.guess_media_type(path))
+        document.metadata.update(
+            {
+                "file_size": path.stat().st_size,
+                "content_type": media_type,
+                "encoding": encoding,
+            }
+        )
+
+        self._populate_segments(document, html, target)
+        return document
+
+    def _populate_segments(self, document: ParsedDocument, html: str, target: ParseTarget) -> None:
+        extracted = trafilatura.extract(html, url=target.source if target.is_remote else None)
+        if not extracted:
+            document.warnings.append("No extractable text found in HTML content")
+            return
+
+        segments = [block.strip() for block in extracted.split("\n\n") if block.strip()]
+        if not segments:
+            document.warnings.append("HTML content yielded empty extraction")
+            return
+
+        document.extend_segments(segments)
+        document.metadata.setdefault("extracted_characters", len(extracted))
+
+    def _apply_rate_limit(self, target: ParseTarget) -> None:
+        if self.wait_callback is not None:
+            self.wait_callback(target)
+        elif self.delay_seconds > 0:
+            _sleep(self.delay_seconds)
+
+    def _fetch(self, url: str) -> Response:
+        session = self._ensure_session()
+        headers = {"User-Agent": self.user_agent}
+        try:
+            response = session.get(url, timeout=self.timeout, headers=headers)
+        except RequestException as exc:  # pragma: no cover - network failure path
+            raise ParserError(f"Failed to fetch URL '{url}': {exc}") from exc
+
+        if response.status_code >= 400:
+            raise ParserError(f"Received HTTP {response.status_code} for URL '{url}'")
+
+        return response
+
+    def _ensure_session(self) -> Session:
+        if self._session is None:
+            self._session = requests.Session()
+        return self._session
+
+    @staticmethod
+    def _require_local_file(target: ParseTarget) -> Path:
+        if target.is_remote:
+            raise ParserError("Web parser expects local HTML files to be marked as non-remote")
+        try:
+            path = target.to_path()
+        except ValueError as exc:  # pragma: no cover - defensive branch
+            raise ParserError(str(exc)) from exc
+        if not path.exists():
+            raise ParserError(f"HTML file '{path}' does not exist")
+        if not path.is_file():
+            raise ParserError(f"HTML target '{path}' is not a file")
+        return path
+
+
+def _clean_content_type(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value.split(";", 1)[0].strip().lower() or None
+
+
+def _decode_html(data: bytes) -> tuple[str, str]:
+    for encoding in ("utf-8", "utf-16", "latin-1"):
+        try:
+            return data.decode(encoding), encoding
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="ignore"), "unknown"
+
+
+def _response_content_length(response: Response) -> int:
+    header_value = response.headers.get("Content-Length")
+    if header_value and header_value.isdigit():
+        return int(header_value)
+    return len(response.content)
+
+
+def _sleep(seconds: float) -> None:
+    from time import sleep
+
+    sleep(max(seconds, 0.0))
+
+
+web_parser = WebParser()
+registry.register_parser(
+    web_parser,
+    media_types=_HTML_MEDIA_TYPES,
+    suffixes=_HTML_SUFFIXES,
+    priority=6,
+    replace=True,
+)
+
+__all__ = ["WebParser", "web_parser"]
