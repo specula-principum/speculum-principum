@@ -47,7 +47,11 @@ class ParserRegistry:
             raise ValueError("Parser must define a non-empty name")
 
         media_spec = _normalize_media_types(media_types)
-        suffix_spec = _normalize_suffixes(suffixes)
+        suffix_spec = utils.normalize_suffixes(
+            suffixes,
+            sort=True,
+            preserve_order=False,
+        )
 
         if not replace and any(entry.parser.name == parser.name for entry in self._entries):
             raise ValueError(f"Parser '{parser.name}' already registered")
@@ -128,22 +132,6 @@ def _normalize_media_types(values: Sequence[str] | None) -> tuple[str, ...]:
     if not values:
         return ()
     normalized = {item.lower() for item in values if item}
-    return tuple(sorted(normalized))
-
-
-def _normalize_suffixes(values: Sequence[str] | None) -> tuple[str, ...]:
-    if not values:
-        return ()
-    normalized: set[str] = set()
-    for value in values:
-        if not value:
-            continue
-        token = value.lower().strip()
-        if not token:
-            continue
-        if not token.startswith("."):
-            token = f".{token}"
-        normalized.add(token)
     return tuple(sorted(normalized))
 
 

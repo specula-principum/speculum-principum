@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
-from urllib.parse import urlparse
 
 import requests
 from requests import Response, Session
@@ -35,8 +34,9 @@ class WebParser:
     _session: Session | None = field(default=None, init=False, repr=False)
 
     def detect(self, target: ParseTarget) -> bool:
-        if target.is_remote or _looks_like_url(target.source):
-            return _is_supported_url(target.source)
+        is_url = utils.is_http_url(target.source)
+        if target.is_remote or is_url:
+            return is_url
         try:
             path = target.to_path()
         except ValueError:
@@ -49,7 +49,8 @@ class WebParser:
         return media_type in _HTML_MEDIA_TYPES
 
     def extract(self, target: ParseTarget) -> ParsedDocument:
-        if target.is_remote or _looks_like_url(target.source):
+        is_url = utils.is_http_url(target.source)
+        if target.is_remote or is_url:
             return self._extract_remote(target)
         return self._extract_local(target)
 
@@ -155,16 +156,6 @@ class WebParser:
         if not path.is_file():
             raise ParserError(f"HTML target '{path}' is not a file")
         return path
-
-
-def _looks_like_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
-def _is_supported_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _clean_content_type(value: str | None) -> str | None:

@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Iterable, Sequence
-from urllib.parse import urlparse
 
 from . import utils
 from .base import ParseTarget, ParserError
@@ -130,7 +129,12 @@ def scan_and_parse(
     if not root_path.exists():
         raise FileNotFoundError(f"Scan root '{root_path}' does not exist")
 
-    normalized_suffixes = _normalize_suffixes(suffixes) if suffixes else _DEFAULT_SCAN_SUFFIXES
+    normalized_suffixes = utils.normalize_suffixes(
+        suffixes,
+        default=_DEFAULT_SCAN_SUFFIXES,
+        sort=True,
+        preserve_order=False,
+    )
 
     candidates = _collect_candidates(
         root_path,
@@ -189,30 +193,13 @@ def _build_target(source: str | Path, *, is_remote: bool | None, media_type: str
     else:
         source_str = str(source)
 
-    is_remote_resolved = is_remote if is_remote is not None else _looks_like_url(source_str)
+    is_remote_resolved = is_remote if is_remote is not None else utils.is_http_url(source_str)
 
     if is_remote_resolved:
         return ParseTarget(source=source_str, is_remote=True, media_type=media_type)
 
     path = Path(source_str).expanduser().resolve(strict=False)
     return ParseTarget(source=str(path), is_remote=False, media_type=media_type)
-
-
-def _looks_like_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
-def _normalize_suffixes(values: Sequence[str]) -> tuple[str, ...]:
-    normalized: set[str] = set()
-    for item in values:
-        token = (item or "").strip().lower()
-        if not token:
-            continue
-        if not token.startswith("."):
-            token = f".{token}"
-        normalized.add(token)
-    return tuple(sorted(normalized)) or _DEFAULT_SCAN_SUFFIXES
 
 
 def _collect_candidates(

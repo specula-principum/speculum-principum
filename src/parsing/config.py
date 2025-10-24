@@ -8,6 +8,8 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+from . import utils
+
 _DEFAULT_OUTPUT_ROOT = Path("evidence/parsed")
 _DEFAULT_SCAN_SUFFIXES = (".pdf", ".docx", ".html", ".htm", ".xhtml")
 _DEFAULT_CONFIG_PATH = Path("config/parsing.yaml")
@@ -71,7 +73,11 @@ def load_parsing_config(config_path: Path | None) -> ParsingConfig:
 
 
 def _build_scan_config(payload: Mapping[str, Any]) -> ScanConfig:
-    suffixes = tuple(_normalize_suffixes(payload.get("suffixes"))) or _DEFAULT_SCAN_SUFFIXES
+    suffixes = utils.normalize_suffixes(
+        payload.get("suffixes"),
+        default=_DEFAULT_SCAN_SUFFIXES,
+        preserve_order=True,
+    )
     recursive = bool(payload.get("recursive", True))
     include = tuple(_normalize_patterns(payload.get("include")))
     exclude = tuple(_normalize_patterns(payload.get("exclude")))
@@ -81,22 +87,6 @@ def _build_scan_config(payload: Mapping[str, Any]) -> ScanConfig:
         include=include,
         exclude=exclude,
     )
-
-
-def _normalize_suffixes(values: Any) -> Sequence[str]:
-    if not values:
-        return ()
-    if isinstance(values, str):
-        values = [values]
-    result: list[str] = []
-    for raw in values:
-        token = str(raw).strip().lower()
-        if not token:
-            continue
-        if not token.startswith("."):
-            token = f".{token}"
-        result.append(token)
-    return tuple(dict.fromkeys(result))
 
 
 def _normalize_patterns(values: Any) -> Sequence[str]:
