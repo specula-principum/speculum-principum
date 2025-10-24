@@ -28,16 +28,17 @@ class ManifestEntry:
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "source": self.source,
             "checksum": self.checksum,
             "parser": self.parser,
             "artifact_path": self.artifact_path,
             "processed_at": self.processed_at.isoformat(),
             "status": self.status,
-            "metadata": self.metadata,
-            "warnings": self.warnings,
         }
+        if self.metadata:
+            payload["metadata"] = self.metadata
+        return payload
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "ManifestEntry":
@@ -50,7 +51,6 @@ class ManifestEntry:
             processed_at=processed_at,
             status=payload.get("status", "completed"),
             metadata=payload.get("metadata", {}),
-            warnings=payload.get("warnings", []),
         )
 
 
@@ -112,27 +112,89 @@ class ParseStorage:
 
         checksum = document.checksum
         processed_at = document.created_at
-        artifact_path = self.make_artifact_path(
+        artifact_dir, _ = self._prepare_artifact_directory(
             document.target.source,
             checksum,
             processed_at=processed_at,
         )
 
-        markdown = document_to_markdown(document)
-        utils.ensure_directory(artifact_path.parent)
-        tmp_path = artifact_path.with_name(artifact_path.name + ".tmp")
-        tmp_path.write_text(markdown, encoding="utf-8")
-        tmp_path.replace(artifact_path)
+        for existing in artifact_dir.glob("*.md"):
+            if existing.name == "index.md":
+                continue
+            if existing.name.startswith(("page-", "segment-")):
+                existing.unlink(missing_ok=True)
 
+        page_unit = _determine_segment_unit(document)
+        total_segments = len(document.segments)
+        page_files: list[str] = []
+
+        for index, segment in enumerate(document.segments, start=1):
+            normalized = segment.strip("\n")
+            if not normalized:
+                continue
+
+            page_filename = f"{page_unit}-{index:03d}.md"
+            page_path = artifact_dir / page_filename
+
+            page_doc = ParsedDocument(
+                target=document.target,
+                checksum=document.checksum,
+                parser_name=document.parser_name,
+            )
+            page_doc.created_at = document.created_at
+            page_doc.metadata = {
+                "page_unit": page_unit,
+                "page_number": index,
+                "page_total": total_segments,
+            }
+            page_doc.warnings = []
+            page_doc.add_segment(normalized)
+
+            _write_atomic_text(page_path, document_to_markdown(page_doc))
+            page_files.append(page_filename)
+
+        index_path = artifact_dir / "index.md"
+
+        index_doc = ParsedDocument(
+            target=document.target,
+            checksum=document.checksum,
+            parser_name=document.parser_name,
+        )
+        index_doc.created_at = document.created_at
+        index_doc.metadata = {
+            "artifact_type": "page-directory",
+            "page_unit": page_unit,
+            "segments_total": total_segments,
+        }
+        index_doc.warnings = list(document.warnings)
+
+        if page_files:
+            label = "Page" if page_unit == "page" else "Segment"
+            listing_lines = [f"# {label}s", ""]
+            for position, filename in enumerate(page_files, start=1):
+                listing_lines.append(f"- [{label} {position}](./{filename})")
+            index_doc.add_segment("\n".join(listing_lines))
+        elif document.is_empty():
+            index_doc.add_segment("_No textual content was extracted from this document._")
+
+        _write_atomic_text(index_path, document_to_markdown(index_doc))
+
+        metadata = dict(document.metadata)
+        metadata.update(
+            {
+                "artifact_type": "page-directory",
+                "segments_total": total_segments,
+                "page_unit": page_unit,
+            }
+        )
         entry = ManifestEntry(
             source=document.target.source,
             checksum=checksum,
             parser=document.parser_name,
-            artifact_path=self.relative_artifact_path(artifact_path),
+            artifact_path=self.relative_artifact_path(index_path),
             processed_at=processed_at,
             status="empty" if document.is_empty() else "completed",
-            metadata=document.metadata,
-            warnings=document.warnings,
+            metadata=metadata,
         )
 
         self.record_entry(entry)
@@ -146,14 +208,29 @@ class ParseStorage:
         processed_at: datetime | None = None,
         suffix: str = ".md",
     ) -> Path:
-        processed_at = processed_at or datetime.now(timezone.utc)
-        year_folder = processed_at.strftime("%Y")
-        slug = utils.slugify(source)
-        fingerprint = checksum[:12] or utils.stable_checksum_for_source(source)[:12]
-        filename = f"{slug}-{fingerprint}{suffix}"
-        directory = self.root / year_folder
-        utils.ensure_directory(directory)
+        directory, base_name = self._prepare_artifact_directory(
+            source,
+            checksum,
+            processed_at=processed_at,
+        )
+        if not suffix:
+            return directory
+        filename = f"{base_name}{suffix}" if suffix.startswith(".") else suffix
         return directory / filename
+
+    def make_artifact_directory(
+        self,
+        source: str,
+        checksum: str,
+        *,
+        processed_at: datetime | None = None,
+    ) -> Path:
+        directory, _ = self._prepare_artifact_directory(
+            source,
+            checksum,
+            processed_at=processed_at,
+        )
+        return directory
 
     def relative_artifact_path(self, absolute_path: Path) -> str:
         return str(absolute_path.relative_to(self.root))
@@ -170,3 +247,33 @@ class ParseStorage:
         tmp_path = self.manifest_path.with_suffix(".tmp")
         tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         tmp_path.replace(self.manifest_path)
+
+    def _prepare_artifact_directory(
+        self,
+        source: str,
+        checksum: str,
+        *,
+        processed_at: datetime | None = None,
+    ) -> tuple[Path, str]:
+        processed_at = processed_at or datetime.now(timezone.utc)
+        year_folder = processed_at.strftime("%Y")
+        slug = utils.slugify(source)
+        fingerprint = checksum[:12] or utils.stable_checksum_for_source(source)[:12]
+        base_name = f"{slug}-{fingerprint}"
+        directory = self.root / year_folder / base_name
+        utils.ensure_directory(directory)
+        return directory, base_name
+
+
+def _write_atomic_text(path: Path, content: str) -> None:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(content, encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _determine_segment_unit(document: ParsedDocument) -> str:
+    if document.parser_name == "pdf":
+        return "page"
+    if document.metadata.get("page_count"):
+        return "page"
+    return "segment"

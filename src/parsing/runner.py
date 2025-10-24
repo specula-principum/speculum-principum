@@ -174,7 +174,7 @@ def _outcome_from_manifest(
             parser=entry.parser or parser_name,
             status="skipped",
             artifact_path=entry.artifact_path,
-            warnings=list(entry.warnings),
+            warnings=[],
             checksum=checksum,
             message=note,
         )

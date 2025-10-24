@@ -122,8 +122,18 @@ def test_parse_cli_pdf_subcommand(tmp_path, monkeypatch, capsys) -> None:
 
     artifact_path = resolved_output / entry["artifact_path"]
     assert artifact_path.exists()
-    artifact_text = artifact_path.read_text(encoding="utf-8")
+    metadata = entry.get("metadata")
+    if metadata:
+        assert isinstance(metadata, dict)
+        assert "page_files" not in metadata
+    segment_files = sorted(
+        path for path in artifact_path.parent.glob("*.md") if path.name != "index.md"
+    )
+    assert segment_files, "expected at least one segment artifact"
+    page_path = segment_files[0]
+    artifact_text = page_path.read_text(encoding="utf-8")
     assert "CLI PDF content" in artifact_text
+    assert "warnings:" not in artifact_text
 
 
 def test_parse_cli_docx_subcommand(tmp_path, monkeypatch, capsys) -> None:
@@ -158,10 +168,20 @@ def test_parse_cli_docx_subcommand(tmp_path, monkeypatch, capsys) -> None:
     assert entry["parser"] == "docx"
     artifact_path = resolved_output / entry["artifact_path"]
     assert artifact_path.exists()
-
-    content = artifact_path.read_text(encoding="utf-8")
-    assert "CLI DOCX Document" in content
-    assert "First paragraph" in content
+    metadata = entry.get("metadata")
+    if metadata:
+        assert isinstance(metadata, dict)
+        assert "page_files" not in metadata
+    segment_files = sorted(
+        path for path in artifact_path.parent.glob("*.md") if path.name != "index.md"
+    )
+    assert segment_files, "expected at least one segment artifact"
+    page_contents = [path.read_text(encoding="utf-8") for path in segment_files]
+    assert any("CLI DOCX Document" in text for text in page_contents)
+    assert any("First paragraph" in text for text in page_contents)
+    assert any("Second paragraph" in text for text in page_contents)
+    assert any("page_unit: segment" in text for text in page_contents)
+    assert all("warnings:" not in text for text in page_contents)
 
 
 def test_parse_cli_web_subcommand_with_local_html(tmp_path, monkeypatch, capsys) -> None:
@@ -196,9 +216,18 @@ def test_parse_cli_web_subcommand_with_local_html(tmp_path, monkeypatch, capsys)
     assert entry["parser"] == "web"
     artifact_path = resolved_output / entry["artifact_path"]
     assert artifact_path.exists()
-
-    content = artifact_path.read_text(encoding="utf-8")
+    metadata = entry.get("metadata")
+    if metadata:
+        assert isinstance(metadata, dict)
+        assert "page_files" not in metadata
+    segment_files = sorted(
+        path for path in artifact_path.parent.glob("*.md") if path.name != "index.md"
+    )
+    assert segment_files, "expected at least one segment artifact"
+    page_path = segment_files[0]
+    content = page_path.read_text(encoding="utf-8")
     assert "Body content from HTML" in content
+    assert "warnings:" not in content
 
 
 def test_parse_cli_web_subcommand_with_remote_url(tmp_path, monkeypatch, capsys) -> None:
@@ -271,9 +300,19 @@ def test_parse_cli_web_subcommand_with_remote_url(tmp_path, monkeypatch, capsys)
     assert entry.get("status_code") == 200 or entry.get("status") == "completed"
     artifact_path = resolved_output / entry["artifact_path"]
     assert artifact_path.exists()
-    artifact_text = artifact_path.read_text(encoding="utf-8")
+    metadata = entry.get("metadata")
+    if metadata:
+        assert isinstance(metadata, dict)
+        assert "page_files" not in metadata
+    segment_files = sorted(
+        path for path in artifact_path.parent.glob("*.md") if path.name != "index.md"
+    )
+    assert segment_files, "expected at least one segment artifact"
+    page_path = segment_files[0]
+    artifact_text = page_path.read_text(encoding="utf-8")
     assert "Remote Title" in artifact_text
     assert "Remote body text." in artifact_text
+    assert "warnings:" not in artifact_text
 
 
 def test_parse_cli_scan_subcommand_processes_multiple_targets(tmp_path, monkeypatch, capsys) -> None:

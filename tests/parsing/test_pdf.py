@@ -8,7 +8,7 @@ import pytest
 
 from src.parsing import registry
 from src.parsing.base import ParseTarget, ParserError
-from src.parsing.pdf import PdfParser, pdf_parser
+from src.parsing.pdf import PdfParser, _normalize_layout_text, pdf_parser
 
 
 def _write_pdf(path: Path, text: str) -> None:
@@ -113,3 +113,9 @@ def test_pdf_parser_warns_when_page_is_empty(tmp_path) -> None:
 
     assert document.is_empty()
     assert any("no extractable text" in warning for warning in document.warnings)
+
+
+def test_normalize_layout_text_collapses_excess_spacing() -> None:
+    messy = "  Line    one   with   gaps\r\n\n   Second\tline \n Third   line   "
+    cleaned = _normalize_layout_text(messy)
+    assert cleaned == "Line one with gaps\n\nSecond line\nThird line"

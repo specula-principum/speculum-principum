@@ -21,18 +21,26 @@ def document_to_markdown(document: ParsedDocument) -> str:
 
 
 def _build_front_matter(document: ParsedDocument) -> str:
-    payload = {
+    payload: dict[str, object] = {
         "source": document.target.source,
         "checksum": document.checksum,
         "parser": document.parser_name,
         "processed_at": _format_datetime(document.created_at),
         "is_remote": document.target.is_remote,
-        "media_type": document.target.media_type,
-        "warnings": document.warnings,
-        "metadata": document.metadata,
         "segment_count": len(document.segments),
         "status": "empty" if document.is_empty() else "completed",
     }
+
+    media_type = document.target.media_type
+    if media_type is not None:
+        payload["media_type"] = media_type
+
+    if document.warnings:
+        payload["warnings"] = document.warnings
+
+    if document.metadata:
+        payload["metadata"] = document.metadata
+
     return _serialize_yaml(payload)
 
 
