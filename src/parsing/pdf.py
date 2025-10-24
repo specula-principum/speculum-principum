@@ -142,7 +142,7 @@ def _extract_page_text(page: Any) -> str:
     return _normalize_layout_text(cleaned)
 
 
-_MULTISPACE_PATTERN = re.compile(r"[ \t\f\v]{2,}")
+_INTRALINE_WHITESPACE_PATTERN = re.compile(r"[^\S\n]+")
 
 
 def _normalize_layout_text(text: str) -> str:
@@ -157,7 +157,7 @@ def _normalize_layout_text(text: str) -> str:
         if not token:
             trimmed_lines.append("")
             continue
-        collapsed = _MULTISPACE_PATTERN.sub(" ", token)
+        collapsed = _INTRALINE_WHITESPACE_PATTERN.sub(" ", token)
         trimmed_lines.append(collapsed)
 
     result: list[str] = []
