@@ -63,7 +63,9 @@ def test_parse_single_target_persists_document(tmp_path) -> None:
     assert outcome.artifact_path is not None
     artifact = storage.root / outcome.artifact_path
     assert artifact.exists()
-    content = artifact.read_text(encoding="utf-8")
+    segment_files = sorted(artifact.parent.glob("segment-*.md"))
+    assert segment_files, "expected at least one segment artifact"
+    content = segment_files[0].read_text(encoding="utf-8")
     assert "hello world" in content
 
 

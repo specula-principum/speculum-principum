@@ -51,8 +51,10 @@ def test_make_artifact_path_is_deterministic(tmp_path) -> None:
     )
 
     assert first == second
-    assert first.parent.name == "2025"
-    assert first.name.startswith("my-contract-docx-")
+    assert first.parent.parent.name == "2025"
+    assert first.parent.name.startswith("my-contract-docx-")
+    assert first.stem.startswith("my-contract-docx-")
+    assert first.name.endswith(".md")
 
 
 def test_should_process_returns_true_for_unknown_checksum(tmp_path) -> None:
@@ -75,11 +77,25 @@ def test_persist_document_writes_markdown_and_updates_manifest(tmp_path) -> None
 
     entry = storage.persist_document(document)
 
-    artifact_path = storage.root / entry.artifact_path
-    content = artifact_path.read_text(encoding="utf-8")
+    index_path = storage.root / entry.artifact_path
+    assert index_path.exists()
+    assert index_path.name == "index.md"
 
-    assert artifact_path.exists()
-    assert "source: evidence/contract.docx" in content
-    assert "First paragraph of the contract." in content
+    assert "page_files" not in entry.metadata
+
+    segment_files = sorted(
+        path for path in index_path.parent.glob("*.md") if path.name != "index.md"
+    )
+    assert segment_files, "expected at least one segment artifact"
+
+    first_page_path = segment_files[0]
+    page_content = first_page_path.read_text(encoding="utf-8")
+
+    assert "source: evidence/contract.docx" in page_content
+    assert "First paragraph of the contract." in page_content
+    assert "warnings:" not in page_content
+    assert "page_unit: segment" in page_content
+    assert entry.metadata["artifact_type"] == "page-directory"
+    assert entry.metadata["segments_total"] == 1
     assert entry.status == "completed"
     assert storage.manifest().get(document.checksum) == entry

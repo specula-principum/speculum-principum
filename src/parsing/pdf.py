@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -92,7 +93,7 @@ class PdfParser:
     def _extract_pages(self, document: ParsedDocument, reader: PdfReader) -> None:
         for index, page in enumerate(reader.pages, start=1):
             try:
-                text = page.extract_text() or ""
+                text = _extract_page_text(page)
             except PdfReadError as exc:  # pragma: no cover - rare backend failure
                 document.warnings.append(f"Failed to extract page {index}: {exc}")
                 continue
@@ -119,6 +120,58 @@ def _normalize_pdf_metadata(metadata: Any) -> dict[str, str]:
             continue
         result[key] = str(value)
     return result
+
+
+def _extract_page_text(page: Any) -> str:
+    try:
+        text = page.extract_text(
+            extraction_mode="layout",
+            layout_mode_space_vertically=False,
+            layout_mode_strip_rotated=False,
+        )
+    except TypeError:
+        try:
+            text = page.extract_text(extraction_mode="layout")
+        except TypeError:
+            text = page.extract_text()
+
+    if not text:
+        return ""
+
+    cleaned = text.replace("\u00a0", " ")
+    return _normalize_layout_text(cleaned)
+
+
+_INTRALINE_WHITESPACE_PATTERN = re.compile(r"[^\S\n]+")
+
+
+def _normalize_layout_text(text: str) -> str:
+    """Collapse excessive spacing without losing paragraph structure."""
+
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+
+    trimmed_lines: list[str] = []
+    for raw in lines:
+        token = raw.strip()
+        if not token:
+            trimmed_lines.append("")
+            continue
+        collapsed = _INTRALINE_WHITESPACE_PATTERN.sub(" ", token)
+        trimmed_lines.append(collapsed)
+
+    result: list[str] = []
+    previous_blank = False
+    for line in trimmed_lines:
+        if not line:
+            if result and not previous_blank:
+                result.append("")
+            previous_blank = True
+            continue
+        result.append(line)
+        previous_blank = False
+
+    return "\n".join(result).strip()
 
 
 pdf_parser = PdfParser()
