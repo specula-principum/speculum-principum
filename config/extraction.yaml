@@ -1,0 +1,68 @@
+# Default configuration for extraction modules.
+concepts:
+  min_frequency: 2
+  max_concepts: 50
+  exclude_stopwords: true
+  language: en
+  max_related_terms: 5
+  window_size: 4
+  min_term_length: 3
+
+entities:
+  confidence_threshold: 0.7
+  entity_types:
+    - PERSON
+    - ORG
+    - GPE
+    - DATE
+
+relationships:
+  max_relationships: 100
+  max_pairs_per_sentence: 6
+  window_size: 3
+  include_self_pairs: false
+  keywords:
+    support:
+      - support
+      - bolster
+      - aid
+      - assist
+    opposition:
+      - oppose
+      - against
+      - resist
+      - challenge
+    alliance:
+      - treaty
+      - alliance
+      - ally
+
+metadata:
+  language: en
+  summary_length: 240
+  words_per_minute: 215
+  include_quality_metrics: true
+  include_history: true
+  max_keywords: 6
+  min_keyword_length: 4
+  long_sentence_threshold: 35
+
+taxonomy:
+  max_labels: 5
+  min_score: 0.05
+  bonus_weight: 0.05
+
+linking:
+  max_links: 25
+  max_mentions: 10
+  include_mentions: true
+  include_anchor_offsets: true
+
+summarization:
+  default_max_length: 250
+  style: abstract
+  preserve_formatting: true
+  max_sentences: 5
+  min_sentence_length: 25
+  include_highlights: true
+  preserve_order: true
