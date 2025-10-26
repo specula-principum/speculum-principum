@@ -1,3 +1,4 @@
+"""Parsing CLI commands for converting documents to Markdown."""
 from __future__ import annotations
 
 import argparse
@@ -9,8 +10,15 @@ from src.parsing.config import load_parsing_config
 from src.parsing.runner import parse_single_target, scan_and_parse
 from src.parsing.storage import ParseStorage
 
+__all__ = ["register_commands"]
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> argparse.ArgumentParser:
+
+def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add parsing-related commands to the main CLI parser."""
+    register_parse_command(subparsers)
+
+
+def register_parse_command(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "parse",
         description="Parse documents into Markdown artifacts.",

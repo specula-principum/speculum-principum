@@ -6,11 +6,11 @@ import argparse
 import sys
 from typing import Sequence
 
-from src.cli.github import (
+from src.cli.commands.github import (
     build_default_create_parser,
     register_commands as register_github_commands,
 )
-from src.cli.parsing import register_commands as register_parsing_commands
+from src.cli.commands.parsing import register_commands as register_parsing_commands
 
 
 def _build_command_parser() -> argparse.ArgumentParser:
