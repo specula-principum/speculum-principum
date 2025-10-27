@@ -1,0 +1,97 @@
+# Mission schema contract for Speculum Principum IA tooling
+version: 1
+metadata:
+  methodology: information-architecture
+  description: >-
+    Defines the required structure, typing rules, and acceptable values for
+    the mission configuration that governs IA decisions.
+required_sections:
+  - mission
+  - information_architecture
+mission:
+  required_fields:
+    - title
+    - description
+    - audience
+    - goals
+  rules:
+    title:
+      min_length: 3
+    description:
+      min_length: 10
+    audience:
+      unique: true
+      min_items: 1
+    goals:
+      unique: true
+      min_items: 1
+information_architecture:
+  required_fields:
+    - methodology
+    - version
+    - organization_scheme
+    - organization_types
+    - depth_strategy
+    - labeling_conventions
+    - navigation_priority
+    - search_optimization
+    - quality_standards
+  enums:
+    organization_scheme:
+      - hierarchical
+      - sequential
+      - topical
+      - task-based
+      - audience-based
+      - hybrid
+    organization_types:
+      - topical
+      - alphabetical
+      - chronological
+      - audience
+      - workflow
+    depth_strategy:
+      - progressive_disclosure
+      - full_depth
+    navigation_priority:
+      - concept_based
+      - entity_based
+      - source_based
+      - relationship_based
+      - chronological
+  labeling_conventions:
+    required_fields:
+      - case
+      - max_length
+      - preferred_language
+      - terminology_source
+    case_options:
+      - kebab-case
+      - snake_case
+      - title_case
+  search_optimization:
+    flags:
+      - full_text_enabled
+      - metadata_indexing
+      - synonym_expansion
+      - related_content_suggestions
+  quality_standards:
+    required_fields:
+      - min_completeness
+      - min_findability
+      - required_metadata
+      - link_depth
+    ranges:
+      min_completeness:
+        min: 0.0
+        max: 1.0
+      min_findability:
+        min: 0.0
+        max: 1.0
+    required_metadata:
+      unique: true
+      min_items: 1
+    link_depth:
+      min: 1
+notes:
+  - "This schema is descriptive; enforcement occurs in src/knowledge_base/config.py."

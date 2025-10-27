@@ -132,7 +132,7 @@ def test_main_extract_missing_input_fails(tmp_path: Path, capsys: pytest.Capture
     assert exit_code == 1
 
     captured = capsys.readouterr()
-    assert "No such file or directory" in captured.err
+    assert "does not exist" in captured.err
 
 
 def test_main_extract_invalid_config_reports_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

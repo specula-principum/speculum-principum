@@ -1,0 +1,43 @@
+mission:
+  title: "Political Philosophy Knowledge Base"
+  description: "Structured reference distilled from Renaissance political texts."
+  audience:
+    - students
+    - researchers
+    - political-scientists
+  goals:
+    - "Make Machiavelli's ideas accessible and discoverable"
+    - "Connect concepts across multiple works"
+    - "Track intellectual influences and relationships"
+information_architecture:
+  methodology: information-architecture
+  version: "1.0"
+  organization_scheme: hybrid
+  organization_types:
+    - topical
+    - alphabetical
+    - chronological
+  depth_strategy: progressive_disclosure
+  labeling_conventions:
+    case: kebab-case
+    max_length: 80
+    preferred_language: en
+    terminology_source: config/taxonomy.yaml
+  navigation_priority:
+    - concept_based
+    - entity_based
+    - source_based
+  search_optimization:
+    full_text_enabled: true
+    metadata_indexing: true
+    synonym_expansion: true
+    related_content_suggestions: true
+  quality_standards:
+    min_completeness: 0.7
+    min_findability: 0.6
+    required_metadata:
+      - title
+      - type
+      - primary_topic
+      - sources
+    link_depth: 3

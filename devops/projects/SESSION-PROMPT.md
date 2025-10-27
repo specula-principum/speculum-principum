@@ -19,8 +19,8 @@ Use these ready-to-paste prompts with the current phase `README.md` and `PROGRES
 I'm working on Speculum Principum, the IA-driven knowledge base extraction project.
 
 Attachments:
-- Current phase README (devops/projects/phase-1-extraction-tooling/README.md)
-- Current phase PROGRESS log (devops/projects/phase-1-extraction-tooling/PROGRESS.md)
+- Current phase README (devops/projects/phase-3-knowledge-base-engine/README.md)
+- Current phase PROGRESS log (devops/projects/phase-3-knowledge-base-engine/PROGRESS.md)
 
 Please:
 1. Summarize the attached phase README and PROGRESS files so I understand scope, status, and outstanding sprint items.
@@ -41,8 +41,8 @@ Throughout the session, enforce the architectural guidance from the README and k
 I need a focused code review for the Speculum Principum project.
 
 Attachments:
-- Relevant phase README (devops/projects/phase-1-extraction-tooling/README.md)
-- Relevant phase PROGRESS log (devops/projects/phase-1-extraction-tooling/PROGRESS.md)
+- Relevant phase README (devops/projects/phase-3-knowledge-base-engine/README.md)
+- Relevant phase PROGRESS log (devops/projects/phase-3-knowledge-base-engine/PROGRESS.md)
 - Any recent PR diff or list of changed files (if available)
 
 Please:

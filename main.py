@@ -12,6 +12,9 @@ from src.cli.commands.github import (
 )
 from src.cli.commands.parsing import register_commands as register_parsing_commands
 from src.cli.commands.extraction import register_commands as register_extraction_commands
+from src.cli.commands.knowledge_base import (
+    register_commands as register_kb_commands,
+)
 
 
 def _build_command_parser() -> argparse.ArgumentParser:
@@ -26,6 +29,7 @@ def _build_command_parser() -> argparse.ArgumentParser:
     register_github_commands(subparsers)
     register_parsing_commands(subparsers)
     register_extraction_commands(subparsers)
+    register_kb_commands(subparsers)
     return parser
 
 
