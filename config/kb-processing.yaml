@@ -1,0 +1,40 @@
+# Default configuration for the knowledge base engine pipeline.
+pipeline:
+  extraction:
+    enabled_tools:
+      - concepts
+      - entities
+      - structure
+      - relationships
+    parallel_execution: true
+    cache_results: true
+    cache_ttl: 86400
+
+  transformation:
+    templates_dir: config/templates/
+    apply_quality_filters: true
+    min_concept_frequency: 2
+    min_entity_confidence: 0.7
+
+  organization:
+    auto_slug: true
+    slug_format: kebab-case
+    collision_strategy: append_hash
+    index_generation: auto
+
+  linking:
+    build_concept_graph: true
+    generate_backlinks: true
+    max_related_items: 10
+    similarity_threshold: 0.6
+
+  quality:
+    validate_on_creation: true
+    auto_fix_simple_issues: true
+    required_completeness: 0.7
+    required_findability: 0.6
+
+monitoring:
+  log_level: INFO
+  progress_updates: true
+  metrics_output: reports/kb-metrics.json

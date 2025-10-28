@@ -225,3 +225,162 @@ def test_main_kb_validate_taxonomy_failure(tmp_path: Path, capsys: pytest.Captur
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "Taxonomy requires mapping section" in captured.err
+
+
+def test_main_kb_process_invokes_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    source_dir = tmp_path / "evidence"
+    kb_root = tmp_path / "kb"
+    source_dir.mkdir()
+    kb_root.mkdir()
+
+    captured: dict[str, object] = {}
+
+    stage = types.SimpleNamespace(stage="analysis", metrics={"segments": 2.0}, warnings=())
+    result = types.SimpleNamespace(success=True, stages=(stage,), errors=(), warnings=())
+
+    def fake_run_process(options):
+        captured["options"] = options
+        return result
+
+    monkeypatch.setattr("src.cli.commands.knowledge_base.run_process_workflow", fake_run_process)
+
+    exit_code = run_main([
+        "kb",
+        "process",
+        "--source",
+        str(source_dir),
+        "--kb-root",
+        str(kb_root),
+    ])
+
+    assert exit_code == 0
+    assert isinstance(captured["options"], object)
+    options = captured["options"]
+    assert getattr(options, "source_path") == source_dir
+    assert getattr(options, "kb_root") == kb_root
+    assert getattr(options, "extractors") is None
+
+    output = capsys.readouterr().out
+    assert "SUCCESS" in output
+    assert "analysis: segments=2.0" in output
+
+
+def test_main_kb_update_invokes_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    source_dir = tmp_path / "evidence"
+    kb_root = tmp_path / "kb"
+    source_dir.mkdir()
+    kb_root.mkdir()
+
+    captured: dict[str, object] = {}
+
+    stage = types.SimpleNamespace(stage="transformation", metrics={"concepts": 1.0}, warnings=())
+    result = types.SimpleNamespace(success=True, stages=(stage,), errors=(), warnings=())
+
+    def fake_run_update(options):
+        captured["options"] = options
+        return result
+
+    monkeypatch.setattr("src.cli.commands.knowledge_base.run_update_workflow", fake_run_update)
+
+    kb_id = "concepts/statecraft/virtue"
+    exit_code = run_main([
+        "kb",
+        "update",
+        "--kb-id",
+        kb_id,
+        "--source",
+        str(source_dir),
+        "--kb-root",
+        str(kb_root),
+    ])
+
+    assert exit_code == 0
+    options = captured["options"]
+    assert getattr(options, "kb_id") == kb_id
+    assert getattr(options, "reextract") is True
+    assert getattr(options, "rebuild_links") is False
+
+    output = capsys.readouterr().out
+    assert f"{kb_id}: SUCCESS" in output
+    assert "transformation: concepts=1.0" in output
+
+
+def test_main_kb_improve_invokes_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    kb_root = tmp_path / "kb"
+    kb_root.mkdir()
+
+    captured: dict[str, object] = {}
+
+    result = types.SimpleNamespace(
+        success=True,
+        gaps=(),
+        fixes_applied=("backlinks:1",),
+        suggestions={"concepts/statecraft/virtue": ("add descriptive tags",)},
+        metrics={"gaps_total": 0.0},
+        report_path=tmp_path / "report.json",
+    )
+
+    def fake_run_improve(options):
+        captured["options"] = options
+        return result
+
+    monkeypatch.setattr("src.cli.commands.knowledge_base.run_improve_workflow", fake_run_improve)
+
+    exit_code = run_main([
+        "kb",
+        "improve",
+        "--kb-root",
+        str(kb_root),
+        "--fix-links",
+    ])
+
+    assert exit_code == 0
+    options = captured["options"]
+    assert getattr(options, "kb_root") == kb_root
+    assert getattr(options, "fix_links") is True
+
+    output = capsys.readouterr().out
+    assert "IMPROVEMENT SUCCESS" in output
+    assert "Fixes applied" in output
+
+
+def test_main_kb_export_graph_invokes_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    kb_root = tmp_path / "kb"
+    kb_root.mkdir()
+    output_path = tmp_path / "graph.json"
+
+    captured: dict[str, object] = {}
+    result = types.SimpleNamespace(
+        format="json",
+        nodes=2,
+        edges=1,
+        output_path=output_path,
+        success=True,
+    )
+
+    def fake_run_export(options):
+        captured["options"] = options
+        return result
+
+    monkeypatch.setattr("src.cli.commands.knowledge_base.run_export_graph_workflow", fake_run_export)
+
+    exit_code = run_main([
+        "kb",
+        "export-graph",
+        "--kb-root",
+        str(kb_root),
+        "--format",
+        "json",
+        "--output",
+        str(output_path),
+    ])
+
+    assert exit_code == 0
+    options = captured["options"]
+    assert getattr(options, "kb_root") == kb_root
+    assert getattr(options, "format") == "json"
+    assert getattr(options, "output_path") == output_path
+
+    output = capsys.readouterr().out
+    assert "GRAPH EXPORT SUCCESS" in output
+    assert str(output_path) in output

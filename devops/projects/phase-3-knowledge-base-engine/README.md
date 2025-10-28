@@ -1,6 +1,6 @@
 # Phase 3: Knowledge Base Engine
 
-**Status:** Planned  
+**Status:** Completed  
 **Dependencies:** Phase 1 (Extraction Tooling), Phase 2 (Information Architecture)  
 **Estimated Effort:** 4-5 weeks
 
@@ -391,11 +391,39 @@ tests/kb_engine/
 
 ### Documentation
 
-- **Pipeline Architecture** - How components interact
-- **Workflow Guide** - Step-by-step for each workflow
-- **Configuration Reference** - All options explained
-- **Quality Metrics** - How scores are calculated
-- **Troubleshooting** - Common issues and solutions
+#### Pipeline Architecture
+- End-to-end pipeline consists of `SourceAnalysisStage`, `ExtractionStage`, `TransformationStage`, `OrganizationStage`, optional `ConditionalLinkingStage`, and optional `QualityStage` assembled by `build_process_pipeline`.
+- Each stage records metrics and warnings, persisted to the final `KBProcessingResult`/`KBUpdateResult`, enabling benchmarking, quality reporting, and CLI summaries.
+- `ProcessingContext` captures shared inputs (source path, kb root, mission config, extractor overrides, validation flag, extra metadata) so stages can communicate without tight coupling.
+
+#### Workflow Guide
+- `python -m main kb process` — orchestrates full ingest, writing new Markdown documents, link graphs, and optional quality metrics. Supports `--extractors`, `--validate`, and `--metrics-output` overrides.
+- `python -m main kb update` — refreshes an existing `kb_id`, re-running extraction selectively and optionally rebuilding backlinks (`--rebuild-links`). Emits targeted metrics and validates only affected artifacts.
+- `python -m main kb improve` — audits an existing knowledge base, optionally fixes backlinks, suggests tag/link remediation, and writes a JSON summary via `--report`.
+- `python -m main kb export-graph` — generates ConceptGraph manifests in `json`, `graphml`, `dot`, or `csv`, allowing downstream visualization and analytics.
+- `python -m main kb benchmark` — runs repeated end-to-end pipeline executions, capturing per-stage timing, warnings, and errors; artifacts can be retained via `--retain-artifacts`.
+- `python -m main kb quality-report` — scans all Markdown documents and outputs aggregated completeness/findability metrics plus gap listings to a JSON report.
+
+#### Configuration Reference
+- **Extraction (`pipeline.extraction`)**: enable/disable tools, control parallelism, caching, and TTL; runtime selects available extractors when not explicitly provided.
+- **Transformation (`pipeline.transformation`)**: frequency/confidence thresholds, template directories, mission-aware defaults (audience, tags, depth) applied within `TransformContext`.
+- **Organization (`pipeline.organization`)**: slug rules, collision strategy (`backup`, `replace`, `error`), and index generation mode influencing `KBOrganizer` behaviour.
+- **Linking (`pipeline.linking`)**: toggles graph building/backlink generation and similarity thresholds used by `LinkBuilder`.
+- **Quality (`pipeline.quality`)**: baseline completeness/findability floors, automatic fixes, and validation-on-creation flag controlling if `QualityStage` is appended.
+- **Monitoring (`monitoring`)**: console verbosity plus `metrics_output` path for persisted JSON summaries.
+
+#### Quality Metrics
+- **Completeness**: derived from metadata completeness score plus bonuses for body length, aliases, and citation density (`QualityAnalyzer.calculate_completeness`).
+- **Findability**: baseline IA score with additive factors for tags, related concepts, backlinks, aliases, and navigation depth (`calculate_findability`).
+- **Gap Detection**: `identify_gaps` flags missing sources/tags, insufficient body length, low completeness/findability, and missing backlinks, returning `QualityGap` records consumed by improve/quality-report workflows.
+- **Benchmark Metrics**: throughput summaries include total/mean/median stage durations plus per-stage document counts for regression tracking.
+
+#### Troubleshooting
+- *Missing source directory*: the engine now surfaces `FileNotFoundError`; verify evidence path before rerunning.
+- *Extractor failures*: review CLI warnings emitted per extractor; adjust enabled tools or inspect underlying extraction logs.
+- *Quality thresholds not met*: tune `pipeline.quality.required_completeness` / `required_findability` or re-run `kb improve` with `--fix-links` and `--suggest-tags`.
+- *Backlink collisions*: when collision strategy is `backup`, older copies are preserved with `.bak` suffix—diff them to inspect unintended overwrites.
+- *Large benchmark artefacts*: use `--scratch-root` and omit `--retain-artifacts` to keep temporary runs ephemeral.
 
 ---
 
