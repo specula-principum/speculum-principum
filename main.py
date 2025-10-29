@@ -15,6 +15,9 @@ from src.cli.commands.extraction import register_commands as register_extraction
 from src.cli.commands.knowledge_base import (
     register_commands as register_kb_commands,
 )
+from src.cli.commands.copilot import (
+    register_commands as register_copilot_commands,
+)
 
 
 def _build_command_parser() -> argparse.ArgumentParser:
@@ -30,6 +33,7 @@ def _build_command_parser() -> argparse.ArgumentParser:
     register_parsing_commands(subparsers)
     register_extraction_commands(subparsers)
     register_kb_commands(subparsers)
+    register_copilot_commands(subparsers)
     return parser
 
 

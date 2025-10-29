@@ -277,6 +277,24 @@ def generate_quality_report(kb_root: Path, issue_number: int) -> Path:
     # Save to reports/
 ```
 
+**`src/integrations/copilot/accuracy.py`**
+```python
+def load_accuracy_scenario(path: Path) -> AccuracyScenario:
+  """Parse golden expectations for a benchmark scenario."""
+
+def collect_kb_signatures(kb_root: Path) -> dict[str, frozenset[str]]:
+  """Gather concept/entity/relationship identifiers for scoring."""
+
+def evaluate_accuracy(scenario: AccuracyScenario, kb_root: Path) -> AccuracyReport:
+  """Compute precision/recall metrics across KB buckets."""
+
+def render_accuracy_report(report: AccuracyReport) -> str:
+  """Emit human-readable metrics (precision, recall, F1)."""
+
+def AccuracyReport.to_dict() -> dict[str, object]:
+  """Serialize metrics for dashboards and workflow automation."""
+```
+
 **`src/integrations/copilot/commands.py`**
 
 ```python
@@ -291,6 +309,10 @@ def register_copilot_commands(subparsers):
     
     # python -m main copilot kb-report --issue 42
     # Generates quality report
+
+    # python -m main copilot verify-accuracy --scenario scenarios/sample.yaml
+    # Scores KB precision/recall for curated fixtures
+    # --json streams metrics; --output reports/accuracy.json writes JSON for dashboards
 ```
 
 #### 3. Model Context Protocol (MCP) Server
@@ -510,6 +532,7 @@ jobs:
 src/integrations/copilot/
 ├── __init__.py
 ├── helpers.py            # Context preparation, validation
+├── accuracy.py           # Precision/recall evaluation helpers
 └── commands.py           # Copilot-specific CLI commands
 
 src/mcp_server/
@@ -522,6 +545,11 @@ src/cli/commands/
 
 tests/integrations/copilot/
 └── [comprehensive tests]
+
+devops/projects/phase-4-agent-integration/scenarios/
+├── sample-governance.yaml      # Example accuracy expectations
+├── entity-quality.yaml         # Ensures critical entity coverage
+└── relationship-integrity.yaml # Guards core relationship triples
 ```
 
 ### Documentation
@@ -530,6 +558,7 @@ tests/integrations/copilot/
 - **Issue Template Reference** - How to create KB tasks
 - **MCP Integration Guide** - Setting up MCP server
 - **Automation Playbook** - Configuring automated workflows
+- **Accuracy Scenarios** - Golden datasets for precision/recall verification
 
 ---
 

@@ -1,0 +1,6 @@
+name: Relationship Integrity Check
+description: "Validate core governance relationship triples remain intact."
+expectations:
+  relationships:
+    - concepts/governance/stellar-governance|related|concepts/governance/interplanetary-law
+    - entities/institutions/terra-council|entity|concepts/governance/stellar-governance
