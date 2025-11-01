@@ -66,3 +66,23 @@ switches to ignore patterns defined in the YAML configuration.
 Each parsing run streams status lines to stdout indicating the parser, output
 artifact path, and warnings. Non-zero exit codes signal at least one failed
 parse.
+
+## Copilot knowledge base tooling
+
+The `copilot` command group streamlines knowledge base workflows for Copilot
+agents:
+
+- `python -m main copilot kb-extract --issue <number> [--repo owner/name --token TOKEN --api-url URL --kb-root PATH]` –
+	fetch issue context and render a focused extraction brief.
+- `python -m main copilot kb-validate [--kb-root PATH --json]` – run structural,
+	metadata, and quality checks; exits non-zero on failure, optionally emitting
+	JSON.
+- `python -m main copilot kb-report --issue <number> [--kb-root PATH --output-dir DIR]` – generate the Markdown quality
+	report used in PR reviews.
+- `python -m main copilot verify-accuracy --scenario FILE [--kb-root PATH --json --output FILE]` – score KB contents against
+	curated gold scenarios, returning precision/recall metrics.
+- `python -m main copilot kb-automation --source PATH [--kb-root PATH --mission FILE --extract EXTRACTORS... --issue <number> --metrics-output FILE --report-dir DIR --skip-pipeline-validation]` – execute the
+	end-to-end pipeline (process → validate → report) mirroring the GitHub
+	workflow.
+- `python -m main copilot mcp-serve [--list-tools]` – start the MCP server so
+	Copilot agents can call extraction, creation, and validation tools directly.

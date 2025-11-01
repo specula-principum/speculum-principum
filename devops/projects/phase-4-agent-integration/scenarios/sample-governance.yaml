@@ -1,9 +1,0 @@
-name: Sample Governance Accuracy
-description: "Baseline accuracy expectations for governance artifacts."
-expectations:
-  concepts:
-    - concepts/governance/stellar-governance
-  entities:
-    - entities/institutions/terra-council
-  relationships:
-    - concepts/governance/stellar-governance|related|concepts/governance/interplanetary-law

@@ -1,8 +1,0 @@
-name: Entity Quality Baseline
-description: "Ensure critical governance entities remain present in the KB."
-expectations:
-  entities:
-    - entities/institutions/terra-council
-    - entities/institutions/stellar-assembly
-  relationships:
-    - entities/institutions/stellar-assembly|topic|concepts/governance/stellar-governance
