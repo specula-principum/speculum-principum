@@ -3,6 +3,10 @@ name: Auto Improve Knowledge Base
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   improve:
     runs-on: ubuntu-latest
