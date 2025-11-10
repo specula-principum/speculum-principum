@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 from urllib import error, request
+from urllib.parse import urlparse
 
 DEFAULT_API_URL = "https://api.github.com"
 API_VERSION = "2022-11-28"
@@ -67,10 +68,16 @@ def _get_repository_from_git() -> str | None:
             return repo_path
         
         # Handle HTTPS URLs: https://github.com/owner/repo.git
-        if "github.com/" in remote_url:
-            repo_path = remote_url.split("github.com/", 1)[1]
-            repo_path = repo_path.removesuffix(".git")
-            return repo_path
+        # Handle HTTPS URLs: https://github.com/owner/repo.git
+        try:
+            parsed = urlparse(remote_url)
+            # Accept only if host is github.com
+            if parsed.hostname and parsed.hostname.lower() == "github.com":
+                repo_path = parsed.path.lstrip("/")
+                repo_path = repo_path.removesuffix(".git")
+                return repo_path
+        except Exception:
+            pass  # Fall through to return None if parsing fails
         
         return None
     except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired):
