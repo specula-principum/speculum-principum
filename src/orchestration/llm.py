@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from src.integrations.copilot import CopilotClient, CopilotClientError
 
@@ -46,6 +46,7 @@ class LLMPlanner(Planner):
         self._tool_registry = tool_registry
         self._max_tokens = max_tokens
         self._temperature = temperature
+        self._conversation_history: List[Dict[str, Any]] = []
 
     def plan_next(self, state: AgentState) -> Thought:
         """Use LLM to determine the next action based on mission state.
@@ -59,7 +60,13 @@ class LLMPlanner(Planner):
         Raises:
             LLMPlannerError: If LLM call fails or response is invalid.
         """
+        if not state.steps:
+            # New mission run detected, reset conversation memory
+            self._conversation_history = []
+
         system_prompt = self._build_system_prompt(state)
+        user_prompt = self._build_user_prompt(state)
+        user_message: Dict[str, Any] = {"role": "user", "content": user_prompt}
 
         tools = self._tool_registry.get_openai_tool_schemas()
         if state.mission.allowed_tools is not None:
@@ -70,7 +77,7 @@ class LLMPlanner(Planner):
                 if tool["function"]["name"] in allowed
             ]
 
-        messages = self._build_messages(system_prompt, state)
+        messages = self._build_messages(system_prompt, state, user_message)
 
         try:
             response = self._copilot.chat_completion(
@@ -83,6 +90,14 @@ class LLMPlanner(Planner):
             raise LLMPlannerError(f"LLM call failed: {exc}") from exc
 
         thought = self._parse_response(response, state)
+
+        assistant_message_dict = self._message_to_dict(response.choices[0].message)
+        # Persist the conversational context so future calls can extend it if needed
+        self._conversation_history.append(dict(user_message))
+        self._conversation_history.append(assistant_message_dict)
+        # Keep a rolling window to avoid unbounded growth
+        if len(self._conversation_history) > 40:
+            self._conversation_history = self._conversation_history[-40:]
 
         return thought
 
@@ -198,75 +213,78 @@ class LLMPlanner(Planner):
 
         return "\n".join(prompt_parts)
 
-    def _build_messages(self, system_prompt: str, state: AgentState) -> list[dict]:
+    def _build_messages(
+        self,
+        system_prompt: str,
+        state: AgentState,
+        user_message: Dict[str, Any],
+    ) -> list[Dict[str, Any]]:
         """Build message history in OpenAI format from state.
 
         Args:
             system_prompt: System-level instructions.
             state: Current mission state with execution history.
+            user_message: Prompt delivered for the next action request.
 
         Returns:
             List of messages formatted for OpenAI chat completions API.
         """
-        messages = [{"role": "system", "content": system_prompt}]
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
-        if not state.steps:
-            # First interaction - just provide inputs
+        if state.steps:
             inputs_str = json.dumps(state.context.inputs, indent=2) if state.context.inputs else "{}"
             messages.append({
                 "role": "user",
                 "content": f"Begin mission. Inputs:\n{inputs_str}\n\nWhat's your first action?"
             })
-            return messages
 
-        # Add initial user message
-        inputs_str = json.dumps(state.context.inputs, indent=2) if state.context.inputs else "{}"
-        messages.append({
-            "role": "user",
-            "content": f"Begin mission. Inputs:\n{inputs_str}\n\nWhat's your first action?"
-        })
+            for i, step in enumerate(state.steps, 1):
+                thought = step.thought
+                result = step.result
 
-        # Add each step as assistant tool call + tool result
-        for i, step in enumerate(state.steps, 1):
-            thought = step.thought
-            result = step.result
+                tool_call_id: str | None = None
 
-            if thought.tool_call:
-                # Assistant made a tool call
-                tool_call_id = f"call_{i}"
-                message_dict = {
-                    "role": "assistant",
-                    "tool_calls": [{
-                        "id": tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": thought.tool_call.name,
-                            "arguments": json.dumps(thought.tool_call.arguments),
-                        },
-                    }],
-                }
-                if thought.content:
-                    message_dict["content"] = thought.content
-                messages.append(message_dict)
+                if thought.tool_call:
+                    tool_call_id = f"call_{i}"
+                    assistant_payload: Dict[str, Any] = {
+                        "role": "assistant",
+                        "tool_calls": [{
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": thought.tool_call.name,
+                                "arguments": json.dumps(thought.tool_call.arguments),
+                            },
+                        }],
+                    }
+                    if thought.content:
+                        assistant_payload["content"] = thought.content
+                    messages.append(assistant_payload)
+                else:
+                    content = thought.content or "Continuing mission."
+                    messages.append({"role": "assistant", "content": content})
 
-                # Tool result message
                 if result:
                     if result.success:
-                        tool_output = json.dumps(result.output) if result.output else "Success"
+                        if result.output is not None:
+                            try:
+                                tool_output = json.dumps(result.output, default=str)
+                            except TypeError:
+                                tool_output = str(result.output)
+                        else:
+                            tool_output = "Success"
                     else:
                         tool_output = result.error or "Error executing tool"
 
-                    messages.append({
+                    tool_message: Dict[str, Any] = {
                         "role": "tool",
-                        "tool_call_id": tool_call_id,
                         "content": tool_output,
-                    })
+                    }
+                    if tool_call_id is not None:
+                        tool_message["tool_call_id"] = tool_call_id
+                    messages.append(tool_message)
 
-        # Final user prompt asking for next action
-        messages.append({
-            "role": "user",
-            "content": "What's your next action?"
-        })
+        messages.append(user_message)
 
         return messages
 
@@ -366,3 +384,25 @@ class LLMPlanner(Planner):
             content=content,
             type=ThoughtType.FINISH,
         )
+
+    def _message_to_dict(self, message) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"role": message.role}
+        if message.content:
+            payload["content"] = message.content
+        if message.name:
+            payload["name"] = message.name
+        if message.tool_call_id:
+            payload["tool_call_id"] = message.tool_call_id
+        if message.tool_calls:
+            calls: List[Dict[str, Any]] = []
+            for call in message.tool_calls:
+                calls.append({
+                    "id": call.id,
+                    "type": call.type,
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments,
+                    },
+                })
+            payload["tool_calls"] = calls
+        return payload

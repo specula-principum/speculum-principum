@@ -533,6 +533,8 @@ def _run_agent_demo(args: argparse.Namespace) -> int:
         return 1
     context_inputs["issue_number"] = issue_number
 
+    interactive = bool(getattr(args, "interactive", False))
+
     outcome, summary, recommendation = run_issue_detail_demo(
         issue_number=issue_number,
         repository=repository,
@@ -541,7 +543,7 @@ def _run_agent_demo(args: argparse.Namespace) -> int:
         default_finish=default_finish,
         context_inputs=context_inputs,
         triage_mode=args.triage,
-        interactive=args.interactive,
+        interactive=interactive,
     )
 
     transcript_path: Path | None = None
