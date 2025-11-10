@@ -238,10 +238,18 @@ def _gather_documents(kb_root: Path | None) -> tuple[tuple[KBDocument, ...], tup
     errors: list[str] = []
     for path in sorted(resolved.rglob("*.md")):
         try:
+            relative_path = path.relative_to(resolved)
+        except ValueError:
+            continue
+
+        if relative_path.parts and relative_path.parts[0] == "meta":
+            continue
+
+        try:
             front_matter, body = _read_markdown(path)
             document = _document_from_front_matter(front_matter, body, path, kb_root=resolved)
         except ValueError as exc:
-            errors.append(f"{path.relative_to(resolved)}: {exc}")
+            errors.append(f"{relative_path}: {exc}")
             continue
         documents.append(document)
     return tuple(documents), tuple(errors)
