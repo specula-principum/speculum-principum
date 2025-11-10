@@ -47,7 +47,6 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
-            const core = require('@actions/core');
             const marker = '<!-- kb-quality-check -->';
             const pr = context.payload.pull_request;
             if (!pr) {
