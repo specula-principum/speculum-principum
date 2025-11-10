@@ -4,13 +4,31 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import Sequence
 
-from src.cli.github import (
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+_env_file = Path(__file__).parent / ".env"
+if _env_file.exists():
+    load_dotenv(_env_file)
+
+from src.cli.commands.github import (
     build_default_create_parser,
     register_commands as register_github_commands,
 )
-from src.cli.parsing import register_commands as register_parsing_commands
+from src.cli.commands.parsing import register_commands as register_parsing_commands
+from src.cli.commands.extraction import register_commands as register_extraction_commands
+from src.cli.commands.knowledge_base import (
+    register_commands as register_kb_commands,
+)
+from src.cli.commands.copilot import (
+    register_commands as register_copilot_commands,
+)
+from src.cli.commands.agent import (
+    register_commands as register_agent_commands,
+)
 
 
 def _build_command_parser() -> argparse.ArgumentParser:
@@ -24,6 +42,10 @@ def _build_command_parser() -> argparse.ArgumentParser:
     subparsers.required = True
     register_github_commands(subparsers)
     register_parsing_commands(subparsers)
+    register_extraction_commands(subparsers)
+    register_kb_commands(subparsers)
+    register_copilot_commands(subparsers)
+    register_agent_commands(subparsers)
     return parser
 
 

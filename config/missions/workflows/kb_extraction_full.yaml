@@ -1,0 +1,41 @@
+id: kb_extraction_full
+goal: |
+  Execute the complete knowledge base extraction workflow end-to-end:
+  1. Validate the issue contains required information:
+     - Source path or URL to extract from
+     - Target knowledge base directory
+     - Any specific extraction requirements
+  2. If validation fails, post a comment explaining missing information and stop
+  3. Extract knowledge from the specified source using the parsing tools
+  4. Validate the extracted knowledge base structure
+  5. Generate a quality report on the extraction
+  6. Post the quality report as a comment on the issue
+  7. If extraction succeeded, add "kb-extracted" label
+  8. If extraction failed, add "kb-extraction-failed" label and explain why
+
+constraints:
+  - Do not close the issue (human review required)
+  - Do not modify the original source files
+  - Ensure extracted knowledge follows repository conventions
+  - Post detailed quality metrics in the report
+  - Cite specific validation errors if extraction fails
+
+success_criteria:
+  - Issue requirements were validated
+  - Knowledge extraction was attempted from specified source
+  - KB validation was run on extracted content
+  - Quality report was posted as comment
+  - Appropriate completion label was applied
+  - No unauthorized file modifications occurred
+
+max_steps: 25
+
+allowed_tools:
+  - get_issue_details
+  - extract_kb_knowledge
+  - validate_kb
+  - generate_kb_report
+  - post_comment
+  - add_label
+
+requires_approval: false

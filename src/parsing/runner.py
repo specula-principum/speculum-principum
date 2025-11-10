@@ -125,24 +125,13 @@ def scan_and_parse(
     include_patterns: Sequence[str] | None = None,
     exclude_patterns: Sequence[str] | None = None,
 ) -> list[ParseOutcome]:
-    root_path = Path(root).expanduser().resolve()
-    if not root_path.exists():
-        raise FileNotFoundError(f"Scan root '{root_path}' does not exist")
-
-    normalized_suffixes = utils.normalize_suffixes(
-        suffixes,
-        default=_DEFAULT_SCAN_SUFFIXES,
-        sort=True,
-        preserve_order=False,
-    )
-
-    candidates = _collect_candidates(
-        root_path,
-        normalized_suffixes,
-        recursive,
-        storage.root,
-        include_patterns,
-        exclude_patterns,
+    candidates = collect_parse_candidates(
+        root,
+        suffixes=suffixes,
+        recursive=recursive,
+        storage_root=storage.root,
+        include_patterns=include_patterns,
+        exclude_patterns=exclude_patterns,
     )
     if limit is not None and limit >= 0:
         candidates = candidates[:limit]
@@ -157,6 +146,38 @@ def scan_and_parse(
         )
         results.append(outcome)
     return results
+
+
+def collect_parse_candidates(
+    root: str | Path,
+    *,
+    suffixes: Sequence[str] | None = None,
+    recursive: bool = True,
+    storage_root: Path | None = None,
+    include_patterns: Sequence[str] | None = None,
+    exclude_patterns: Sequence[str] | None = None,
+) -> list[Path]:
+    """Return candidate paths that match the parsing filters without executing parsers."""
+
+    root_path = Path(root).expanduser().resolve()
+    if not root_path.exists():
+        raise FileNotFoundError(f"Scan root '{root_path}' does not exist")
+
+    normalized_suffixes = utils.normalize_suffixes(
+        suffixes,
+        default=_DEFAULT_SCAN_SUFFIXES,
+        sort=True,
+        preserve_order=False,
+    )
+
+    return _collect_candidates(
+        root_path,
+        normalized_suffixes,
+        recursive,
+        storage_root,
+        include_patterns,
+        exclude_patterns,
+    )
 
 
 def _outcome_from_manifest(
@@ -251,4 +272,5 @@ __all__ = [
     "ParseOutcome",
     "parse_single_target",
     "scan_and_parse",
+    "collect_parse_candidates",
 ]

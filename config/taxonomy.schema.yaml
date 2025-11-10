@@ -1,0 +1,29 @@
+# Taxonomy schema contract for Speculum Principum IA tooling
+version: 1
+metadata:
+  methodology: information-architecture
+  description: >-
+    Controlled vocabulary schema describing required sections and identifier
+    formatting rules for knowledge base taxonomies.
+required_sections:
+  - version
+  - methodology
+  - topics
+  - entity_types
+  - relationship_types
+  - vocabulary
+rules:
+  identifiers:
+    format: kebab-case
+    allowed_characters: [a-z, 0-9, '-']
+  relationships:
+    inverse_required: true
+    reciprocal_enforcement: symmetric
+  topics:
+    allow_multiple_roots: true
+    require_unique_children: true
+    detect_cycles: true
+  vocabulary:
+    require_preferred_term: true
+notes:
+  - "This schema is descriptive; enforcement occurs in src/knowledge_base/taxonomy.py."

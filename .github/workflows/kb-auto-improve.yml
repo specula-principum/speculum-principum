@@ -1,0 +1,141 @@
+name: Auto Improve Knowledge Base
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  improve:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Analyze quality gaps
+        id: analyze
+        run: |
+          python -m main kb improve \
+            --kb-root knowledge-base \
+            --min-completeness 0.8 \
+            --min-findability 0.8 \
+            --suggest-tags \
+            --report reports/kb-improvement.json
+
+      - name: Upload improvement report
+        if: always() && hashFiles('reports/kb-improvement.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: kb-improvement-report
+          path: reports/kb-improvement.json
+
+      - name: Create quality improvement issues
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const core = require('@actions/core');
+            const marker = '<!-- kb-auto-improve -->';
+            const maxIssues = 10;
+            const completenessTarget = 0.8;
+            const findabilityTarget = 0.8;
+            const reportPath = path.join(process.cwd(), 'reports', 'kb-improvement.json');
+            if (!fs.existsSync(reportPath)) {
+              core.info('Improvement report not found; skipping issue creation.');
+              return;
+            }
+            let payload;
+            try {
+              payload = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+            } catch (error) {
+              core.warning(`Unable to parse improvement report: ${error}`);
+              return;
+            }
+            const gaps = Array.isArray(payload.gaps) ? payload.gaps : [];
+            if (!gaps.length) {
+              core.info('No quality gaps detected.');
+              return;
+            }
+            const suggestions = payload.suggestions || {};
+            const existingIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ready-for-copilot,kb-quality',
+              per_page: 100,
+            });
+            const existingTitles = new Set(existingIssues.map(issue => issue.title));
+            let created = 0;
+            for (const gap of gaps) {
+              if (created >= maxIssues) {
+                core.info('Issue creation limit reached; remaining gaps will be processed in a future run.');
+                break;
+              }
+              if (!gap || !gap.kb_id) {
+                continue;
+              }
+              if (gap.severity && !['error', 'warning'].includes(gap.severity)) {
+                continue;
+              }
+              const title = `Improve: ${gap.kb_id} (${gap.issue})`;
+              if (existingTitles.has(title)) {
+                continue;
+              }
+              const detailLines = gap.details && typeof gap.details === 'object'
+                ? Object.entries(gap.details).map(([key, value]) => `- ${key}: ${value}`)
+                : [];
+              const suggestedActions = Array.isArray(suggestions[gap.kb_id]) ? suggestions[gap.kb_id] : [];
+              const actionChecklist = suggestedActions.length
+                ? suggestedActions.map(item => `- [ ] ${item}`).join('\n')
+                : '- [ ] Review this section and address the noted gap.';
+              const bodySections = [
+                marker,
+                '## Quality Gap Summary',
+                `- **KB ID:** \`${gap.kb_id}\``,
+                `- **Issue:** \`${gap.issue}\``,
+                `- **Severity:** ${gap.severity ?? 'unknown'}`,
+              ];
+              if (detailLines.length) {
+                bodySections.push('\n### Details');
+                detailLines.forEach(line => bodySections.push(line));
+              }
+              bodySections.push('\n### Suggested Actions');
+              bodySections.push(actionChecklist);
+              bodySections.push(
+                '\n### Recommended Workflow\n' +
+                '1. Review `.github/templates/kb-improve-quality.md` for acceptance criteria.\n' +
+                '2. Run the quality helpers locally:\n' +
+                '   ```bash\n' +
+                '   python -m main copilot kb-validate --kb-root knowledge-base\n' +
+                `   python -m main kb improve --kb-root knowledge-base --min-completeness ${completenessTarget} --min-findability ${findabilityTarget} --suggest-tags\n` +
+                '   ```'
+              );
+              bodySections.push('\n### Notes');
+              bodySections.push('This issue was generated automatically by the kb-auto-improve workflow.');
+              const body = bodySections.join('\n');
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['ready-for-copilot', 'kb-quality', 'automated'],
+              });
+              existingTitles.add(title);
+              created += 1;
+            }
+            core.info(`Created ${created} improvement issues.`);

@@ -1,0 +1,54 @@
+{
+  "timestamp": "2025-11-02T10:15:30+00:00",
+  "mission": {
+    "status": "failed",
+    "summary": "Failed to retrieve issue details."
+  },
+  "issue": {
+    "number": 7,
+    "repository": "octo/repo"
+  },
+  "plan": {
+    "path": "devops/projects/examples/invalid-plan.yaml",
+    "default_finish": "Plan completed.",
+    "steps_configured": 1
+  },
+  "context": {
+    "issue_number": 7,
+    "repository": "octo/repo",
+    "token": "***",
+    "triage_mode": false
+  },
+  "steps": [
+    {
+      "index": 1,
+      "thought": "Invalid call",
+      "type": "action",
+      "tool": "get_issue_details",
+      "arguments": {
+        "issue_number": "oops",
+        "repository": "octo/repo",
+        "token": "***"
+      },
+      "result": {
+        "success": false,
+        "error": "Argument validation failed for 'get_issue_details': 'oops' is not of type 'integer'",
+        "output": null
+      }
+    }
+  ],
+  "errors": [
+    {
+      "index": 1,
+      "tool": "get_issue_details",
+      "message": "Argument validation failed for 'get_issue_details': 'oops' is not of type 'integer'"
+    }
+  ],
+  "validation_errors": [
+    {
+      "index": 1,
+      "tool": "get_issue_details",
+      "message": "Argument validation failed for 'get_issue_details': 'oops' is not of type 'integer'"
+    }
+  ]
+}
