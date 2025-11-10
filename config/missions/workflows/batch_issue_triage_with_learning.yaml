@@ -1,0 +1,70 @@
+id: batch_issue_triage_with_learning
+goal: |
+  Triage multiple issues in batch mode using pattern learning:
+  
+  Phase 1: Issue Collection and Prioritization (4-5 steps)
+  - Search for all unlabeled or needs-triage issues
+  - Review memory for similar past triages
+  - Identify patterns from successful past triages
+  - Prioritize issues based on urgency indicators
+  - Generate triage plan with confidence scores
+  
+  Phase 2: Systematic Triage (8-12 steps per batch)
+  For each issue in priority order:
+  - Fetch issue details
+  - Analyze content and classify type
+  - Compare with similar past issues from memory
+  - Determine appropriate labels
+  - Check if template requirements are met
+  - Decide on assignment or next action
+  - Apply labels and post triage comment
+  - Record outcome for learning
+  
+  Phase 3: Pattern Consolidation (3-4 steps)
+  - Analyze batch triage outcomes
+  - Extract new patterns from successful triages
+  - Identify any recurring uncertainties
+  - Update confidence in classification rules
+  
+  Phase 4: Reporting and Escalation (3-4 steps)
+  - Generate batch triage summary report
+  - Identify issues requiring human judgment
+  - Post report to designated tracking issue
+  - Request guidance on uncertain classifications
+  
+  The agent should adapt its approach based on past triage patterns,
+  escalate when confidence is low, and learn from each batch to
+  improve future performance.
+
+constraints:
+  - Process at least 5 issues per batch (up to 10)
+  - Must learn from memory before starting each issue
+  - Cannot make destructive actions (close, lock) without approval
+  - Must request guidance if confidence < 0.6 on classification
+  - Should record all outcomes for future learning
+  - Must provide reasoning for each classification
+  - Post progress after every 5 issues
+
+success_criteria:
+  - At least 5 issues successfully triaged
+  - Each issue has appropriate labels applied
+  - Memory recorded outcomes for future learning
+  - Patterns extracted show improvement over batch
+  - Batch summary report posted with metrics
+  - High-confidence issues processed without escalation
+  - Low-confidence issues escalated appropriately
+  - Success rate >= 90% on clear-cut classifications
+
+max_steps: 50
+
+allowed_tools:
+  - search_issues_by_label
+  - search_issues_assigned
+  - get_issue_details
+  - add_label
+  - remove_label
+  - post_comment
+  - assign_issue
+  - request_human_guidance
+
+requires_approval: false

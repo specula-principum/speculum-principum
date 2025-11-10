@@ -1,0 +1,38 @@
+# Mission specification for producing knowledge-base source previews.
+
+id: kb_source_preview
+version: 0
+metadata:
+  owner: copilot-orchestrator
+  created_at: 2025-11-02
+  summary_tooling: parsing-preview-demo
+
+goal: |
+  Identify candidate source documents for knowledge base onboarding, generate a
+  sanitized Markdown preview, and outline how the preview populates the KB
+  source template for operator review.
+
+constraints:
+  - Operate in read-only mode; never persist artifacts outside mission storage.
+  - Limit each run to a single preview unless the mission explicitly requests more.
+  - When no documents match the filters, surface the filters you applied and recommend next steps.
+
+success_criteria:
+  - Candidate list retrieved or justified as empty within the transcript.
+  - Preview content captured in the mission summary with truncation status noted.
+  - Summary links preview insights to specific sections of knowledge-base/meta/templates/source.md.
+
+max_steps: 6
+allowed_tools:
+  - list_parse_candidates
+  - preview_parse_document
+requires_approval: false
+
+observability:
+  transcript_required: true
+  capture_summary: true
+
+notes:
+  - Expect context inputs: parse_root (required), source_path (optional), expected_parser (optional), max_preview_chars (optional).
+  - Deterministic planners should stash preview payloads in context for downstream evaluators.
+  - Operators can map preview excerpts to Source Summary, tags, and dublin_core fields immediately after mission completion.

@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import Sequence
+
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+_env_file = Path(__file__).parent / ".env"
+if _env_file.exists():
+    load_dotenv(_env_file)
 
 from src.cli.commands.github import (
     build_default_create_parser,
@@ -17,6 +25,9 @@ from src.cli.commands.knowledge_base import (
 )
 from src.cli.commands.copilot import (
     register_commands as register_copilot_commands,
+)
+from src.cli.commands.agent import (
+    register_commands as register_agent_commands,
 )
 
 
@@ -34,6 +45,7 @@ def _build_command_parser() -> argparse.ArgumentParser:
     register_extraction_commands(subparsers)
     register_kb_commands(subparsers)
     register_copilot_commands(subparsers)
+    register_agent_commands(subparsers)
     return parser
 
 

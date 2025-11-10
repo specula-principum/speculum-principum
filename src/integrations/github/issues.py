@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -47,17 +48,54 @@ def normalize_repository(repository: str | None) -> tuple[str, str]:
     return owner, name
 
 
+def _get_repository_from_git() -> str | None:
+    """Extract repository owner/name from git remote URL."""
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+        remote_url = result.stdout.strip()
+        
+        # Handle SSH URLs: git@github.com:owner/repo.git
+        if remote_url.startswith("git@github.com:"):
+            repo_path = remote_url.replace("git@github.com:", "")
+            repo_path = repo_path.removesuffix(".git")
+            return repo_path
+        
+        # Handle HTTPS URLs: https://github.com/owner/repo.git
+        if "github.com/" in remote_url:
+            repo_path = remote_url.split("github.com/", 1)[1]
+            repo_path = repo_path.removesuffix(".git")
+            return repo_path
+        
+        return None
+    except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
 def resolve_repository(explicit_repo: str | None) -> str:
     """Return the repository name, preferring explicit input over the environment."""
 
     if explicit_repo:
         return explicit_repo
+    
     repo = os.environ.get("GITHUB_REPOSITORY")
-    if not repo:
-        raise GitHubIssueError(
-            "Repository not provided; set --repo or the GITHUB_REPOSITORY environment variable."
-        )
-    return repo
+    if repo:
+        return repo
+    
+    # Fall back to detecting from git configuration
+    repo = _get_repository_from_git()
+    if repo:
+        return repo
+    
+    raise GitHubIssueError(
+        "Repository not provided; set --repo, the GITHUB_REPOSITORY environment variable, "
+        "or ensure you're in a git repository with a GitHub remote."
+    )
 
 
 def resolve_token(explicit_token: str | None) -> str:
@@ -133,3 +171,291 @@ def create_issue(
 
     data = json.loads(response_bytes.decode("utf-8"))
     return IssueOutcome.from_api_payload(data)
+
+
+def fetch_issue(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    api_url: str = DEFAULT_API_URL,
+) -> Mapping[str, object]:
+    """Return the raw API payload for a GitHub issue."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+
+    owner, name = normalize_repository(repository)
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}"
+    req = request.Request(url, method="GET")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+
+    try:
+        with request.urlopen(req) as response:
+            response_bytes = response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+    payload = json.loads(response_bytes.decode("utf-8"))
+    if not isinstance(payload, Mapping):  # pragma: no cover - defensive
+        raise GitHubIssueError("Unexpected GitHub issue payload type.")
+    return payload
+
+
+def add_labels(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    labels: Sequence[str],
+    api_url: str = DEFAULT_API_URL,
+) -> None:
+    """Add one or more labels to a GitHub issue."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+    if not labels:
+        raise GitHubIssueError("At least one label must be provided.")
+
+    owner, name = normalize_repository(repository)
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}/labels"
+    payload = {"labels": list(labels)}
+    raw_body = json.dumps(payload).encode("utf-8")
+    
+    req = request.Request(url, data=raw_body, method="POST")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+    req.add_header("Content-Type", "application/json; charset=utf-8")
+
+    try:
+        with request.urlopen(req) as response:
+            response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+
+def remove_label(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    label: str,
+    api_url: str = DEFAULT_API_URL,
+) -> None:
+    """Remove a label from a GitHub issue."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+    if not label:
+        raise GitHubIssueError("Label name must be provided.")
+
+    owner, name = normalize_repository(repository)
+    # URL encode the label name
+    from urllib.parse import quote
+    encoded_label = quote(label, safe='')
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}/labels/{encoded_label}"
+    
+    req = request.Request(url, method="DELETE")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+
+    try:
+        with request.urlopen(req) as response:
+            response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+
+def post_comment(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    body: str,
+    api_url: str = DEFAULT_API_URL,
+) -> str:
+    """Post a comment on a GitHub issue and return the comment URL."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+    if not body:
+        raise GitHubIssueError("Comment body must be provided.")
+
+    owner, name = normalize_repository(repository)
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}/comments"
+    payload = {"body": body}
+    raw_body = json.dumps(payload).encode("utf-8")
+    
+    req = request.Request(url, data=raw_body, method="POST")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+    req.add_header("Content-Type", "application/json; charset=utf-8")
+
+    try:
+        with request.urlopen(req) as response:
+            response_bytes = response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+    data = json.loads(response_bytes.decode("utf-8"))
+    if not isinstance(data, Mapping):  # pragma: no cover - defensive
+        raise GitHubIssueError("Unexpected comment response payload type.")
+    
+    return str(data.get("html_url", data.get("url", "")))
+
+
+def assign_issue(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    assignees: Sequence[str],
+    api_url: str = DEFAULT_API_URL,
+) -> None:
+    """Assign one or more users to a GitHub issue."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+    if not assignees:
+        raise GitHubIssueError("At least one assignee must be provided.")
+
+    owner, name = normalize_repository(repository)
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}/assignees"
+    payload = {"assignees": list(assignees)}
+    raw_body = json.dumps(payload).encode("utf-8")
+    
+    req = request.Request(url, data=raw_body, method="POST")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+    req.add_header("Content-Type", "application/json; charset=utf-8")
+
+    try:
+        with request.urlopen(req) as response:
+            response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+
+def update_issue(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    title: str | None = None,
+    body: str | None = None,
+    state: str | None = None,
+    api_url: str = DEFAULT_API_URL,
+) -> None:
+    """Update a GitHub issue's title, body, or state."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+    if not any([title, body, state]):
+        raise GitHubIssueError("At least one field (title, body, state) must be provided.")
+    if state and state not in ("open", "closed"):
+        raise GitHubIssueError("State must be 'open' or 'closed'.")
+
+    owner, name = normalize_repository(repository)
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}"
+    payload: dict[str, object] = {}
+    if title is not None:
+        payload["title"] = title
+    if body is not None:
+        payload["body"] = body
+    if state is not None:
+        payload["state"] = state
+    
+    raw_body = json.dumps(payload).encode("utf-8")
+    req = request.Request(url, data=raw_body, method="PATCH")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+    req.add_header("Content-Type", "application/json; charset=utf-8")
+
+    try:
+        with request.urlopen(req) as response:
+            response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+
+def lock_issue(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    lock_reason: str | None = None,
+    api_url: str = DEFAULT_API_URL,
+) -> None:
+    """Lock a GitHub issue to prevent new comments."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+    
+    valid_reasons = {"off-topic", "too heated", "resolved", "spam"}
+    if lock_reason and lock_reason not in valid_reasons:
+        raise GitHubIssueError(
+            f"Lock reason must be one of: {', '.join(valid_reasons)}"
+        )
+
+    owner, name = normalize_repository(repository)
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}/lock"
+    
+    payload: dict[str, object] = {}
+    if lock_reason:
+        payload["lock_reason"] = lock_reason
+    
+    raw_body = json.dumps(payload).encode("utf-8") if payload else b""
+    req = request.Request(url, data=raw_body, method="PUT")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+    if payload:
+        req.add_header("Content-Type", "application/json; charset=utf-8")
+
+    try:
+        with request.urlopen(req) as response:
+            response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc

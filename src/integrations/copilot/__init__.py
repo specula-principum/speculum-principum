@@ -11,6 +11,16 @@ from .accuracy import (
     load_accuracy_scenario,
     render_accuracy_report,
 )
+from .client import (
+    ChatCompletionResponse,
+    ChatMessage,
+    Choice,
+    CopilotClient,
+    CopilotClientError,
+    FunctionCall,
+    ToolCall,
+    Usage,
+)
 from .helpers import (
     ValidationReport,
     gather_kb_documents,
@@ -23,6 +33,14 @@ __all__ = [
     "AccuracyMetrics",
     "AccuracyReport",
     "AccuracyScenario",
+    "ChatCompletionResponse",
+    "ChatMessage",
+    "Choice",
+    "CopilotClient",
+    "CopilotClientError",
+    "FunctionCall",
+    "ToolCall",
+    "Usage",
     "collect_kb_signatures",
     "evaluate_accuracy",
     "load_accuracy_scenario",

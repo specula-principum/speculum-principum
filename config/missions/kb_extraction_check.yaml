@@ -1,0 +1,41 @@
+# Mission specification for validating KB extraction issue templates.
+
+id: kb_extraction_check
+version: 0
+metadata:
+  owner: copilot-orchestrator
+  created_at: 2025-11-03
+  summary_tooling: extraction-check-demo
+
+goal: |
+  Validate that a KB extraction issue contains all required template fields
+  before automated processing begins. The agent should verify the presence of
+  source path, source type, extraction requirements, output requirements, and
+  success criteria.
+
+constraints:
+  - Perform only read-only operations.
+  - Do not modify the issue during validation.
+  - Cite specific missing fields if template is incomplete.
+
+success_criteria:
+  - Issue metadata has been retrieved successfully.
+  - Template validation has been performed.
+  - A validation report with recommended actions has been produced.
+
+max_steps: 5
+allowed_tools:
+  - get_issue_details
+  - get_ready_for_copilot_issue
+requires_approval: false
+
+observability:
+  transcript_required: true
+  capture_summary: true
+
+notes:
+  - The deterministic planner should fetch the issue and run template validation.
+  - "Validation checks for 5 required fields: source_path, source_type, extraction_requirements, output_requirements, success_criteria."
+  - If 3+ fields are missing, recommend using the kb-extract-source.md template.
+  - If 1-2 fields are missing, recommend requesting clarification.
+  - If all fields present, recommend proceeding with extraction workflow.

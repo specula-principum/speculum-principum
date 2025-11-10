@@ -1,8 +1,6 @@
 name: Auto Improve Knowledge Base
 
 on:
-  schedule:
-    - cron: '0 2 * * 0'
   workflow_dispatch:
 
 jobs:

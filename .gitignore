@@ -123,3 +123,9 @@ dmypy.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Project-specific
+transcript_*.json
+reports/transcripts/tmp/
+!reports/transcripts/examples/
+agent_metrics.db

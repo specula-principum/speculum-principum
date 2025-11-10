@@ -1,0 +1,180 @@
+name: Agent Continuous Operation
+
+on:
+  workflow_dispatch:
+    inputs:
+      mission:
+        description: 'Specific mission to run (optional)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Run in dry-run mode'
+        required: false
+        type: boolean
+        default: true
+      run_batch_triage:
+        description: 'Execute the batch triage mission'
+        required: false
+        type: boolean
+        default: false
+      run_kb_check:
+        description: 'Execute the KB extraction check mission'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  agent-batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check agent health
+        id: health
+        run: |
+          # Check if agent is healthy before proceeding
+          if [ -f agent_metrics.db ]; then
+            python -m main agent status --format json > health.json
+            HEALTH_STATUS=$(jq -r '.status' health.json)
+            echo "status=$HEALTH_STATUS" >> $GITHUB_OUTPUT
+            
+            if [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "::warning::Agent health is UNHEALTHY - proceeding with caution"
+            fi
+          else
+            echo "status=unknown" >> $GITHUB_OUTPUT
+            echo "::notice::No metrics database found - first run"
+          fi
+
+      - name: List available missions
+        run: |
+          python -m main agent list-missions --format json > missions.json
+          echo "Available missions:"
+          cat missions.json | jq -r '.[] | "  - \(.id): \(.goal[:60])"'
+
+      - name: Execute specific mission (manual trigger)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mission != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          DRY_RUN=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_RUN="--dry-run"
+          fi
+          
+          python -m main agent run \
+            --mission "${{ github.event.inputs.mission }}" \
+            --output "transcript_${{ github.run_id }}.json" \
+            $DRY_RUN
+
+      - name: Execute batch triage mission
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_batch_triage == 'true' && steps.health.outputs.status != 'unhealthy'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # Run triage mission on unlabeled issues
+          if [ -f config/missions/workflows/batch_issue_triage.yaml ]; then
+            python -m main agent run \
+              --mission config/missions/workflows/batch_issue_triage.yaml \
+              --output "transcript_triage_${{ github.run_id }}.json" \
+              --dry-run
+          else
+            echo "::notice::Batch triage mission not found, skipping"
+          fi
+
+      - name: Execute KB extraction check
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_kb_check == 'true' && steps.health.outputs.status != 'unhealthy'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # Check KB extraction requests
+          if [ -f config/missions/kb_extraction_check.yaml ]; then
+            python -m main agent run \
+              --mission config/missions/kb_extraction_check.yaml \
+              --output "transcript_kb_check_${{ github.run_id }}.json" \
+              --dry-run
+          else
+            echo "::notice::KB extraction check mission not found, skipping"
+          fi
+
+      - name: Upload execution transcripts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-transcripts-${{ github.run_id }}
+          path: transcript_*.json
+          if-no-files-found: ignore
+
+      - name: Upload metrics database
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-metrics-${{ github.run_id }}
+          path: agent_metrics.db
+          if-no-files-found: ignore
+
+      - name: Generate performance report
+        if: always()
+        run: |
+          if [ -f agent_metrics.db ]; then
+            python -m main agent status --lookback-hours 168 --format json > weekly_report.json
+            
+            echo "## Agent Performance Report" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Period:** Last 7 days" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            TOTAL=$(jq -r '.total_missions' weekly_report.json)
+            SUCCESS=$(jq -r '.success_count' weekly_report.json)
+            FAILED=$(jq -r '.failure_count' weekly_report.json)
+            AVG_DURATION=$(jq -r '.avg_duration_seconds' weekly_report.json)
+            
+            echo "- **Total Missions:** $TOTAL" >> $GITHUB_STEP_SUMMARY
+            echo "- **Successful:** $SUCCESS" >> $GITHUB_STEP_SUMMARY
+            echo "- **Failed:** $FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "- **Average Duration:** ${AVG_DURATION}s" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Check for recommendations
+            RECS=$(jq -r '.recommendations[]' weekly_report.json 2>/dev/null || echo "")
+            if [ -n "$RECS" ]; then
+              echo "### Recommendations" >> $GITHUB_STEP_SUMMARY
+              jq -r '.recommendations[] | "- \(.)"' weekly_report.json >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+      - name: Check for failures and alert
+        if: failure()
+        run: |
+          echo "::error::Agent execution failed - check logs and health status"
+          
+          # Post issue if multiple consecutive failures (optional)
+          # This would require checking previous runs and creating an issue
+
+      - name: Notify on unhealthy status
+        if: steps.health.outputs.status == 'unhealthy'
+        run: |
+          echo "::error::Agent health is UNHEALTHY - manual intervention required"
+          # Could post to Slack, create issue, etc.
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
