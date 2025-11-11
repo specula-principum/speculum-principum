@@ -1,4 +1,4 @@
-name: "Step 02 - Validate: KB Template Check"
+name: "Step 04 - Quality: PR Safety Check"
 
 on:
   workflow_dispatch:
@@ -12,16 +12,20 @@ on:
           - dry-run
           - models
           - copilot
+      pr_number:
+        description: "Specific PR number or 'auto'"
+        required: false
+        default: auto
+        type: string
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: read
+  pull-requests: write
 
 jobs:
-  run-kb-check:
+  run-pr-safety:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       GITHUB_REPOSITORY: ${{ github.repository }}
@@ -44,14 +48,14 @@ jobs:
       - name: Prepare transcript directory
         run: mkdir -p reports/transcripts/tmp
 
-      - name: Run KB extraction check mission
+      - name: Run PR safety mission
         run: |
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then
             MODE="models"
           fi
 
-          OUTPUT_BASE="reports/transcripts/tmp/transcript_kb_check"
+          OUTPUT_BASE="reports/transcripts/tmp/transcript_pr_safety"
           OUTPUT_PATH="${OUTPUT_BASE}_${MODE}.json"
 
           DRY_RUN=""
@@ -66,16 +70,22 @@ jobs:
             exit 1
           fi
 
+          PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER="auto"
+          fi
+
           python -m main agent run \
-            --mission config/missions/kb_extraction_check.yaml \
+            --mission config/missions/pr_safety_check.yaml \
             $DRY_RUN \
             $PLANNER \
+            --input "pr_number=${PR_NUMBER}" \
             --output "$OUTPUT_PATH"
 
       - name: Upload transcript
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: step02-kb-check-${{ github.run_id }}
-          path: reports/transcripts/tmp/transcript_kb_check_*.json
+          name: step04-pr-safety-${{ github.run_id }}
+          path: reports/transcripts/tmp/transcript_pr_safety_*.json
           if-no-files-found: ignore

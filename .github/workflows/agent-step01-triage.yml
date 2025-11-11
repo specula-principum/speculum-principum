@@ -1,4 +1,4 @@
-name: "Step 01 - Intake: Triage Issue"
+name: "Step 01 - Intake: Triage & Validate Issue"
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ permissions:
   pull-requests: read
 
 jobs:
-  run-triage:
+  run-intake:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -44,14 +44,14 @@ jobs:
       - name: Prepare transcript directory
         run: mkdir -p reports/transcripts/tmp
 
-      - name: Run triage mission
+      - name: Run combined intake mission
         run: |
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then
             MODE="models"
           fi
 
-          OUTPUT_BASE="reports/transcripts/tmp/transcript_triage"
+          OUTPUT_BASE="reports/transcripts/tmp/transcript_issue_intake"
           OUTPUT_PATH="${OUTPUT_BASE}_${MODE}.json"
 
           DRY_RUN=""
@@ -67,16 +67,17 @@ jobs:
           fi
 
           python -m main agent run \
-            --mission config/missions/triage_new_issue.yaml \
+            --mission config/missions/workflows/issue_triage_complete.yaml \
             $DRY_RUN \
             $PLANNER \
-            --input issue_number=auto \
+            --input "issue_number=auto" \
+            --input "target_label=ready-for-copilot" \
             --output "$OUTPUT_PATH"
 
       - name: Upload transcript
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: step01-triage-${{ github.run_id }}
-          path: reports/transcripts/tmp/transcript_triage_*.json
+          name: step01-intake-${{ github.run_id }}
+          path: reports/transcripts/tmp/transcript_issue_intake_*.json
           if-no-files-found: ignore

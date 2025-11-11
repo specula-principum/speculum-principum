@@ -1,4 +1,4 @@
-name: "Step 05 - Workflow: KB Extraction"
+name: "Step 03 - Workflow: KB Extraction"
 
 on:
   workflow_dispatch:
@@ -87,6 +87,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: step05-kb-extraction-${{ github.run_id }}
+          name: step03-kb-extraction-${{ github.run_id }}
           path: reports/transcripts/tmp/transcript_kb_extraction_workflow_*.json
           if-no-files-found: ignore
