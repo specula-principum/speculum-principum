@@ -1,5 +1,5 @@
 # Knowledge Base Quality Report
-*KB Root:* `/tmp/pytest-of-ubuntu/pytest-390/test_run_end_to_end_automation1/kb`
+*KB Root:* `/tmp/pytest-of-runner/pytest-0/test_run_end_to_end_automation1/kb`
 *Documents Checked:* 1
 *Documents Valid:* 0
 *Average Completeness:* 0.00
