@@ -311,11 +311,14 @@ def assign_issue_to_copilot(
     issue_id = str(issue_data["id"])
 
     suggested = repository_data.get("suggestedActors")
-    nodes = []
+    nodes: Sequence[object] | None = None
     if isinstance(suggested, Mapping):
-        nodes = suggested.get("nodes", [])  # type: ignore[assignment]
+        raw_nodes = suggested.get("nodes", [])  # type: ignore[assignment]
+        if isinstance(raw_nodes, Sequence):
+            nodes = raw_nodes
+
     copilot_id: str | None = None
-    if isinstance(nodes, Sequence):
+    if nodes:
         for node in nodes:
             if not isinstance(node, Mapping):
                 continue
@@ -332,8 +335,8 @@ def assign_issue_to_copilot(
         )
 
     mutation = """
-    mutation($assignableId: ID!, $assigneeIds: [ID!]!) {
-      addAssigneesToAssignable(input: {assignableId: $assignableId, assigneeIds: $assigneeIds}) {
+    mutation($assignableId: ID!, $actorIds: [ID!]!) {
+      replaceActorsForAssignable(input: {assignableId: $assignableId, actorIds: $actorIds}) {
         assignable {
           ... on Issue {
             id
@@ -343,12 +346,20 @@ def assign_issue_to_copilot(
     }
     """
 
-    _graphql_request(
+    mutation_data = _graphql_request(
         token=token,
         api_url=api_url,
         query=mutation,
-        variables={"assignableId": issue_id, "assigneeIds": [copilot_id]},
+        variables={"assignableId": issue_id, "actorIds": [copilot_id]},
     )
+
+    assignment = mutation_data.get("replaceActorsForAssignable")
+    if isinstance(assignment, Mapping):
+        assignable = assignment.get("assignable")
+        if isinstance(assignable, Mapping) and assignable.get("id"):
+            return
+
+    raise GitHubIssueError("Copilot assignment failed to confirm the issue was updated.")
 
 
 def add_labels(
