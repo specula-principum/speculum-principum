@@ -1,4 +1,4 @@
-name: Step 05 - Workflow: KB Extraction
+name: "Step 05 - Workflow: KB Extraction"
 
 on:
   workflow_dispatch:

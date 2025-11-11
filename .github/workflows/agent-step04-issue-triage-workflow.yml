@@ -1,4 +1,4 @@
-name: Step 04 - Workflow: Issue Triage
+name: "Step 04 - Workflow: Issue Triage"
 
 on:
   workflow_dispatch:

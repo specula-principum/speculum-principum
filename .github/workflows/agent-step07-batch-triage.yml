@@ -1,4 +1,4 @@
-name: Step 07 - Batch: Triage Issues
+name: "Step 07 - Batch: Triage Issues"
 
 on:
   workflow_dispatch:
