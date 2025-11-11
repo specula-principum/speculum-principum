@@ -19,6 +19,13 @@ from src.orchestration.safety import SafetyValidator
 from src.orchestration.tools import ToolRegistry
 from src.orchestration.types import ExecutionContext, MissionStatus, AgentStep
 from src.integrations.copilot import CopilotClient
+from src.integrations.github.issues import (
+    DEFAULT_API_URL,
+    GitHubIssueError,
+    resolve_repository,
+    resolve_token,
+)
+from src.integrations.github.search_issues import GitHubIssueSearcher
 
 
 
@@ -228,6 +235,61 @@ class SimpleEvaluator(MissionEvaluator):
         return EvaluationResult(complete=False, reason="No successful actions completed")
 
 
+def _prepare_agent_inputs(raw_inputs: dict[str, Any]) -> tuple[dict[str, Any], bool, str | None]:
+    """Normalize mission inputs and resolve convenience values like 'auto'."""
+
+    inputs = dict(raw_inputs)
+    value = inputs.get("issue_number")
+
+    if value is None:
+        return inputs, False, None
+
+    if isinstance(value, int):
+        if value < 1:
+            raise ValueError("issue_number input must be >= 1.")
+        return inputs, False, None
+
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("issue_number input cannot be empty.")
+
+        if trimmed.lower() != "auto":
+            try:
+                parsed = int(trimmed)
+            except ValueError as exc:
+                raise ValueError("issue_number input must be an integer or 'auto'.") from exc
+            if parsed < 1:
+                raise ValueError("issue_number input must be >= 1.")
+            inputs["issue_number"] = parsed
+            return inputs, False, None
+
+        repository_arg = inputs.get("repository")
+        token_arg = inputs.get("token")
+        api_url_arg = inputs.get("api_url")
+
+        repository = resolve_repository(str(repository_arg) if repository_arg else None)
+        token = resolve_token(str(token_arg) if token_arg else None)
+        api_url = str(api_url_arg) if api_url_arg else DEFAULT_API_URL
+
+        searcher = GitHubIssueSearcher(token=token, repository=repository, api_url=api_url)
+        results = searcher.search_unlabeled(limit=1, order="asc")
+
+        if not results:
+            message = "No open unlabeled issues found; skipping mission."
+            return inputs, True, message
+
+        selection = results[0]
+        inputs["issue_number"] = selection.number
+        inputs["auto_issue_selected"] = True
+        inputs.setdefault("auto_issue_url", selection.url)
+
+        notice = f"Auto-selected open unlabeled issue #{selection.number}: {selection.url}"
+        return inputs, False, notice
+
+    raise ValueError("issue_number input must be an integer or the string 'auto'.")
+
+
 def run_mission_cli(args: argparse.Namespace) -> int:
     """Execute a mission.
     
@@ -264,6 +326,21 @@ def run_mission_cli(args: argparse.Namespace) -> int:
             return 1
         key, value = input_str.split("=", 1)
         inputs[key] = value
+
+    try:
+        inputs, skip_mission, info_message = _prepare_agent_inputs(inputs)
+    except GitHubIssueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if info_message:
+        print(info_message)
+
+    if skip_mission:
+        return 0
     
     context = ExecutionContext(inputs=inputs)
     

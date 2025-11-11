@@ -79,13 +79,42 @@ class GitHubIssueSearcher:
         qualifier = f"label:{label}"
         return self._search(qualifier, limit=limit)
 
-    def _search(self, qualifier: str, *, limit: int) -> list[IssueSearchResult]:
+    def search_unlabeled(
+        self,
+        *,
+        limit: int = 30,
+        order: str = "asc",
+    ) -> list[IssueSearchResult]:
+        """Return open issues that currently have no labels applied."""
+
+        # GitHub search API accepts "sort=created" to order by creation time.
+        order_normalized = order.lower()
+        if order_normalized not in {"asc", "desc"}:
+            raise GitHubIssueError("Order must be 'asc' or 'desc'.")
+        return self._search(
+            "no:label",
+            limit=limit,
+            sort="created",
+            order=order_normalized,
+        )
+
+    def _search(
+        self,
+        qualifier: str,
+        *,
+        limit: int,
+        sort: str | None = None,
+        order: str = "desc",
+    ) -> list[IssueSearchResult]:
         if limit < 1:
             raise GitHubIssueError("Search limit must be a positive integer.")
         per_page = max(1, min(limit, 100))
         base_query = f"repo:{self._owner}/{self._name} is:issue is:open"
         query = f"{base_query} {qualifier}".strip()
-        params = {"q": query, "per_page": str(per_page)}
+        params: dict[str, str] = {"q": query, "per_page": str(per_page)}
+        if sort:
+            params["sort"] = sort
+            params["order"] = order
         url = f"{self._api_url}/search/issues?{parse.urlencode(params)}"
         req = request.Request(url, method="GET")
         req.add_header("Authorization", f"Bearer {self._token}")

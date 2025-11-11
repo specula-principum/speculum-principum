@@ -108,6 +108,27 @@ def test_search_by_label(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(results) == 2
 
 
+def test_search_unlabeled(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_urls: list[str] = []
+
+    def fake_urlopen(req: object):
+        captured_urls.append(req.full_url)  # type: ignore[attr-defined]
+        return DummyResponse(make_payload(3))
+
+    monkeypatch.setattr(search_issues.request, "urlopen", fake_urlopen)
+
+    searcher = GitHubIssueSearcher(token="token", repository="octocat/hello-world")
+    results = searcher.search_unlabeled(limit=5, order="asc")
+
+    assert captured_urls
+    url = captured_urls[0]
+    assert "no%3Alabel" in url
+    assert "sort=created" in url
+    assert "order=asc" in url
+    assert "per_page=5" in url
+    assert len(results) == 3
+
+
 def test_search_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_urlopen(req: object):
         raise error.HTTPError(
