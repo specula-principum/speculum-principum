@@ -22,6 +22,9 @@ jobs:
   run-kb-promote:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
 
     steps:
       - name: Check out repository
@@ -42,9 +45,6 @@ jobs:
         run: mkdir -p reports/transcripts/tmp
 
       - name: Run KB promotion mission
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then

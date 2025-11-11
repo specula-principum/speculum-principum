@@ -26,6 +26,9 @@ jobs:
   run-pr-safety:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
 
     steps:
       - name: Check out repository
@@ -46,9 +49,6 @@ jobs:
         run: mkdir -p reports/transcripts/tmp
 
       - name: Run PR safety mission
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then
