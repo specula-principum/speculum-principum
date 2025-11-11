@@ -76,10 +76,17 @@ jobs:
             ISSUE_NUMBER="auto"
           fi
 
+          LABEL_ARGS=()
+          if [ "$ISSUE_NUMBER" = "auto" ]; then
+            LABEL_ARGS+=(--input "required_labels=kb-extraction,ready-for-copilot")
+            LABEL_ARGS+=(--input "exclude_labels=kb-extracted,kb-extraction-failed")
+          fi
+
           python -m main agent run \
             --mission config/missions/workflows/kb_extraction_full.yaml \
             $DRY_RUN \
             $PLANNER \
+            "${LABEL_ARGS[@]}" \
             --input "issue_number=${ISSUE_NUMBER}" \
             --output "$OUTPUT_PATH"
 

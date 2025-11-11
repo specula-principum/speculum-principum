@@ -1,32 +1,32 @@
 id: kb_extraction_full
 goal: |
-  Execute the complete knowledge base extraction workflow end-to-end:
-  1. Validate the issue contains required information:
-     - Source path or URL to extract from
-     - Target knowledge base directory
-     - Any specific extraction requirements
-  2. If validation fails, post a comment explaining missing information and stop
-  3. Extract knowledge from the specified source using the parsing tools
-  4. Validate the extracted knowledge base structure
-  5. Generate a quality report on the extraction
-  6. Post the quality report as a comment on the issue
-  7. If extraction succeeded, add "kb-extracted" label
-  8. If extraction failed, add "kb-extraction-failed" label and explain why
+  Deliver the end-to-end knowledge base extraction for an issue that already passed triage
+  and carries the "kb-extraction" and "ready-for-copilot" labels:
+  1. Fetch the issue and confirm both labels remain present. If either label is missing,
+     post a guidance comment and stop.
+  2. Execute the extraction pipeline using the declared source information without
+     re-running intake validation.
+  3. Validate the generated knowledge base artifacts.
+  4. Produce a quality report summarizing the extraction status and validation metrics,
+     then post it on the issue.
+  5. Apply a completion label ("kb-extracted" on success, "kb-extraction-failed" on
+     failure) while leaving the triage labels unchanged.
 
 constraints:
-  - Do not close the issue (human review required)
-  - Do not modify the original source files
-  - Ensure extracted knowledge follows repository conventions
-  - Post detailed quality metrics in the report
-  - Cite specific validation errors if extraction fails
+  - Assume template validation was completed during triage; only verify readiness labels
+    before proceeding.
+  - Do not modify the issue title or body.
+  - Do not remove existing labels except when adding the completion status.
+  - Do not alter the original source documents.
+  - Keep comments focused on extraction results and next steps.
 
 success_criteria:
-  - Issue requirements were validated
-  - Knowledge extraction was attempted from specified source
-  - KB validation was run on extracted content
-  - Quality report was posted as comment
-  - Appropriate completion label was applied
-  - No unauthorized file modifications occurred
+  - The required triage labels were confirmed (or missing-label guidance was posted) before
+    extraction continued.
+  - Extraction ran against the declared source.
+  - Knowledge base validation executed on the resulting artifacts.
+  - A quality report comment was published with relevant metrics.
+  - Exactly one completion label was applied without disturbing other labels.
 
 max_steps: 25
 

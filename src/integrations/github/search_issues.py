@@ -76,8 +76,49 @@ class GitHubIssueSearcher:
 
         if not label:
             raise GitHubIssueError("Label must be provided for label searches.")
-        qualifier = f"label:{label}"
-        return self._search(qualifier, limit=limit)
+        return self.search_with_label_filters(
+            required_labels=[label],
+            limit=limit,
+            sort=None,
+            order="desc",
+        )
+
+    def search_with_label_filters(
+        self,
+        *,
+        required_labels: Sequence[str] | None = None,
+        excluded_labels: Sequence[str] | None = None,
+        limit: int = 30,
+        sort: str | None = None,
+        order: str = "asc",
+    ) -> list[IssueSearchResult]:
+        """Return open issues matching the provided label filters."""
+
+        order_normalized = order.lower()
+        if order_normalized not in {"asc", "desc"}:
+            raise GitHubIssueError("Order must be 'asc' or 'desc'.")
+
+        qualifiers: list[str] = []
+
+        if required_labels:
+            for label in required_labels:
+                label_normalized = label.strip()
+                if not label_normalized:
+                    continue
+                qualifiers.append(f"label:{label_normalized}")
+
+        if excluded_labels:
+            for label in excluded_labels:
+                label_normalized = label.strip()
+                if not label_normalized:
+                    continue
+                qualifiers.append(f"-label:{label_normalized}")
+
+        if not qualifiers:
+            return self.search_unlabeled(limit=limit, order=order_normalized)
+
+        qualifier = " ".join(qualifiers)
+        return self._search(qualifier, limit=limit, sort=sort, order=order_normalized)
 
     def search_unlabeled(
         self,
