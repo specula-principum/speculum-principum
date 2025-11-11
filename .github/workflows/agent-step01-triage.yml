@@ -1,0 +1,82 @@
+name: Step 01 - Intake: Triage Issue
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Execution mode"
+        required: false
+        default: models
+        type: choice
+        options:
+          - dry-run
+          - models
+          - copilot
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  run-triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare transcript directory
+        run: mkdir -p reports/transcripts/tmp
+
+      - name: Run triage mission
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ]; then
+            MODE="models"
+          fi
+
+          OUTPUT_BASE="reports/transcripts/tmp/transcript_triage"
+          OUTPUT_PATH="${OUTPUT_BASE}_${MODE}.json"
+
+          DRY_RUN=""
+          PLANNER="--planner llm"
+
+          if [ "$MODE" = "dry-run" ]; then
+            DRY_RUN="--dry-run"
+          elif [ "$MODE" = "copilot" ]; then
+            PLANNER="--planner copilot-cli"
+          elif [ "$MODE" != "models" ]; then
+            echo "Unsupported mode: $MODE" >&2
+            exit 1
+          fi
+
+          python -m main agent run \
+            --mission config/missions/triage_new_issue.yaml \
+            $DRY_RUN \
+            $PLANNER \
+            --input issue_number=auto \
+            --output "$OUTPUT_PATH"
+
+      - name: Upload transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: step01-triage-${{ github.run_id }}
+          path: reports/transcripts/tmp/transcript_triage_*.json
+          if-no-files-found: ignore
