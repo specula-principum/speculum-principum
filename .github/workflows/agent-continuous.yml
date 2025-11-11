@@ -27,6 +27,9 @@ jobs:
   agent-batch:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
 
     steps:
       - name: Check out repository
@@ -68,9 +71,6 @@ jobs:
 
       - name: Execute specific mission (manual trigger)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.mission != ''
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           DRY_RUN=""
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
@@ -84,9 +84,6 @@ jobs:
 
       - name: Execute batch triage mission
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_batch_triage == 'true' && steps.health.outputs.status != 'unhealthy'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           # Run triage mission on unlabeled issues
           if [ -f config/missions/workflows/batch_issue_triage.yaml ]; then
@@ -100,9 +97,6 @@ jobs:
 
       - name: Execute KB extraction check
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_kb_check == 'true' && steps.health.outputs.status != 'unhealthy'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           # Check KB extraction requests
           if [ -f config/missions/kb_extraction_check.yaml ]; then
