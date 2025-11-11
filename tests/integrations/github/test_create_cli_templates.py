@@ -9,10 +9,10 @@ from src.integrations.github.issues import IssueOutcome
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-EXTRACT_TEMPLATE = REPO_ROOT / ".github" / "templates" / "kb-extract-source.md"
-IMPROVE_TEMPLATE = REPO_ROOT / ".github" / "templates" / "kb-improve-quality.md"
-CONCEPT_TEMPLATE = REPO_ROOT / ".github" / "templates" / "kb-add-concept.md"
-ENTITY_TEMPLATE = REPO_ROOT / ".github" / "templates" / "kb-add-entity.md"
+EXTRACT_TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "kb-extraction-request.md"
+IMPROVE_TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "kb-quality-improvement.md"
+CONCEPT_TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "kb-add-concept.md"
+ENTITY_TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "kb-add-entity.md"
 
 
 @pytest.fixture(autouse=True)
