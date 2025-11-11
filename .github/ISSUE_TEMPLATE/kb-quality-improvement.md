@@ -1,14 +1,14 @@
 ---
+name: Knowledge Base Quality Improvement
+about: Improve the quality metrics for an existing KB section
 title: "Improve quality of {kb_section}"
-labels:
-  - ready-for-copilot
-  - kb-quality
-  - automated
+labels: [kb-quality, ready-for-copilot, automated]
+assignees: ''
 ---
 
 ## Task: Improve Knowledge Base Quality
 
-**Target Section:** `{kb_section}`
+**Target Section:** `{kb_section}`  
 **Current Quality Score:** {current_score}  
 **Target Quality Score:** {target_score}
 
@@ -49,7 +49,7 @@ python -m main kb improve \
 
 ### Success Criteria
 
-- [ ] Quality score improved to >= {target_score}
+- [ ] Quality score improved to ≥ {target_score}
 - [ ] All validation errors resolved
 - [ ] Documentation updated
 

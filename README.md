@@ -10,7 +10,7 @@ pattern `python -m main <command> [options]`.
 	issue via the REST API:
 
 	```bash
-	python -m main --title "Bug report" --template .github/templates/bug.md --var env=prod
+	python -m main --title "Bug report" --template .github/ISSUE_TEMPLATE/general.md --var env=prod
 	```
 
 	Key flags: `--repo`, `--token`, `--body` (bypass template), repeatable
