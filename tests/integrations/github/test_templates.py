@@ -4,10 +4,10 @@ import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-EXTRACT_TEMPLATE = REPO_ROOT / ".github" / "templates" / "kb-extract-source.md"
-IMPROVE_TEMPLATE = REPO_ROOT / ".github" / "templates" / "kb-improve-quality.md"
-CONCEPT_TEMPLATE = REPO_ROOT / ".github" / "templates" / "kb-add-concept.md"
-ENTITY_TEMPLATE = REPO_ROOT / ".github" / "templates" / "kb-add-entity.md"
+EXTRACT_TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "kb-extraction-request.md"
+IMPROVE_TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "kb-quality-improvement.md"
+CONCEPT_TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "kb-add-concept.md"
+ENTITY_TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "kb-add-entity.md"
 
 
 def _load_template_parts(path: Path) -> tuple[str, str]:
@@ -29,7 +29,7 @@ def test_kb_extract_template_front_matter():
     data = yaml.safe_load(front_matter)
 
     assert data["title"] == "Extract knowledge from {source_name}"
-    assert data["labels"] == ["ready-for-copilot", "kb-extraction", "automated"]
+    assert set(data["labels"]) == {"ready-for-copilot", "kb-extraction", "automated"}
 
 
 def test_kb_extract_template_body_contains_required_sections():
@@ -63,7 +63,7 @@ def test_kb_improve_template_front_matter():
     data = yaml.safe_load(front_matter)
 
     assert data["title"] == "Improve quality of {kb_section}"
-    assert data["labels"] == ["ready-for-copilot", "kb-quality", "automated"]
+    assert set(data["labels"]) == {"ready-for-copilot", "kb-quality", "automated"}
 
 
 def test_kb_improve_template_body_contains_required_sections():
@@ -96,7 +96,7 @@ def test_kb_add_concept_template_front_matter():
     data = yaml.safe_load(front_matter)
 
     assert data["title"] == "Add concept: {concept_name}"
-    assert data["labels"] == ["ready-for-copilot", "kb-concept", "manual"]
+    assert set(data["labels"]) == {"ready-for-copilot", "kb-concept", "manual"}
 
 
 def test_kb_add_concept_template_body_contains_required_sections():
@@ -132,7 +132,7 @@ def test_kb_add_entity_template_front_matter():
     data = yaml.safe_load(front_matter)
 
     assert data["title"] == "Add entity: {entity_name}"
-    assert data["labels"] == ["ready-for-copilot", "kb-entity", "manual"]
+    assert set(data["labels"]) == {"ready-for-copilot", "kb-entity", "manual"}
 
 
 def test_kb_add_entity_template_body_contains_required_sections():

@@ -72,7 +72,7 @@ def _configure_create_parser(parser: argparse.ArgumentParser) -> None:
         "--template",
         type=Path,
         help="Path to the issue body template.",
-        default=Path(".github/templates/hello-world.md"),
+        default=Path(".github/ISSUE_TEMPLATE/general.md"),
     )
     parser.add_argument(
         "--body",

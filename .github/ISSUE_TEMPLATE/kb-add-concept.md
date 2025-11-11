@@ -1,26 +1,26 @@
 ---
+name: Knowledge Base Concept Addition
+about: Add a new concept document to the knowledge base
 title: "Add concept: {concept_name}"
-labels:
-  - ready-for-copilot
-  - kb-concept
-  - manual
+labels: [kb-concept, ready-for-copilot, manual]
+assignees: ''
 ---
 
 ## Task: Add New Concept to Knowledge Base
 
-**Concept:** {concept_name}
-**Primary Topic:** {primary_topic}
+**Concept:** {concept_name}  
+**Primary Topic:** {primary_topic}  
 **Source Material:** {source_material}
 
 ### Requirements
 
 Create a new concept document with:
 
-1. **Clear definition** - What is this concept?
-2. **Context** - Where does it appear in sources?
-3. **Related concepts** - What other concepts connect to it?
-4. **Source references** - Direct quotes and citations
-5. **Analysis** - Interpretation and significance
+1. **Clear definition** – What is this concept?
+2. **Context** – Where does it appear in sources?
+3. **Related concepts** – What other concepts connect to it?
+4. **Source references** – Direct quotes and citations
+5. **Analysis** – Interpretation and significance
 
 ### Document Location
 

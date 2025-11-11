@@ -118,7 +118,7 @@ jobs:
               bodySections.push(actionChecklist);
               bodySections.push(
                 '\n### Recommended Workflow\n' +
-                '1. Review `.github/templates/kb-improve-quality.md` for acceptance criteria.\n' +
+                '1. Review `.github/ISSUE_TEMPLATE/kb-quality-improvement.md` for acceptance criteria.\n' +
                 '2. Run the quality helpers locally:\n' +
                 '   ```bash\n' +
                 '   python -m main copilot kb-validate --kb-root knowledge-base\n' +

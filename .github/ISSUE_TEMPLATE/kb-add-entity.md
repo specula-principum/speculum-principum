@@ -1,15 +1,15 @@
 ---
+name: Knowledge Base Entity Addition
+about: Add a new entity document to the knowledge base
 title: "Add entity: {entity_name}"
-labels:
-  - ready-for-copilot
-  - kb-entity
-  - manual
+labels: [kb-entity, ready-for-copilot, manual]
+assignees: ''
 ---
 
 ## Task: Add New Entity to Knowledge Base
 
-**Entity:** {entity_name}
-**Entity Type:** {entity_type}
+**Entity:** {entity_name}  
+**Entity Type:** {entity_type}  
 **Source Material:** {source_material}
 
 ### Requirements

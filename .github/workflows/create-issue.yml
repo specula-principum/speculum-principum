@@ -23,4 +23,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           title: ${{ inputs.title }}
-          template-path: .github/templates/hello-world.md
+          template-path: .github/ISSUE_TEMPLATE/general.md

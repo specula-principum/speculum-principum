@@ -1,20 +1,20 @@
 ---
+name: Knowledge Base Extraction Request
+about: Request automated knowledge extraction from a source document
 title: "Extract knowledge from {source_name}"
-labels:
-  - ready-for-copilot
-  - kb-extraction
-  - automated
+labels: [kb-extraction, ready-for-copilot, automated]
+assignees: ''
 ---
 
 ## Task: Extract Knowledge from Source Material
 
-**Source Path:** `{source_path}`
+**Source Path:** `{source_path}`  
 **Source Type:** {source_type}  
 **Processing Date:** {date}
 
 ### Extraction Requirements
 
-- [ ] Extract concepts (min frequency: {min_concept_freq})
+- [ ] Extract concepts (minimum frequency: {min_concept_freq})
 - [ ] Extract entities (people, places, organizations)
 - [ ] Build relationship graph
 - [ ] Generate source document with references
