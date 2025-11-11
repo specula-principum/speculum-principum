@@ -1,4 +1,4 @@
-name: Step 02 - Validate: KB Template Check
+name: "Step 02 - Validate: KB Template Check"
 
 on:
   workflow_dispatch:

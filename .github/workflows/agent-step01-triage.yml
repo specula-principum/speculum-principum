@@ -1,4 +1,4 @@
-name: Step 01 - Intake: Triage Issue
+name: "Step 01 - Intake: Triage Issue"
 
 on:
   workflow_dispatch:

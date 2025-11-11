@@ -1,4 +1,4 @@
-name: Step 03 - Prepare: Promote KB Issues
+name: "Step 03 - Prepare: Promote KB Issues"
 
 on:
   workflow_dispatch:

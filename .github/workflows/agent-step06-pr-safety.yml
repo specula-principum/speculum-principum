@@ -1,4 +1,4 @@
-name: Step 06 - Quality: PR Safety Check
+name: "Step 06 - Quality: PR Safety Check"
 
 on:
   workflow_dispatch:
