@@ -4,13 +4,15 @@ goal: |
   and carries the "kb-extraction" and "ready-for-copilot" labels:
   1. Fetch the issue and confirm both labels remain present. If either label is missing,
      post a guidance comment and stop.
-  2. Execute the extraction pipeline using the declared source information without
-     re-running intake validation.
-  3. Validate the generated knowledge base artifacts.
-  4. Produce a quality report summarizing the extraction status and validation metrics,
-     then post it on the issue.
-  5. Apply a completion label ("kb-extracted" on success, "kb-extraction-failed" on
-     failure) while leaving the triage labels unchanged.
+  2. Assign the issue to the GitHub Copilot coding agent (`copilot-swe-agent`) so it can run the
+    repository-aware automation that creates branches and pull requests.
+  3. Execute the extraction pipeline using the declared source information without
+    re-running intake validation.
+  4. Validate the generated knowledge base artifacts.
+  5. Produce a quality report summarizing the extraction status and validation metrics,
+    then post it on the issue.
+  6. Apply a completion label ("kb-extracted" on success, "kb-extraction-failed" on
+    failure) while leaving the triage labels unchanged.
 
 constraints:
   - Assume template validation was completed during triage; only verify readiness labels
@@ -23,6 +25,8 @@ constraints:
 success_criteria:
   - The required triage labels were confirmed (or missing-label guidance was posted) before
     extraction continued.
+  - The issue was assigned to the `copilot-swe-agent` account before requesting repository
+    changes.
   - Extraction ran against the declared source.
   - Knowledge base validation executed on the resulting artifacts.
   - A quality report comment was published with relevant metrics.
@@ -37,5 +41,6 @@ allowed_tools:
   - generate_kb_report
   - post_comment
   - add_label
+  - assign_issue_to_copilot
 
 requires_approval: false
