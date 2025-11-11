@@ -1,4 +1,4 @@
-name: "Step 05 - Batch: Triage Issues"
+name: "Step 02 - Workflow: KB Extraction"
 
 on:
   workflow_dispatch:
@@ -12,15 +12,10 @@ on:
           - dry-run
           - models
           - copilot
-      target_label:
-        description: "Label to prioritize"
+      issue_number:
+        description: "Specific issue number or 'auto'"
         required: false
-        default: ready-for-copilot
-        type: string
-      max_batch:
-        description: "Number of issues to process"
-        required: false
-        default: "5"
+        default: auto
         type: string
 
 permissions:
@@ -29,7 +24,7 @@ permissions:
   pull-requests: read
 
 jobs:
-  run-batch-triage:
+  run-kb-extraction-workflow:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -54,14 +49,14 @@ jobs:
       - name: Prepare transcript directory
         run: mkdir -p reports/transcripts/tmp
 
-      - name: Run batch triage mission
+      - name: Run KB extraction workflow mission
         run: |
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then
             MODE="models"
           fi
 
-          OUTPUT_BASE="reports/transcripts/tmp/transcript_batch_triage"
+          OUTPUT_BASE="reports/transcripts/tmp/transcript_kb_extraction_workflow"
           OUTPUT_PATH="${OUTPUT_BASE}_${MODE}.json"
 
           DRY_RUN=""
@@ -76,28 +71,22 @@ jobs:
             exit 1
           fi
 
-          TARGET_LABEL="${{ github.event.inputs.target_label }}"
-          if [ -z "$TARGET_LABEL" ]; then
-            TARGET_LABEL="ready-for-copilot"
-          fi
-
-          MAX_BATCH="${{ github.event.inputs.max_batch }}"
-          if [ -z "$MAX_BATCH" ]; then
-            MAX_BATCH="5"
+          ISSUE_NUMBER="${{ github.event.inputs.issue_number }}"
+          if [ -z "$ISSUE_NUMBER" ]; then
+            ISSUE_NUMBER="auto"
           fi
 
           python -m main agent run \
-            --mission config/missions/workflows/batch_issue_triage_with_learning.yaml \
+            --mission config/missions/workflows/kb_extraction_full.yaml \
             $DRY_RUN \
             $PLANNER \
-            --input "target_label=${TARGET_LABEL}" \
-            --input "max_batch=${MAX_BATCH}" \
+            --input "issue_number=${ISSUE_NUMBER}" \
             --output "$OUTPUT_PATH"
 
       - name: Upload transcript
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: step05-batch-triage-${{ github.run_id }}
-          path: reports/transcripts/tmp/transcript_batch_triage_*.json
+          name: step02-kb-extraction-${{ github.run_id }}
+          path: reports/transcripts/tmp/transcript_kb_extraction_workflow_*.json
           if-no-files-found: ignore
