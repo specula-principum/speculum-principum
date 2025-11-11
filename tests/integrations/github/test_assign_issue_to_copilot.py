@@ -50,13 +50,12 @@ def test_assign_issue_to_copilot_success(monkeypatch: pytest.MonkeyPatch) -> Non
                     }
                 }
             )
-
-        assert body.get("variables", {}).get("assignableId") == "ISSUE_ID"
-        assert body.get("variables", {}).get("assigneeIds") == ["BOT_ID"]
+        assert body["variables"]["assignableId"] == "ISSUE_ID"
+        assert body["variables"]["actorIds"] == ["BOT_ID"]
         return _FakeResponse(
             {
                 "data": {
-                    "addAssigneesToAssignable": {
+                    "replaceActorsForAssignable": {
                         "assignable": {"id": "ISSUE_ID"}
                     }
                 }
@@ -67,9 +66,11 @@ def test_assign_issue_to_copilot_success(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assign_issue_to_copilot(token="token", repository="octo-org/octo-repo", issue_number=42)
 
+    assert len(calls) == 2
     assert calls[0].url == "https://api.github.com/graphql"
     assert "suggestedActors" in calls[0].payload["query"]
     assert calls[1].url == "https://api.github.com/graphql"
+    assert "replaceActorsForAssignable" in calls[1].payload["query"]
 
 
 def test_assign_issue_to_copilot_missing_agent(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,7 +122,7 @@ def test_assign_issue_to_copilot_ghe_endpoint(monkeypatch: pytest.MonkeyPatch) -
         return _FakeResponse(
             {
                 "data": {
-                    "addAssigneesToAssignable": {
+                    "replaceActorsForAssignable": {
                         "assignable": {"id": "ISSUE_ID"}
                     }
                 }
