@@ -1,4 +1,4 @@
-name: "Step 04 - Quality: PR Safety Check"
+name: "Step 04 - Batch: Triage Issues"
 
 on:
   workflow_dispatch:
@@ -12,20 +12,26 @@ on:
           - dry-run
           - models
           - copilot
-      pr_number:
-        description: "Specific PR number or 'auto'"
+      target_label:
+        description: "Label to prioritize"
         required: false
-        default: auto
+        default: ready-for-copilot
+        type: string
+      max_batch:
+        description: "Number of issues to process"
+        required: false
+        default: "5"
         type: string
 
 permissions:
   contents: read
-  pull-requests: write
+  issues: write
+  pull-requests: read
 
 jobs:
-  run-pr-safety:
+  run-batch-triage:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       GITHUB_REPOSITORY: ${{ github.repository }}
@@ -48,14 +54,14 @@ jobs:
       - name: Prepare transcript directory
         run: mkdir -p reports/transcripts/tmp
 
-      - name: Run PR safety mission
+      - name: Run batch triage mission
         run: |
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then
             MODE="models"
           fi
 
-          OUTPUT_BASE="reports/transcripts/tmp/transcript_pr_safety"
+          OUTPUT_BASE="reports/transcripts/tmp/transcript_batch_triage"
           OUTPUT_PATH="${OUTPUT_BASE}_${MODE}.json"
 
           DRY_RUN=""
@@ -70,22 +76,28 @@ jobs:
             exit 1
           fi
 
-          PR_NUMBER="${{ github.event.inputs.pr_number }}"
-          if [ -z "$PR_NUMBER" ]; then
-            PR_NUMBER="auto"
+          TARGET_LABEL="${{ github.event.inputs.target_label }}"
+          if [ -z "$TARGET_LABEL" ]; then
+            TARGET_LABEL="ready-for-copilot"
+          fi
+
+          MAX_BATCH="${{ github.event.inputs.max_batch }}"
+          if [ -z "$MAX_BATCH" ]; then
+            MAX_BATCH="5"
           fi
 
           python -m main agent run \
-            --mission config/missions/pr_safety_check.yaml \
+            --mission config/missions/workflows/batch_issue_triage_with_learning.yaml \
             $DRY_RUN \
             $PLANNER \
-            --input "pr_number=${PR_NUMBER}" \
+            --input "target_label=${TARGET_LABEL}" \
+            --input "max_batch=${MAX_BATCH}" \
             --output "$OUTPUT_PATH"
 
       - name: Upload transcript
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: step04-pr-safety-${{ github.run_id }}
-          path: reports/transcripts/tmp/transcript_pr_safety_*.json
+          name: step04-batch-triage-${{ github.run_id }}
+          path: reports/transcripts/tmp/transcript_batch_triage_*.json
           if-no-files-found: ignore

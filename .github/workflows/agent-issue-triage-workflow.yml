@@ -1,4 +1,4 @@
-name: "Step 02 - Workflow: Issue Triage"
+name: "Workflow - Issue Triage"
 
 on:
   workflow_dispatch:
@@ -98,6 +98,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: step02-issue-triage-${{ github.run_id }}
+          name: issue-triage-workflow-${{ github.run_id }}
           path: reports/transcripts/tmp/transcript_issue_triage_workflow_*.json
           if-no-files-found: ignore
