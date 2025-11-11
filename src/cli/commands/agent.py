@@ -239,6 +239,28 @@ def _prepare_agent_inputs(raw_inputs: dict[str, Any]) -> tuple[dict[str, Any], b
     """Normalize mission inputs and resolve convenience values like 'auto'."""
 
     inputs = dict(raw_inputs)
+
+    def _normalize_labels(raw_value: Any) -> list[str]:
+        if raw_value is None:
+            return []
+        if isinstance(raw_value, str):
+            return [label for label in (part.strip() for part in raw_value.split(",")) if label]
+        if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes)):
+            labels: list[str] = []
+            for item in raw_value:
+                if not isinstance(item, str):
+                    raise ValueError("Label filters must be strings.")
+                stripped = item.strip()
+                if stripped:
+                    labels.append(stripped)
+            return labels
+        raise ValueError("Label filters must be provided as a comma-separated string or sequence of strings.")
+
+    required_labels = _normalize_labels(inputs.get("required_labels"))
+    exclude_labels = _normalize_labels(inputs.get("exclude_labels"))
+    inputs["required_labels"] = required_labels
+    inputs["exclude_labels"] = exclude_labels
+
     value = inputs.get("issue_number")
 
     if value is None:
@@ -273,10 +295,23 @@ def _prepare_agent_inputs(raw_inputs: dict[str, Any]) -> tuple[dict[str, Any], b
         api_url = str(api_url_arg) if api_url_arg else DEFAULT_API_URL
 
         searcher = GitHubIssueSearcher(token=token, repository=repository, api_url=api_url)
-        results = searcher.search_unlabeled(limit=1, order="asc")
+        if required_labels:
+            results = searcher.search_with_label_filters(
+                required_labels=required_labels,
+                excluded_labels=exclude_labels,
+                limit=1,
+                sort="created",
+                order="asc",
+            )
+        else:
+            results = searcher.search_unlabeled(limit=1, order="asc")
 
         if not results:
-            message = "No open unlabeled issues found; skipping mission."
+            if required_labels:
+                label_text = ", ".join(required_labels)
+                message = f"No open issues found with required labels ({label_text}); skipping mission."
+            else:
+                message = "No open unlabeled issues found; skipping mission."
             return inputs, True, message
 
         selection = results[0]
@@ -284,7 +319,13 @@ def _prepare_agent_inputs(raw_inputs: dict[str, Any]) -> tuple[dict[str, Any], b
         inputs["auto_issue_selected"] = True
         inputs.setdefault("auto_issue_url", selection.url)
 
-        notice = f"Auto-selected open unlabeled issue #{selection.number}: {selection.url}"
+        if required_labels:
+            label_text = ", ".join(required_labels)
+            notice = (
+                f"Auto-selected issue #{selection.number} matching labels ({label_text}): {selection.url}"
+            )
+        else:
+            notice = f"Auto-selected open unlabeled issue #{selection.number}: {selection.url}"
         return inputs, False, notice
 
     raise ValueError("issue_number input must be an integer or the string 'auto'.")
@@ -317,7 +358,6 @@ def run_mission_cli(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"error: Failed to load mission: {e}", file=sys.stderr)
         return 1
-    
     # Parse inputs
     inputs = {}
     for input_str in args.input:
