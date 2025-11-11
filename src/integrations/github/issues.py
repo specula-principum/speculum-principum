@@ -180,6 +180,57 @@ def create_issue(
     return IssueOutcome.from_api_payload(data)
 
 
+def _graphql_endpoint(api_url: str) -> str:
+    normalized = api_url.rstrip("/")
+    if normalized.endswith("/api/v3"):
+        return f"{normalized[:-len('/api/v3')]}/api/graphql"
+    return f"{normalized}/graphql"
+
+
+def _graphql_request(
+    *,
+    token: str,
+    api_url: str,
+    query: str,
+    variables: Mapping[str, object] | None = None,
+) -> Mapping[str, object]:
+    payload: dict[str, object] = {"query": query}
+    if variables:
+        payload["variables"] = dict(variables)
+
+    url = _graphql_endpoint(api_url)
+    raw_body = json.dumps(payload).encode("utf-8")
+    req = request.Request(url, data=raw_body, method="POST")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("Content-Type", "application/json; charset=utf-8")
+
+    try:
+        with request.urlopen(req) as response:
+            response_bytes = response.read()
+    except error.HTTPError as exc:  # pragma: no cover - network failure safeguard
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub GraphQL error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:  # pragma: no cover - network failure safeguard
+        raise GitHubIssueError(f"Failed to reach GitHub GraphQL API: {exc.reason}") from exc
+
+    data = json.loads(response_bytes.decode("utf-8"))
+    if "errors" in data:
+        formatted = "; ".join(
+            message.get("message", "Unknown GraphQL error")  # type: ignore[assignment]
+            for message in data.get("errors", [])  # type: ignore[assignment]
+            if isinstance(message, Mapping)
+        )
+        raise GitHubIssueError(formatted or "GitHub GraphQL reported errors.")
+
+    output = data.get("data")
+    if not isinstance(output, Mapping):  # pragma: no cover - defensive
+        raise GitHubIssueError("Unexpected GitHub GraphQL payload.")
+    return output
+
+
 def fetch_issue(
     *,
     token: str,
@@ -214,6 +265,90 @@ def fetch_issue(
     if not isinstance(payload, Mapping):  # pragma: no cover - defensive
         raise GitHubIssueError("Unexpected GitHub issue payload type.")
     return payload
+
+
+def assign_issue_to_copilot(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    api_url: str = DEFAULT_API_URL,
+) -> None:
+    """Assign the GitHub Copilot coding agent to an existing issue."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+
+    owner, name = normalize_repository(repository)
+    variables = {"owner": owner, "name": name, "issueNumber": issue_number}
+    query = """
+    query($owner: String!, $name: String!, $issueNumber: Int!) {
+      repository(owner: $owner, name: $name) {
+        id
+        issue(number: $issueNumber) {
+          id
+        }
+        suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
+          nodes {
+            login
+            __typename
+            ... on Bot { id }
+            ... on User { id }
+          }
+        }
+      }
+    }
+    """
+
+    data = _graphql_request(token=token, api_url=api_url, query=query, variables=variables)
+    repository_data = data.get("repository") if isinstance(data, Mapping) else None
+    if not isinstance(repository_data, Mapping):
+        raise GitHubIssueError("Repository information missing from GraphQL response.")
+
+    issue_data = repository_data.get("issue")
+    if not isinstance(issue_data, Mapping) or not issue_data.get("id"):
+        raise GitHubIssueError("Issue not found or inaccessible for Copilot assignment.")
+    issue_id = str(issue_data["id"])
+
+    suggested = repository_data.get("suggestedActors")
+    nodes = []
+    if isinstance(suggested, Mapping):
+        nodes = suggested.get("nodes", [])  # type: ignore[assignment]
+    copilot_id: str | None = None
+    if isinstance(nodes, Sequence):
+        for node in nodes:
+            if not isinstance(node, Mapping):
+                continue
+            login = str(node.get("login", ""))
+            if login.lower() in {"copilot-swe-agent", "github-copilot"}:
+                node_id = node.get("id")
+                if node_id:
+                    copilot_id = str(node_id)
+                    break
+
+    if not copilot_id:
+        raise GitHubIssueError(
+            "Copilot coding agent is not enabled for this repository or account."
+        )
+
+    mutation = """
+    mutation($assignableId: ID!, $assigneeIds: [ID!]!) {
+      addAssigneesToAssignable(input: {assignableId: $assignableId, assigneeIds: $assigneeIds}) {
+        assignable {
+          ... on Issue {
+            id
+          }
+        }
+      }
+    }
+    """
+
+    _graphql_request(
+        token=token,
+        api_url=api_url,
+        query=mutation,
+        variables={"assignableId": issue_id, "assigneeIds": [copilot_id]},
+    )
 
 
 def add_labels(

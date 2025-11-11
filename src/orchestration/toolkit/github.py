@@ -665,6 +665,41 @@ def register_github_mutation_tools(registry: ToolRegistry) -> None:
 
     registry.register_tool(
         ToolDefinition(
+            name="assign_issue_to_copilot",
+            description=(
+                "Assign the GitHub Copilot coding agent to an issue so it can create a PR."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "issue_number": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Numeric identifier of the issue.",
+                    },
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository name in 'owner/name' format. Defaults to GITHUB_REPOSITORY env var.",
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "GitHub token with write access. Defaults to GITHUB_TOKEN env var.",
+                    },
+                    "api_url": {
+                        "type": "string",
+                        "description": "Override the GitHub API base URL (for GitHub Enterprise).",
+                    },
+                },
+                "required": ["issue_number"],
+                "additionalProperties": False,
+            },
+            handler=_assign_issue_to_copilot_handler,
+            risk_level=ActionRisk.REVIEW,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
             name="update_issue_body",
             description="Update the body (description) of a GitHub issue.",
             parameters={
@@ -1000,6 +1035,39 @@ def _update_issue_body_handler(args: Mapping[str, Any]) -> ToolResult:
         return ToolResult(
             success=True,
             output={"issue_number": issue_number, "updated": True},
+            error=None,
+        )
+    except github_issues.GitHubIssueError as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
+
+
+def _assign_issue_to_copilot_handler(args: Mapping[str, Any]) -> ToolResult:
+    issue_number = _parse_issue_number(args.get("issue_number"))
+    if issue_number is None:
+        return ToolResult(success=False, output=None, error="issue_number must be an integer >= 1.")
+
+    repository_arg = args.get("repository")
+    token_arg = args.get("token")
+    api_url_arg = args.get("api_url")
+
+    try:
+        repository = github_issues.resolve_repository(str(repository_arg) if repository_arg else None)
+        token = github_issues.resolve_token(str(token_arg) if token_arg else None)
+    except github_issues.GitHubIssueError as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
+
+    api_url = str(api_url_arg) if api_url_arg else github_issues.DEFAULT_API_URL
+
+    try:
+        github_issues.assign_issue_to_copilot(
+            token=token,
+            repository=repository,
+            issue_number=issue_number,
+            api_url=api_url,
+        )
+        return ToolResult(
+            success=True,
+            output={"issue_number": issue_number, "assignee": "copilot-swe-agent"},
             error=None,
         )
     except github_issues.GitHubIssueError as exc:
