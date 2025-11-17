@@ -47,6 +47,26 @@ _STOPWORDS = {
     "with",
 }
 
+_GOVERNANCE_KEYWORD_PREFIXES: tuple[str, ...] = (
+    "admin",
+    "agency",
+    "budget",
+    "civic",
+    "county",
+    "council",
+    "execut",
+    "fiscal",
+    "fortif",
+    "govern",
+    "intergov",
+    "militia",
+    "municip",
+    "ordin",
+    "public",
+    "statut",
+    "state",
+)
+
 
 def _coerce_sentences(value: object) -> tuple[str, ...]:
     if isinstance(value, (list, tuple, set)):
@@ -192,6 +212,9 @@ _LABEL_DESCRIPTIONS = {
     "economy": "fiscal policy and revenue management",
     "virtue": "virtue, prudence, and necessity in rule",
     "religion": "religion as an instrument of power",
+    "municipal services": "municipal service delivery and operations",
+    "fiscal governance": "fiscal stewardship and budget oversight",
+    "intergovernmental coordination": "intergovernmental coordination frameworks",
 }
 
 _AUTO_TEMPLATE_LEADS = (
@@ -201,6 +224,14 @@ _AUTO_TEMPLATE_LEADS = (
     "Highlights",
     "Underscores",
 )
+
+
+_STATUTE_PATTERN = re.compile(r"(?:Sec\.|Section|§)\s*[0-9A-Za-z\-\.]+")
+_ARTICLE_PATTERN = re.compile(r"Article\s+[0-9IVXLC]+", re.IGNORECASE)
+
+
+def _normalize_marker(token: str) -> str:
+    return re.sub(r"\s+", " ", token).strip()
 
 
 def _format_keyword_summary(keywords: Sequence[str], *, limit: int = 3) -> str:
@@ -217,6 +248,44 @@ def _format_keyword_summary(keywords: Sequence[str], *, limit: int = 3) -> str:
 def _describe_label(label: str) -> str:
     normalized = label.strip().lower().replace("_", " ")
     return _LABEL_DESCRIPTIONS.get(normalized, normalized)
+
+
+def _build_statute_sentence(text: str, headings: Sequence[str]) -> str | None:
+    markers: list[str] = []
+
+    for heading in headings:
+        candidate = heading.strip()
+        if not candidate:
+            continue
+        if candidate.startswith("§") or candidate.lower().startswith("sec") or candidate.lower().startswith("section"):
+            markers.append(candidate)
+        else:
+            matches = list(_ARTICLE_PATTERN.findall(candidate))
+            markers.extend(matches)
+
+    for match in _STATUTE_PATTERN.findall(text):
+        markers.append(match)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for marker in markers:
+        key = _normalize_marker(marker)
+        if key and key not in seen:
+            seen.add(key)
+            normalized.append(key)
+
+    if not normalized:
+        return None
+
+    sample = normalized[:2]
+    if len(normalized) == 1:
+        return f"Highlights statutory anchor {sample[0]} to ground compliance expectations."
+    listed = " and ".join(sample) if len(sample) == 2 else ", ".join(sample)
+    if len(normalized) > 2:
+        return (
+            f"Highlights statutory anchors such as {listed}, referencing {len(normalized)} keyed clauses to ground compliance expectations."
+        )
+    return f"Highlights statutory anchors such as {listed} to ground compliance expectations."
 
 
 def _build_structure_sentence(headings: Sequence[str]) -> str | None:
@@ -243,26 +312,51 @@ def _build_auto_template_sentences(
     taxonomy_labels = _load_taxonomy_labels(config_map, source_path)
     structure_headings = _load_structure_headings(config_map, source_path)
     max_sentences = _coerce_int(config_map.get("auto_template_max_sentences"), 4, minimum=1)
+    include_structure_insight = _coerce_bool(config_map.get("include_structure_insight"), True)
+    include_statute_insight = _coerce_bool(config_map.get("include_statute_insight"), False)
 
     generated: list[str] = []
 
     for label in taxonomy_labels:
         if len(generated) >= max_sentences:
             break
-        description = _describe_label(str(label.get("label", "")))
+        label_name = str(label.get("label", ""))
+        description = _describe_label(label_name)
         keywords = label.get("keywords", ())
         keyword_summary = _format_keyword_summary(keywords) if isinstance(keywords, Sequence) else ""
         lead = _AUTO_TEMPLATE_LEADS[len(generated) % len(_AUTO_TEMPLATE_LEADS)]
-        if keyword_summary:
-            sentence = f"{lead} {description} themes such as {keyword_summary}."
+        normalized_label = label_name.strip().lower().replace("_", " ")
+        if normalized_label == "fiscal governance":
+            if keyword_summary:
+                sentence = f"{lead} fiscal stewardship takeaways including {keyword_summary}."
+            else:
+                sentence = f"{lead} fiscal stewardship guidance for contemporary administrations."
+        elif normalized_label in {"municipal services", "municipal service delivery"}:
+            if keyword_summary:
+                sentence = f"{lead} municipal service coordination covering {keyword_summary}."
+            else:
+                sentence = f"{lead} municipal service coordination considerations relevant to civic operations."
+        elif normalized_label == "intergovernmental coordination":
+            if keyword_summary:
+                sentence = f"{lead} intergovernmental coordination frameworks such as {keyword_summary}."
+            else:
+                sentence = f"{lead} intergovernmental coordination frameworks shaping regional agreements."
         else:
-            sentence = f"{lead} {description} themes central to the treatise."
+            if keyword_summary:
+                sentence = f"{lead} {description} themes such as {keyword_summary}."
+            else:
+                sentence = f"{lead} {description} themes central to the treatise."
         generated.append(sentence)
 
-    if len(generated) < max_sentences:
+    if include_structure_insight and len(generated) < max_sentences:
         structure_sentence = _build_structure_sentence(structure_headings)
         if structure_sentence:
             generated.append(structure_sentence)
+
+    if include_statute_insight and len(generated) < max_sentences:
+        statute_sentence = _build_statute_sentence(text, structure_headings)
+        if statute_sentence:
+            generated.append(statute_sentence)
 
     return tuple(generated)
 
@@ -302,12 +396,73 @@ def summarize(
         keyword_counter: Counter[str] = Counter()
         highlight_stopwords = set(_STOPWORDS)
         highlight_stopwords.update({"highlights", "themes", "such"})
+
+        sentence_keyword_sets: list[set[str]] = []
         for sentence in template_sentences:
+            seen_in_sentence: set[str] = set()
             for word in _WORD_PATTERN.findall(sentence.lower()):
-                if word in highlight_stopwords or len(word) <= 2:
+                if word in highlight_stopwords or len(word) <= 2 or "'" in word:
                     continue
                 keyword_counter[word] += 1
-        highlights = tuple(word for word, _ in keyword_counter.most_common(5))
+                seen_in_sentence.add(word)
+            sentence_keyword_sets.append(seen_in_sentence)
+
+        sentence_keywords: list[tuple[str, ...]] = []
+        for seen_in_sentence in sentence_keyword_sets:
+            sorted_keywords = tuple(
+                sorted(
+                    seen_in_sentence,
+                    key=lambda candidate: (
+                        -int(any(candidate.startswith(prefix) for prefix in _GOVERNANCE_KEYWORD_PREFIXES)),
+                        -keyword_counter[candidate],
+                        -len(candidate),
+                        candidate,
+                    ),
+                )
+            )
+            sentence_keywords.append(sorted_keywords)
+
+        highlights_builder: list[str] = []
+        round_index = 0
+        while len(highlights_builder) < 5:
+            added_this_round = False
+            for keywords_for_sentence in sentence_keywords:
+                if round_index >= len(keywords_for_sentence):
+                    continue
+                candidate = keywords_for_sentence[round_index]
+                if candidate in highlights_builder:
+                    continue
+                highlights_builder.append(candidate)
+                added_this_round = True
+                if len(highlights_builder) == 5:
+                    break
+            if not added_this_round:
+                break
+            round_index += 1
+
+        if len(highlights_builder) < 5 and keyword_counter:
+            fallback_candidates = [
+                (word, count)
+                for word, count in keyword_counter.items()
+                if word not in highlights_builder and "'" not in word
+            ]
+            fallback_ranked = sorted(
+                fallback_candidates,
+                key=lambda item: (
+                    -int(any(item[0].startswith(prefix) for prefix in _GOVERNANCE_KEYWORD_PREFIXES)),
+                    -item[1],
+                    -len(item[0]),
+                    item[0],
+                ),
+            )
+            for word, _ in fallback_ranked:
+                if word in highlights_builder:
+                    continue
+                highlights_builder.append(word)
+                if len(highlights_builder) == 5:
+                    break
+
+        highlights = tuple(highlights_builder)
 
         summary_text: str
         if style == "bullet":

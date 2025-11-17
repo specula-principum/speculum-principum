@@ -143,11 +143,11 @@ metadata:
   title: "The Prince"
   description: "Seminal political treatise on executive governance, digitized from the Luigi Ricci translation revised by E. R. P. Vincent (Oxford University Press, 1935)."
   subjects:
-    - Executive state governance playbooks
-    - Civic leadership and municipal administration
-    - Public finance discipline and taxation strategy
-    - Civil-military coordination for internal security
-    - Intergovernmental power consolidation case studies
+    - Executive playbooks
+    - Municipal administration
+    - Fiscal stewardship
+    - Civil-military coordination
+    - Intergovernmental coordination
   creators:
     - Niccol\u00f2 Machiavelli
   contributors:
@@ -276,6 +276,8 @@ summarization:
   preserve_order: true
   auto_template: true
   auto_template_max_sentences: 5
+  include_structure_insight: true
+  include_statute_insight: false
   template_sentences:
     - Distills Machiavelli's guidance on securing hereditary, mixed, and newly conquered states to keep civic governance stable.
     - Stresses disciplined citizen militias and layered fortifications instead of mercenaries for defensible administrations.

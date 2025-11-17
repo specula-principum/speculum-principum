@@ -120,10 +120,39 @@ def test_default_config_generates_auto_templates() -> None:
 
     sentences = result.data["sentences"]  # type: ignore[index]
     assert summarization_config.get("auto_template") is True
-    assert len(sentences) == summarization_config.get("auto_template_max_sentences", 4)
-    assert sentences[0].startswith("Examines governance")
-    assert "Highlights virtue" in sentences[-1]
+    expected_sentences = tuple(summarization_config["template_sentences"])  # type: ignore[index]
+    assert len(sentences) == summarization_config.get("auto_template_max_sentences", len(expected_sentences))
+    assert sentences == expected_sentences
+    assert sentences[0].startswith("Distills Machiavelli's guidance")
+    assert sentences[-1].startswith("Structures the treatise")
     assert result.data["summary"].startswith("-")  # type: ignore[index]
     highlights = result.data["highlights"]  # type: ignore[index]
-    assert "highlights" not in highlights
-    assert "themes" not in highlights
+    assert len(highlights) == 5
+    assert {
+        "governance",
+        "administrations",
+        "public",
+        "fiscal",
+    }.issubset(highlights)
+
+
+def test_auto_template_includes_statute_sentence_when_enabled() -> None:
+    text = (
+        "Sec. 1.01 establishes the county charter. "
+        "Section 2-104 describes fiscal stewardship duties. "
+        "§ 3-210 outlines emergency powers."
+    )
+
+    config = {
+        "source_path": "governance.md",
+        "auto_template": True,
+        "auto_template_max_sentences": 3,
+        "include_structure_insight": False,
+        "include_statute_insight": True,
+        "style": "bullet",
+    }
+
+    result = summarize(text, config=config)
+
+    sentences = result.data["sentences"]  # type: ignore[index]
+    assert any("statutory anchor" in sentence for sentence in sentences)
