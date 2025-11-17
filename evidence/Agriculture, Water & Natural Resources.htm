@@ -1,0 +1,1645 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8"><style type="text/css" data-tag-name="trix-editor">trix-editor {
+    display: block;
+}
+
+trix-editor:empty::before {
+    content: attr(placeholder);
+    color: graytext;
+    cursor: text;
+    pointer-events: none;
+    white-space: pre-line;
+}
+
+trix-editor a[contenteditable=false] {
+    cursor: text;
+}
+
+trix-editor img {
+    max-width: 100%;
+    height: auto;
+}
+
+trix-editor [data-trix-attachment] figcaption textarea {
+    resize: none;
+}
+
+trix-editor [data-trix-attachment] figcaption textarea.trix-autoresize-clone {
+    position: absolute;
+    left: -9999px;
+    max-height: 0px;
+}
+
+trix-editor [data-trix-attachment] figcaption[data-trix-placeholder]:empty::before {
+    content: attr(data-trix-placeholder);
+    color: graytext;
+}
+
+trix-editor [data-trix-cursor-target] {
+    display: inline-block !important;
+    width: 1px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+}
+
+trix-editor [data-trix-cursor-target=left] {
+    vertical-align: top !important;
+    margin-left: -1px !important;
+}
+
+trix-editor [data-trix-cursor-target=right] {
+    vertical-align: bottom !important;
+    margin-right: -1px !important;
+}</style><style type="text/css" data-tag-name="trix-toolbar">trix-toolbar {
+  display: block;
+}
+
+trix-toolbar {
+  white-space: nowrap;
+}
+
+trix-toolbar [data-trix-dialog] {
+  display: none;
+}
+
+trix-toolbar [data-trix-dialog][data-trix-active] {
+  display: block;
+}
+
+trix-toolbar [data-trix-dialog] [data-trix-validate]:invalid {
+  background-color: #ffdddd;
+}</style><style type="text/css">.turbo-progress-bar {
+  position: fixed;
+  display: block;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: #0076ff;
+  z-index: 2147483647;
+  transition:
+    width 300ms ease-out,
+    opacity 150ms 150ms ease-in;
+  transform: translate3d(0, 0, 0);
+}
+</style>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta name="csrf-param" content="authenticity_token">
+
+
+  <link rel="preload" href="https://leg.colorado.gov/assets/pt_sans/pt-sans-regular-904d2fdd889ba9f0319dac6c3c6ea846a0c988ee46836ef1e310a716c5049d00.woff2" as="font" type="font/woff2" crossorigin="anonymous">
+  <link rel="preload" href="https://leg.colorado.gov/assets/pt_sans/pt-sans-700-4f590fec509050cd65a3b6cf5555b9264d27dab787ef41f0acda818d911d98f0.woff2" as="font" type="font/woff2" crossorigin="anonymous">
+  <link rel="preload" href="https://leg.colorado.gov/assets/Noto_Sans/noto-sans-700-3148fb9237a2fdf2100c733a2e941f885643086eccd9e42d71bea6e3fc44fbd0.woff2" as="font" type="font/woff2" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/application-daa4dc7945a245a55186e268d0f53afc0c5fae069c416cc2.css" data-turbo-track="reload">
+    <script src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/application-cb830cf1a77678e4ca4a103b538f38cfec6575479fa1e05aa.js" data-turbo-track="reload" type="module"></script>
+
+  <script async="" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/js"></script><script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    // *** MODIFIED CONFIG FOR CROSS-DOMAIN TRACKING ***
+    gtag('config', 'G-V0L3NG2C4C', {
+      'linker': {
+        'domains': ['leg.colorado.gov', 'content.leg.colorado.gov']
+      }
+    });
+  </script><title id="page-title">Agriculture, Water &amp; Natural Resources - Committee of Reference | Colorado General Assembly</title><meta name="csrf-token" content="dTlpj39O45TWWLswdU_Z9f8U-BFqSzEI_U_GbONeKgWvZeU-xziihg4JzJARVh3MHG-7uIVTlfd0gOf8G6FC7g"></head>
+  
+  
+  <body class="background-white">
+    <div id="page-top" tabindex="-1"></div>
+    <a id="skip-main" href="#main-content">
+      Skip to main content <span class="pl-1"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
+</a>
+    <header>
+      <div class="header-banner banner-container">
+    <div class="row pb-0">
+      <div class="col-12 pt-3 d-md-none text-right">
+        <button name="button" type="button" class="banner-toggle" aria-label="Hide banner text">Hide</button>
+      </div>
+      <div class="col-12 banner-text">
+        <p class="text-md-center p-md-3">
+          Welcome to the new and improved Colorado General Assembly website!
+          <a class="light-on-dark-link text-decoration-underline" href="mailto:lis.ga@coleg.gov">
+            Send Feedback
+          </a>
+        </p>
+      </div>
+    </div>
+</div>
+
+      <div class="banner-ql d-none d-md-block">
+  <div class="container-fluid">
+    <div class="row py-3 px-0">
+      <div class="col-12 col-sm-auto p-0">
+        
+      </div>
+      <div class="col-12 col-sm p-0">
+        <div class="float-md-right">
+          <ul class="nav">
+            <li class="nav-item">
+  <a class="nav-link" href="https://leg.colorado.gov/schedule">
+    <span class="icon"><i class="fa-solid fa-calendar" aria-hidden="true"></i></span>Schedule
+</a></li>
+<li class="nav-item">
+  <a class="nav-link" href="https://content.leg.colorado.gov/visit-learn">
+    <span class="icon"><i class="fa-solid fa-landmark-dome" aria-hidden="true"></i></span>Visit &amp; Learn
+</a></li>
+<li class="nav-item">
+  <a class="nav-link" data-turbo="false" href="https://leg.colorado.gov/find-my-legislator">
+    <span class="icon"><i class="fa-solid fa-user-magnifying-glass" aria-hidden="true"></i></span>Find My Legislator
+</a></li>
+<li class="nav-item">
+  <a class="nav-link" href="https://leg.colorado.gov/watch-and-listen">
+    <span class="icon"><i class="fa-regular fa-screencast" aria-hidden="true"></i></span>Watch &amp; Listen
+</a></li>
+
+          </ul>
+         </div> 
+      </div>
+    </div>
+  </div>
+</div>
+
+      <div class="background-white">
+  <div class="container-fluid py-4">
+    <div class="row p-0 pt-lg-0 align-items-center">
+      <div class="col p-0">
+        <a href="https://leg.colorado.gov/">
+          <img srcset="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/cga-logo-med-9c368eb444d02cae0be5d0fc4d9bd3a337bdf1e2752998.webp 1x, Agriculture,%20Water%20&amp;%20Natural%20Resources_files/cga-logo-med-d74e34f6e4747c0690701377a72bb7a2bb2055dab5a03b1.png 1x" class="main-logo cga-logo-med img-fluid float-left ml-2 ml-lg-0 mr-2" alt="Colorado General Assembly Logo" type="image/webp" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/cga-logo-med-d74e34f6e4747c0690701377a72bb7a2bb2055dab5a03b1.png">
+          <div class="d-none d-md-block header-sub-heading pt-3">
+            First Regular Session | 75th General Assembly
+          </div>
+          <div class="header-main-heading" id="main-heading">
+            Colorado General Assembly
+          </div>
+</a>      </div>
+      <div class="col-auto d-md-none m-0 p-0">
+        <button class="navbar-toggler btn btn-primary float-right mr-2" type="button" data-toggle="offcanvas">
+          <span class="icon"><i class="fa-solid fa-bars" aria-hidden="true"></i></span>
+          Menu
+        </button>
+      </div>
+      <div class="header-search col-4 p-0 pr-2 pr-lg-0 d-none d-md-block">
+        <form class="global-search-form" data-controller="search" action="/sitewide-search" accept-charset="UTF-8" method="get">
+          <div class="input-group">
+            <input id="global-search-input" type="search" minlength="1" maxlength="128" pattern="[ -~]*" class="form-control" placeholder="Search CGA" aria-label="Search" data-action="input-&gt;main-nav-menu#toggleClearButton" size="128" name="q">
+            <button type="button" disabled="true" class="clear-search btn btn-link p-0 position-absolute" aria-label="Clear search" data-action="click-&gt;search#clearInput" data-search-target="clearButton">
+              <i class="fa-regular fa-xmark" aria-hidden="true"></i>
+            </button>
+            <div class="input-group-append">
+              <button name="button" type="submit" class="btn global-search" id="h_search1" aria-label="Search">
+                <span class="icon"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span> Search
+</button>            </div>
+          </div>
+</form>      </div>
+    </div>
+  </div>
+</div>
+
+      <nav class="navbar navbar-expand-md navbar-light background-white">
+  <div class="navbar-collapse offcanvas-collapse p-0 d-none">
+  <div class="d-flex justify-content-end p-2 px-4 d-md-none">
+    <button class="navbar-toggler px-0 py-4 btn-link" data-toggle="offcanvas" aria-label="close navigation menu">
+      <i class="fa-regular fa-xmark" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <div class="header-search col-auto pt-0 pb-3 d-md-none d-flex justify-content-center">
+    <form class="global-search-form" data-controller="search" action="/sitewide-search" accept-charset="UTF-8" method="get">
+      <div class="input-group">
+        <input id="global-search-input-md" type="search" minlength="1" maxlength="128" pattern="[ -~]*" class="form-control" placeholder="Search CGA" aria-label="Search" data-action="input-&gt;main-nav-menu#toggleClearButton" size="128" name="q">
+
+        <button type="button" disabled="true" class="clear-search-md btn btn-link p-0 position-absolute" aria-label="Clear search">
+          <i class="fa-regular fa-xmark" aria-hidden="true"></i>
+        </button>
+
+        <div class="input-group-append">
+          <button name="button" type="submit" class="btn global-search-md" id="h_search2" aria-label="Search">
+            <span class="icon"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>
+</button>        </div>
+      </div>
+</form>  </div>
+
+  <div class="container-fluid">
+  <ul class="navbar-nav d-flex justify-content-between">
+        
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle " role="button" data-toggle="dropdown" aria-expanded="false" href="#">
+    Bills
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 ">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="bills-bills" href="https://leg.colorado.gov/bills">
+            <span>Bills</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="search-bills-bills" href="https://leg.colorado.gov/bills/bill-search">
+            <span>Search Bills</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="bill-digest-bills" href="https://content.leg.colorado.gov/publication-search?search_api_fulltext=%22Digest+of+Bills%22&amp;field_publication_year=All&amp;sort_bef_combine=field_date_DESC">
+            <span>Bill Digest</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="prior-sessions-bills" href="https://content.leg.colorado.gov/prior-session-information">
+            <span>Prior Sessions</span>
+</a>    </li>
+
+    </ul>
+</li>
+
+    
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle " role="button" data-toggle="dropdown" aria-expanded="false" href="#">
+    Laws
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 ">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="colorado-laws-laws" href="https://leg.colorado.gov/laws">
+            <span>Colorado Laws</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_blank" id="u-s-constitution-laws" href="https://www.archives.gov/founding-docs/constitution">
+            <span>U.S. Constitution</span>
+                <span aria-hidden="true" class="external-icon"></span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="colorado-constitution-laws" href="https://leg.colorado.gov/laws/colorado-constitution">
+            <span>Colorado Constitution</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="colorado-revised-statutes-laws" href="https://leg.colorado.gov/laws/colorado-revised-statutes">
+            <span>Colorado Revised Statutes</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="session-laws-laws" href="https://leg.colorado.gov/laws/session-laws">
+            <span>Session Laws</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="uniform-state-laws-laws" href="https://leg.colorado.gov/committees/2025a/year-round/ColoradoCommissiononUniformStateLaws">
+            <span>Uniform State Laws</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="colorado-appellate-court-opinions-laws" href="https://leg.colorado.gov/laws/colorado-appellate-court-opinions">
+            <span>Colorado Appellate Court Opinions</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_blank" id="executive-agency-rules-regulations-laws" href="https://www.sos.state.co.us/CCR/Welcome.do">
+            <span>Executive Agency Rules &amp; Regulations</span>
+                <span aria-hidden="true" class="external-icon"></span>
+</a>    </li>
+
+    </ul>
+</li>
+
+    
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle " role="button" data-toggle="dropdown" aria-expanded="false" href="#">
+    Legislators
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 ">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="legislators-legislators" href="https://leg.colorado.gov/legislators">
+            <span>Legislators</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="find-my-legislator-legislators" href="https://leg.colorado.gov/find-my-legislator">
+            <span>Find My Legislator</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="house-term-limits-legislators" href="https://content.leg.colorado.gov/publications/house-term-limits">
+            <span>House Term Limits</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="senate-term-limits-legislators" href="https://content.leg.colorado.gov/publications/senate-term-limits">
+            <span>Senate Term Limits</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="past-present-legislators-legislators" href="https://content.leg.colorado.gov/agencies/legislative-council-staff/legislator-history-information">
+            <span>Past &amp; Present Legislators</span>
+</a>    </li>
+
+    </ul>
+</li>
+
+    
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle active" role="button" data-toggle="dropdown" aria-expanded="false" aria-current="page" href="#">
+    Committees
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 ">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="committees-committees" href="https://leg.colorado.gov/committees">
+            <span>Committees</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="committee-information-committees" href="https://content.leg.colorado.gov/committee-information">
+            <span>Committee Information</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="committee-room-policy-committees" href="https://content.leg.colorado.gov/publications/committee-room-policy">
+            <span>Committee Room Policy</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="public-testimony-options-committees" href="https://www.leg.state.co.us/CLICS/cslFrontPages.nsf/CSSignup.xsp">
+            <span>Public Testimony Options</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="committee-archives-committees" href="https://content.leg.colorado.gov/committee-archives">
+            <span>Committee Archives</span>
+</a>    </li>
+
+    </ul>
+</li>
+
+    
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle " role="button" data-toggle="dropdown" aria-expanded="false" href="#">
+    Initiatives
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 ">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="overview-initiatives" href="https://leg.colorado.gov/initiatives">
+            <span>Overview</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="initiatives-filed-initiatives" href="https://leg.colorado.gov/initiatives/initiatives-filed">
+            <span>Initiatives Filed</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="ballot-analysis-initiatives" href="https://leg.colorado.gov/initiatives/ballot-analysis-drafts-and-deadlines">
+            <span>Ballot Analysis</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="blue-book-initiatives" href="https://leg.colorado.gov/initiatives/ballot-information-booklet-blue-book">
+            <span>Blue Book</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="libro-azul-initiatives" href="https://leg.colorado.gov/folleto-de-informaci%C3%B3n-sobre-la-boleta-libro-azul">
+            <span>Libro azul</span>
+</a>    </li>
+
+    </ul>
+</li>
+
+    
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle " role="button" data-toggle="dropdown" aria-expanded="false" href="#">
+    Budget
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 ">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="budget-budget" href="https://content.leg.colorado.gov/content/budget">
+            <span>Budget</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="explore-the-budget-budget" href="https://content.leg.colorado.gov/explorebudget">
+            <span>Explore the Budget</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="jbc-documents-budget" href="https://content.leg.colorado.gov/content/budget#budget-documents-section">
+            <span>JBC Documents</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="joint-budget-committee-staff-budget" href="https://content.leg.colorado.gov/agencies/joint-budget-committee">
+            <span>Joint Budget Committee Staff</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="joint-technology-committee-jtc-budget" href="https://leg.colorado.gov/committees/2025a/year-round/JointTechnologyCommittee">
+            <span>Joint Technology Committee (JTC)</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="capital-development-committee-cdc-budget" href="https://leg.colorado.gov/committees/2025a/year-round/CapitalDevelopmentCommittee">
+            <span>Capital Development Committee (CDC)</span>
+</a>    </li>
+
+    </ul>
+</li>
+
+    
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle " role="button" data-toggle="dropdown" aria-expanded="false" href="#">
+    Audits
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 ">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="audits-audits" href="https://content.leg.colorado.gov/audits">
+            <span>Audits</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="search-audits-audits" href="https://content.leg.colorado.gov/audits-search">
+            <span>Search Audits</span>
+</a>    </li>
+
+    </ul>
+</li>
+
+    
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle " role="button" data-toggle="dropdown" aria-expanded="false" href="#">
+    Publications
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 ">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="publications-publications" href="https://content.leg.colorado.gov/publications">
+            <span>Publications</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="search-publications-publications" href="https://content.leg.colorado.gov/publication-search">
+            <span>Search Publications</span>
+</a>    </li>
+
+    </ul>
+</li>
+
+    
+<li class="nav-item dropdown nav-links-group">
+  <a class="nav-link dropdown-toggle " role="button" data-toggle="dropdown" aria-expanded="false" href="#">
+    Agencies
+    <div class="d-md-none nav-chevron float-right"></div>
+</a>
+    <ul class="dropdown-menu dropdown-menu-main-nav p-md-2 dropdown-menu-right">
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="agencies-agencies" href="https://content.leg.colorado.gov/agencies">
+            <span>Agencies</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="house-of-representatives-agencies" href="https://content.leg.colorado.gov/agencies/house-of-representatives">
+            <span>House of Representatives</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="senate-agencies" href="https://content.leg.colorado.gov/agencies/senate">
+            <span>Senate</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="joint-budget-committee-staff-agencies" href="https://content.leg.colorado.gov/agencies/joint-budget-committee">
+            <span>Joint Budget Committee Staff</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="legislative-council-staff-agencies" href="https://content.leg.colorado.gov/agencies/legislative-council-staff">
+            <span>Legislative Council Staff</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="office-of-legislative-legal-services-agencies" href="https://content.leg.colorado.gov/agencies/office-of-legislative-legal-services">
+            <span>Office of Legislative Legal Services</span>
+</a>    </li>
+
+            <li>
+        <a class="dropdown-item d-flex align-items-start" target="_self" id="office-of-the-state-auditor-agencies" href="https://content.leg.colorado.gov/agencies/office-of-the-state-auditor">
+            <span>Office of the State Auditor</span>
+</a>    </li>
+
+    </ul>
+</li>
+
+
+  </ul>
+</div>
+
+
+  <div class="row d-md-none">
+    <div class="col px-0">
+      <div class="float-md-right">
+        <ul class="nav flex-column ql_nav pt-3">
+          <li class="nav-item">
+  <a class="nav-link" href="https://leg.colorado.gov/schedule">
+    <span class="icon"><i class="fa-solid fa-calendar" aria-hidden="true"></i></span>Schedule
+</a></li>
+<li class="nav-item">
+  <a class="nav-link" href="https://content.leg.colorado.gov/visit-learn">
+    <span class="icon"><i class="fa-solid fa-landmark-dome" aria-hidden="true"></i></span>Visit &amp; Learn
+</a></li>
+<li class="nav-item">
+  <a class="nav-link" data-turbo="false" href="https://leg.colorado.gov/find-my-legislator">
+    <span class="icon"><i class="fa-solid fa-user-magnifying-glass" aria-hidden="true"></i></span>Find My Legislator
+</a></li>
+<li class="nav-item">
+  <a class="nav-link" href="https://leg.colorado.gov/watch-and-listen">
+    <span class="icon"><i class="fa-regular fa-screencast" aria-hidden="true"></i></span>Watch &amp; Listen
+</a></li>
+
+        </ul>
+      </div>
+    </div>
+  </div>
+  <hr class="mobile_menu">
+  <div class="row pb-0 d-md-none">
+    <div class="col">
+      
+    </div>
+  </div>
+</div>
+
+</nav>
+
+    </header>
+
+    <main>
+      <div id="main-content">
+        
+<section class="site-max-width" data-controller="committee-detail">
+  <div class="d-flex flex-lg-row flex-column committee-detail-body-wrapper">
+    <div class="d-flex flex-column flex-lg-grow-1 committee-detail-committee-info">
+      <div class="committee-detail-committee-title">
+  <div class="committee-type pr-2 pb-2">
+    <span class="committee-detail-committee-type-tag">
+      House Committee of Reference
+    </span>
+  </div>
+
+  <div class="committee-detail-committee-name pr-2">
+    <h1>
+      Agriculture, Water &amp; Natural Resources
+    </h1>
+  </div>
+</div>
+
+<div class="d-flex flex-column committee-detail-view-by-session-dropdown-wrapper">
+  
+<label for="view-by-session-ts-control" class="view-by-session-label" aria-hidden="true" id="view-by-session-ts-label">View by session</label>
+<div class="committee-detail-view-by-session-dropdown">
+  <select name="view-by-session" id="view-by-session" data-controller="tomselect-custom-dropdown committee-detail" data-action="change-&gt;committee-detail#navigate" aria-hidden="true" tabindex="-1" class="tomselected ts-hidden-accessible"><option data-index="0" value="/committees/2025B/house/AgricultureWaterNaturalResources">2025 Extraordinary Session</option>
+
+<option data-index="2" value="/committees/2024B/house/AgricultureWaterNaturalResources">2024 Extraordinary Session</option>
+<option data-index="3" value="/committees/2024A/house/AgricultureWaterNaturalResources">2024 Regular Session</option>
+<option data-index="4" value="/committees/2023B/house/AgricultureWaterNaturalResources">2023 Extraordinary Session</option>
+<option data-index="5" value="/committees/2023A/house/AgricultureWaterNaturalResources">2023 Regular Session</option>
+<option data-index="6" value="/committees/2022A/house/AgricultureLivestockWater">2022 Regular Session</option>
+<option data-index="7" value="/committees/2021A/house/AgricultureLivestockWater">2021 Regular Session</option>
+<option data-index="8" value="/committees/2020A/house/RuralAffairsAgriculture">2020 Regular Session</option>
+<option data-index="9" value="/committees/2020B/house/RuralAffairsAgriculture">2020 Extraordinary Session</option>
+<option data-index="10" value="/committees/2019A/house/RuralAffairsAgriculture">2019 Regular Session</option>
+<option data-index="11" value="/committees/2018A/house/AgricultureLivestockNaturalResources">2018 Regular Session</option>
+<option data-index="12" value="/committees/2017A/house/AgricultureLivestockNaturalResources">2017 Regular Session</option>
+<option data-index="13" value="/committees/2017B/house/AgricultureLivestockNaturalResources">2017 Extraordinary Session</option>
+<option data-index="14" value="/committees/2016A/house/AgricultureLivestockNaturalResources">2016 Regular Session</option><option data-index="1" selected="selected" value="/committees/2025A/house/AgricultureWaterNaturalResources">2025 Regular Session</option></select><div class="ts-wrapper single full has-items"><div class="ts-control" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="view-by-session-ts-dropdown" id="view-by-session-ts-control" aria-labelledby="view-by-session-ts-label" tabindex="0"><div data-value="/committees/2025A/house/AgricultureWaterNaturalResources" class="item" data-ts-item="">2025 Regular Session</div></div><div class="ts-dropdown single" style="display: none;"><div role="listbox" tabindex="-1" class="ts-dropdown-content" id="view-by-session-ts-dropdown" aria-labelledby="view-by-session-ts-label"></div></div></div>
+</div>
+
+
+</div>
+
+  <table class="committee-subjects-table">
+    <tbody><tr>
+      <th>Subjects</th>
+      <td>
+        <div class="subject-tags">
+            <span class="subject-tag"> Agriculture </span>
+            <span class="subject-tag"> Natural Resources &amp; Environment </span>
+            <span class="subject-tag"> Water </span>
+        </div>
+      </td>
+    </tr>
+  </tbody></table>
+
+<div class="committee-detail-committee-description">
+  <p>
+    The&nbsp;House Agriculture, Livestock, &amp; Water Committee 
+generally considers matters concerning water, agriculture, wildlife, and
+ recreation.&nbsp; In addition, the committee has legislative oversight 
+responsibility for the departments of Agriculture and Natural Resources.
+ 
+  </p>
+</div>
+
+  <div class="committee-documents-btn-wrapper d-flex flex-wrap flex-md-row flex-column pr-md-2">
+      
+<button name="button" type="button" class="btn-primary-default d-flex align-items-center justify-content-center" data-action="click-&gt;committee-detail#openLink" data-url="https://content.leg.colorado.gov/content/hawn2025asmartact">
+  
+  <div class="standard-btn-text">
+    2025 SMART Government Act Hearings
+  </div>
+  <i class="fa-solid pl-2 fa-arrow-right" aria-hidden="true"></i>
+</button>
+      
+<button name="button" type="button" class="btn-primary-default d-flex align-items-center justify-content-center" data-action="click-&gt;committee-detail#openLink" data-url="https://content.leg.colorado.gov/content/hawn2025acommdocs-0">
+  
+  <div class="standard-btn-text">
+    Committee Documents
+  </div>
+  <i class="fa-solid pl-2 fa-arrow-right" aria-hidden="true"></i>
+</button>
+  </div>
+
+    </div>
+
+    <div class="d-flex flex-column flex-lg-shrink-0 committee-detail-staff-and-schedule-block">
+      <div class="listen-live-wrapper d-flex flex-column">
+  <h2 class="mb-0">
+    Listen Live
+  </h2>
+
+  <div class="listen-live-btn d-flex">
+    <a class="button-primary" role="button" aria-label="Committee Audio" target="_blank" title="Committee Audio" href="https://sg001-harmony.sliq.net/00327/Harmony/en/View/UpcomingEvents/20251115/32">
+      <span class="pr-2"><i alt="headphones icon" class="fa-regular fa-headphones" aria-hidden="true"></i></span>Committee Audio
+</a>  </div>
+</div>
+
+      <div class="meeting-days-wrapper d-flex flex-column">
+  <h2 class="mb-0">
+    Meeting Days
+  </h2>
+
+  <div class="d-flex flex-wrap meeting-days-container">
+      <div class="committee-detail-meeting-day">
+  <p class="meeting-day-title text-center">
+    Mon
+  </p>
+
+  <p class="meeting-time-title text-center">
+    1:30 PM
+  </p>
+
+  <hr class="meeting-day-hr">
+
+  <p class="meeting-chamber-title text-center">
+    HCR 0107
+  </p>
+</div>
+
+      <div class="committee-detail-meeting-day">
+  <p class="meeting-day-title text-center">
+    Thu
+  </p>
+
+  <p class="meeting-time-title text-center">
+    Upon Adjournment
+  </p>
+
+  <hr class="meeting-day-hr">
+
+  <p class="meeting-chamber-title text-center">
+    HCR 0107
+  </p>
+</div>
+
+  </div>
+</div>
+
+      <div class="staff-contact-wrapper d-flex flex-column">
+  <h2 class="mb-0">
+    Staff Contacts
+  </h2>
+
+    <div class="d-flex flex-column staff-contact-container">
+      <p class="staff-contact-name">Alexa Kelly</p>
+
+      <div class="staff-contact-email">
+        <p class="staff-contact-email-heading">Email:</p>
+
+        <a rel="nofollow" class="staff-email-link" href="mailto:Alexa.Kelly@coleg.gov">Alexa.Kelly@coleg.gov</a>
+      </div>
+
+      <div class="staff-contact-phone">
+        <p class="staff-contact-phone-heading">Phone:</p>
+
+        <a rel="nofollow" class="staff-phone-link" href="tel:3038663469">
+          303-866-3469
+</a>      </div>
+    </div>
+</div>
+
+      
+<aside aria-label="Share" class="d-flex flex-row flex-wrap align-items-center social-media-share-icons">
+  <h2 class="mb-0 font-size-16 social-media-share-heading">Share:</h2>
+
+  <ul class="d-flex flex-row flex-wrap align-items-center social-media-share-icons mb-0 list-unstyled">
+    <li><a rel="nofollow" id="email-link" class="social-share-link" aria-label="Email" href="mailto:?body=https%3A%2F%2Fleg.colorado.gov%2Fcommittees%2F2025A%2Fhouse%2FAgricultureWaterNaturalResources">
+        <span class="social-share-icon">
+          <i class="fa-regular fa-envelope" aria-hidden="true"></i>
+        </span>
+</a></li>
+    <li><a aria-label="Twitter" target="_blank" class="social-share-link" id="tweet-link" href="https://twitter.com/intent/tweet?url=https://leg.colorado.gov/committees/2025A/house/AgricultureWaterNaturalResources">
+        <span class="social-share-icon">
+                <i class="fa-brands fa-x-twitter" aria-hidden="true"></i>
+        </span>
+</a></li>
+    <li><a target="_blank" aria-label="Facebook" class="social-share-link" id="facebook-link" href="https://www.facebook.com/sharer/sharer.php?u=https://leg.colorado.gov/committees/2025A/house/AgricultureWaterNaturalResources">
+        <span class="social-share-icon">
+                <i class="fa-brands fa-facebook-f" aria-hidden="true"></i>
+        </span>
+</a></li>
+  </ul>
+</aside>
+
+    </div>
+  </div>
+</section>
+
+
+<section class="committee-members-wrapper">
+  <div class="d-flex flex-column container-fluid mobile-view-padding">
+    <h2 class="text-center mb-0">
+      Committee Members
+    </h2>
+
+    <div class="committee-members-block d-flex flex-wrap">
+          <a class="cm-link" aria-label="View profile of Representative Karen McCormick, Chair" href="https://leg.colorado.gov/legislators/karen-mccormick">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Karen McCormick" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/McCormick,%20Karen.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+      <div class="comm-mem-role">
+        Chair
+      </div>
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Karen McCormick
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Tisha Mauro, Vice Chair" href="https://leg.colorado.gov/legislators/tisha-mauro">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Tisha Mauro" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Mauro,%20Tisha.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+      <div class="comm-mem-role">
+        Vice Chair
+      </div>
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Tisha Mauro
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Dusty Johnson" href="https://leg.colorado.gov/legislators/dusty-johnson">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Dusty Johnson" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Johnson,%20Dusty.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Dusty Johnson
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Mandy Lindsay" href="https://leg.colorado.gov/legislators/mandy-lindsay">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Mandy Lindsay" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Lindsay,%20Mandy.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Mandy Lindsay
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Meghan Lukens" href="https://leg.colorado.gov/legislators/meghan-lukens">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Meghan Lukens" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Lukens,%20Meghan.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Meghan Lukens
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Matthew Martinez" href="https://leg.colorado.gov/legislators/matthew-martinez">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Matthew Martinez" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Martinez,%20Matthew.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Matthew Martinez
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Rose Pugliese" href="https://leg.colorado.gov/legislators/rose-pugliese">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Rose Pugliese" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Pugliese,Rose.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Rose Pugliese
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Lesley Smith" href="https://leg.colorado.gov/legislators/lesley-smith">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Lesley Smith" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Smith,%20Lesley.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Lesley Smith
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Katie Stewart" href="https://leg.colorado.gov/legislators/katie-stewart">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Katie Stewart" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Stewart,%20Katie.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Katie Stewart
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Tammy Story" href="https://leg.colorado.gov/legislators/tammy-story">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Tammy Story" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Story,%20Tammy.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Tammy Story
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Larry Don Suckla" href="https://leg.colorado.gov/legislators/larry-don-suckla">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Larry Don Suckla" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Suckla,%20Larry%20Don.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Larry Don Suckla
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Elizabeth Velasco" href="https://leg.colorado.gov/legislators/elizabeth-velasco">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Elizabeth Velasco" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Velasco,%20Elizabeth.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Elizabeth Velasco
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+          <a class="cm-link" aria-label="View profile of Representative Ty Winter" href="https://leg.colorado.gov/legislators/ty-winter">
+    <div class="comm-member-tile d-flex flex-row">
+    <img class="comm-mem-picture" alt="Representative Ty Winter" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/Winter,Ty.jpg">
+  <div class="d-flex align-items-center justify-content-between comm-member-text">
+    <div class="d-flex flex-column comm-member-tile-content">
+      <p>
+        Representative
+      </p>
+      <p class="comm-member-name">
+        Ty Winter
+      </p>
+    </div>
+
+      <p class="arrow-icon">
+        <i class="fa-light fa-arrow-right" aria-hidden="true"></i>
+      </p>
+  </div>
+</div>
+
+</a>
+    </div>
+  </div>
+</section>
+
+
+<div class="committee-activity-container">
+  <div class="d-flex flex-column container-fluid mobile-view-padding">
+    <h2 class="committee-activity-heading text-center mb-0">
+      Committee Activity
+    </h2>
+
+      <turbo-frame id="hearing_items_frame">
+        <div data-controller="committee-detail">
+          <form id="committee-detail-date-form" data-turbo-frame="hearing_items_frame" data-committee-detail-target="form" action="/committees/2025a/house/AgricultureWaterNaturalResources" accept-charset="UTF-8" method="post"><input type="hidden" name="authenticity_token" value="kIZiqg6ssB9RJBqAy-gKQljB_2EKnerg8S2drdlokylLtaHFzgWE7nVZzuMkUFRX1yt1iRA0MrWMK0NzCHVW2A" autocomplete="off">
+            <div id="committee-activity-data" class="d-flex flex-column">
+              <div class="d-flex flex-md-row flex-column justify-content-md-between align-items-center committee-activity-header">
+  <div class="committee-pick-date-block">
+  <label for="committee-pick-date-ts-control" class="mb-2" aria-hidden="true" id="committee-pick-date-ts-label">Choose a date</label>
+  <select name="meeting_id" id="committee-pick-date" data-action="change-&gt;committee-detail#pickADate" data-controller="tomselect-custom-dropdown" aria-hidden="true" tabindex="-1" class="tomselected ts-hidden-accessible">
+<option data-index="1" data-count="5" value="356">04/21/2025</option>
+<option data-index="2" data-count="5" value="356">04/21/2025</option>
+<option data-index="3" data-count="5" value="356">04/21/2025</option>
+<option data-index="4" data-count="5" value="356">04/21/2025</option>
+<option data-index="5" data-count="1" value="332">04/14/2025</option>
+<option data-index="6" data-count="4" value="308">04/03/2025</option>
+<option data-index="7" data-count="4" value="308">04/03/2025</option>
+<option data-index="8" data-count="4" value="308">04/03/2025</option>
+<option data-index="9" data-count="4" value="308">04/03/2025</option>
+<option data-index="10" data-count="2" value="284">03/17/2025</option>
+<option data-index="11" data-count="2" value="284">03/17/2025</option>
+<option data-index="12" data-count="1" value="260">03/13/2025</option>
+<option data-index="13" data-count="2" value="236">03/10/2025</option>
+<option data-index="14" data-count="2" value="236">03/10/2025</option>
+<option data-index="15" data-count="1" value="212">03/06/2025</option>
+<option data-index="16" data-count="3" value="186">03/03/2025</option>
+<option data-index="17" data-count="3" value="186">03/03/2025</option>
+<option data-index="18" data-count="3" value="186">03/03/2025</option>
+<option data-index="19" data-count="2" value="164">02/24/2025</option>
+<option data-index="20" data-count="2" value="164">02/24/2025</option>
+<option data-index="21" data-count="3" value="140">02/20/2025</option>
+<option data-index="22" data-count="3" value="140">02/20/2025</option>
+<option data-index="23" data-count="3" value="140">02/20/2025</option>
+<option data-index="24" data-count="3" value="114">02/10/2025</option>
+<option data-index="25" data-count="3" value="114">02/10/2025</option>
+<option data-index="26" data-count="3" value="114">02/10/2025</option>
+<option data-index="27" data-count="4" value="82">02/03/2025</option>
+<option data-index="28" data-count="4" value="82">02/03/2025</option>
+<option data-index="29" data-count="4" value="82">02/03/2025</option>
+<option data-index="30" data-count="4" value="82">02/03/2025</option>
+<option data-index="31" data-count="5" value="50">01/27/2025</option>
+<option data-index="32" data-count="5" value="50">01/27/2025</option>
+<option data-index="33" data-count="5" value="50">01/27/2025</option>
+<option data-index="34" data-count="5" value="50">01/27/2025</option>
+<option data-index="35" data-count="5" value="50">01/27/2025</option>
+<option data-index="36" data-count="6" value="12">01/15/2025</option>
+<option data-index="37" data-count="6" value="12">01/15/2025</option>
+<option data-index="38" data-count="6" value="12">01/15/2025</option>
+<option data-index="39" data-count="6" value="12">01/15/2025</option>
+<option data-index="40" data-count="6" value="12">01/15/2025</option>
+<option data-index="41" data-count="6" value="12">01/15/2025</option><option data-index="0" data-count="5" value="356" selected="selected">04/21/2025</option></select><div class="ts-wrapper single full has-items"><div class="ts-control" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="committee-pick-date-ts-dropdown" id="committee-pick-date-ts-control" aria-labelledby="committee-pick-date-ts-label" tabindex="0"><div data-value="356" class="item" data-ts-item="">
+                    <span>04/21/2025</span>
+                    <span class="cmhi-items-count ml-2">5</span>
+                  </div></div><div class="ts-dropdown single" style="display: none;"><div role="listbox" tabindex="-1" class="ts-dropdown-content" id="committee-pick-date-ts-dropdown" aria-labelledby="committee-pick-date-ts-label"></div></div></div>
+</div>
+
+
+    <div class="committee-summary-link">
+      <button name="button" type="button" class="btn-primary-default d-flex align-items-center justify-content-center" data-action="click-&gt;committee-detail#openLink" data-url="/committee_meeting_summary/356">
+        <div class="standard-btn-text">
+          Committee Summary
+        </div>
+        <i class="fa-solid pl-2 fa-arrow-right" aria-hidden="true"></i>
+</button>    </div>
+</div>
+
+<div class="loading-indicator py-3">
+  <div class="row">
+    <div class="col text-center">
+      <div class="spinner-border" role="status">
+        <div class="sr-only">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="committee-hearing-items-wrapper">
+
+
+
+
+
+
+
+
+
+
+
+
+    
+<div class="standard-table dyn-tbl has-external-padding no-table-heading">
+  <table class="table mb-0" role="table">
+    <thead>
+      <tr role="row">
+          <th role="columnheader" class="">
+            Hearing Item
+          </th>
+          <th role="columnheader" class="">
+            Actions
+          </th>
+          <th role="columnheader" class="">
+            Committee Report
+          </th>
+          <th role="columnheader" class="text-right">
+            Documents/Links
+          </th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr class="mb-0" role="row">
+            <td class="" data-label="Hearing Item">
+              <span><a class="hearing-item-title link-primary" data-turbo-frame="_top" href="https://leg.colorado.gov/bills/sb25-168"><span class="bill-num-tag">SB25-168</span> <span class="bill-full-topic">Prevention of Wildlife Trafficking</span></a></span>
+            </td>
+            <td class="" data-label="Actions">
+              <span>Referred to House Appropriations</span>
+            </td>
+            <td class="" data-label="Committee Report">
+              <span><a class="label-sm-nowrap" target="_blank" aria-label="View Committee Report" aria-disabled="false" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/9e854d2dddfdebe5b2217c99f406279b">Committee Report</a> <span class="links-separator">|</span><a class="ext-link-pdf label-sm-nowrap" target="_blank" aria-label="View PDF" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/6ffc4fe369e94404248e6bdfa943c16e">PDF</a></span>
+            </td>
+            <td class="text-right" data-label="Documents/Links">
+              <span><a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_summary/1397">Hearing summary</a> <span class="text-nowrap"> <span class="links-separator">|</span> <a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_items/1397/votes">Votes</a> </span></span>
+            </td>
+        </tr>
+        <tr class="mb-0" role="row">
+            <td class="" data-label="Hearing Item">
+              <span><a class="hearing-item-title link-primary" data-turbo-frame="_top" href="https://leg.colorado.gov/bills/sb25-053"><span class="bill-num-tag">SB25-053</span> <span class="bill-full-topic">Protect Wild Bison</span></a></span>
+            </td>
+            <td class="" data-label="Actions">
+              <span>Referred to House Appropriations</span>
+            </td>
+            <td class="" data-label="Committee Report">
+              <span><a class="label-sm-nowrap" target="_blank" aria-label="View Committee Report" aria-disabled="false" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/5472e6c3b577ada1437f610935083511">Committee Report</a> <span class="links-separator">|</span><a class="ext-link-pdf label-sm-nowrap" target="_blank" aria-label="View PDF" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/3b2a84401839a110b891b8cea42e63fe">PDF</a></span>
+            </td>
+            <td class="text-right" data-label="Documents/Links">
+              <span><a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_summary/1434">Hearing summary</a> <span class="text-nowrap"> <span class="links-separator">|</span> <a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_items/1434/votes">Votes</a> </span></span>
+            </td>
+        </tr>
+        <tr class="mb-0" role="row">
+            <td class="" data-label="Hearing Item">
+              <span><a class="hearing-item-title link-primary" data-turbo-frame="_top" href="https://leg.colorado.gov/bills/sb25-054"><span class="bill-num-tag">SB25-054</span> <span class="bill-full-topic">Mining Reclamation &amp; Interstate Compact</span></a></span>
+            </td>
+            <td class="" data-label="Actions">
+              <span>Referred to House Appropriations</span>
+            </td>
+            <td class="" data-label="Committee Report">
+              <span><a class="label-sm-nowrap" target="_blank" aria-label="View Committee Report" aria-disabled="false" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/2c74c91f5d59c5f4ac349131fc35a5ed">Committee Report</a> <span class="links-separator">|</span><a class="ext-link-pdf label-sm-nowrap" target="_blank" aria-label="View PDF" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/136da5658b45b15da90d40b2148ea792">PDF</a></span>
+            </td>
+            <td class="text-right" data-label="Documents/Links">
+              <span><a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_summary/1458">Hearing summary</a> <span class="text-nowrap"> <span class="links-separator">|</span> <a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_items/1458/votes">Votes</a> </span></span>
+            </td>
+        </tr>
+        <tr class="mb-0" role="row">
+            <td class="" data-label="Hearing Item">
+              <span><a class="hearing-item-title link-primary" data-turbo-frame="_top" href="https://leg.colorado.gov/bills/sb25-040"><span class="bill-num-tag">SB25-040</span> <span class="bill-full-topic">Future of Severance Taxes &amp; Water Funding Task Force</span></a></span>
+            </td>
+            <td class="" data-label="Actions">
+              <span>Referred to House Appropriations</span>
+            </td>
+            <td class="" data-label="Committee Report">
+              <span><a class="label-sm-nowrap" target="_blank" aria-label="View Committee Report" aria-disabled="false" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/a171134826ad64957780c2092b05c8d0">Committee Report</a> <span class="links-separator">|</span><a class="ext-link-pdf label-sm-nowrap" target="_blank" aria-label="View PDF" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/3835419155631931a52f423f5f095f60">PDF</a></span>
+            </td>
+            <td class="text-right" data-label="Documents/Links">
+              <span><a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_summary/1476">Hearing summary</a> <span class="text-nowrap"> <span class="links-separator">|</span> <a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_items/1476/votes">Votes</a> </span></span>
+            </td>
+        </tr>
+        <tr class="mb-0" role="row">
+            <td class="" data-label="Hearing Item">
+              <span><a class="hearing-item-title link-primary" data-turbo-frame="_top" href="https://leg.colorado.gov/bills/hb25-1332"><span class="bill-num-tag">HB25-1332</span> <span class="bill-full-topic">State Trust Lands Conservation &amp; Recreation Work Group</span></a></span>
+            </td>
+            <td class="" data-label="Actions">
+              <span>Amended, referred to House Appropriations</span>
+            </td>
+            <td class="" data-label="Committee Report">
+              <span><a class="label-sm-nowrap" target="_blank" aria-label="View Committee Report" aria-disabled="false" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/96dffa856dc1b89de18d5f8b070b6277">Committee Report</a> <span class="links-separator">|</span><a class="ext-link-pdf label-sm-nowrap" target="_blank" aria-label="View PDF" href="https://s3.us-west-2.amazonaws.com/beta.leg.colorado.gov/4100d8dbabd5719ba1e89d0711503b57">PDF</a></span>
+            </td>
+            <td class="text-right" data-label="Documents/Links">
+              <span><a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_summary/1487">Hearing summary</a> <span class="text-nowrap"> <span class="links-separator">|</span> <a data-turbo-frame="_top" class="label-sm-nowrap link-primary" href="https://leg.colorado.gov/committee_meeting_hearing_items/1487/votes">Votes</a> </span></span>
+            </td>
+        </tr>
+    </tbody>
+  </table>
+
+</div>
+
+</div>
+
+
+            </div>
+</form>        </div>
+</turbo-frame>  </div>
+</div>
+
+
+<div class="bg-color-secondary-light-blue">
+  <div class="container-fluid mobile-view-padding">
+    <div class="d-flex flex-column quick-links-wrapper">
+      <h2 class="m-0 text-center quick-links-heading">
+        Quick Links
+      </h2>
+
+      <ul class="justify-content-center flex-wrap quick-links-ctas list-unstyled mb-0">
+        <li class="cta-go-to-link-icon-wrapper d-flex justify-content-center">
+  <a aria-label="Find My Legislator" class="d-inline-block" data-turbo="false" href="https://leg.colorado.gov/find-my-legislator">
+    <div class="d-flex justify-content-center">
+      <div class="d-flex justify-content-center align-items-center cta-go-to-link-icon">
+        <i class="fa-duotone fa-3x fa-user-magnifying-glass" aria-hidden="true"></i>
+      </div>
+    </div>
+    <div class="padding-top-14 cta-link-description text-center">
+      <p class="mb-0 font-size-22 font-size-16-mb font-weight-700 font-weight-400-mb">
+        Find My Legislator
+      </p>
+    </div>
+</a></li>
+<li class="cta-go-to-link-icon-wrapper d-flex justify-content-center">
+  <a aria-label="Find a Bill" class="d-inline-block" href="https://leg.colorado.gov/bills/bill-search">
+    <div class="d-flex justify-content-center">
+      <div class="d-flex justify-content-center align-items-center cta-go-to-link-icon">
+        <i class="fa-duotone fa-3x fa-landmark-magnifying-glass" aria-hidden="true"></i>
+      </div>
+    </div>
+    <div class="padding-top-14 cta-link-description text-center">
+      <p class="mb-0 font-size-22 font-size-16-mb font-weight-700 font-weight-400-mb">
+        Find a Bill
+      </p>
+    </div>
+</a></li>
+
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+      </div>
+    </main>
+
+    <footer>
+      <div class="row pb-0">
+  <div class="col-12 px-0">
+    <section>
+  <div class="col-12 px-0 pb-0 bg-color-secondary-dark-blue footer-border-top">
+  <div class="container-fluid mobile-view-padding">
+
+    <div class="d-flex justify-content-end align-items-center height-90">
+      
+
+      <a class="back-to-top text-decoration-underline" href="#page-top">
+        Back to top<i class="fa-solid ml-2 fa-arrow-up" aria-hidden="true"></i>
+</a>    </div>
+  </div>
+</div>
+
+</section>
+
+<section>
+  <div class="col-12 px-0 py-md-4 py-2 bg-color-accent-darker-blue color-secondary-gray-md">
+    <div class="container-fluid">
+      <div class="row p-0">
+        <div class="col-md-9 px-0">
+          <div class="row pb-0">
+              
+<div class="col-md-4 col-12 px-0 pr-md-4 padding-bottom-2">
+  <div class="panel-group" id="accordion" role="group">
+    <div class="panel panel-default">
+      <div class="footer-panel-heading pb-md-3 active mobile-view-padding" id="heading-0">
+        <div class="footer-panel-title d-md-block d-none pb-md-3">
+          <h2 class="mb-0 text-upcase">
+              Resources &amp; Information
+
+          </h2>
+        </div>
+
+        <div class="footer-panel-title d-md-none d-block">
+          <a role="button" data-toggle="collapse" data-parent="#accordion" class="d-inline-block footer-links-accordion" aria-expanded="false" aria-controls="footer-panel-collapse-0" aria-label="Toggle   Resources &amp;amp; Information
+" href="#footer-panel-collapse-0">
+            <h2 class="mb-0 text-upcase">
+              Resources &amp; Information
+            </h2>
+</a>        </div>
+      </div>
+
+      <div id="footer-panel-collapse-0" class="footer-panel-collapse collapse show">
+        <div class="panel-body">
+          <nav class="pt-md-0 pt-4" aria-labelledby="heading-0">
+            <ul class="list-unstyled">
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/accessibility">Accessibility</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/node/580141/">Capitol Security Protocol</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/node/1669596/">Colorado Open Records Act Maximum Hourly Research and Retrieval Fee</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/legislative-resources-requirements">Legislative Resources &amp; Requirements</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="">Legislative Workplace Study</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/executive-agency-rules-regulations">Rules &amp; Regulations of Executive Agencies</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/agencies/legislative-council-staff/salaries-legislators-statewide-elected-officials-and-county">Salaries for Legislators, Statewide Elected Officials, and County Officers</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+
+                          <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" target="_blank" href="https://www.colorado.gov/">
+                            <span>State Home</span><span aria-hidden="true" class=" external-icon"></span>
+</a>                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+
+                          <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" target="_blank" href="https://data.colorado.gov/stories/s/fjyf-bdat">
+                            <span>Transparency Online Project</span><span aria-hidden="true" class=" external-icon"></span>
+</a>                    </div>
+                  </div>
+                </li>
+
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+<div class="col-md-4 col-12 px-0 pr-md-4 padding-bottom-2">
+  <div class="panel-group" id="accordion" role="group">
+    <div class="panel panel-default">
+      <div class="footer-panel-heading pb-md-3 active mobile-view-padding" id="heading-1">
+        <div class="footer-panel-title d-md-block d-none pb-md-3">
+          <h2 class="mb-0 text-upcase">
+              Policies
+
+          </h2>
+        </div>
+
+        <div class="footer-panel-title d-md-none d-block">
+          <a role="button" data-toggle="collapse" data-parent="#accordion" class="d-inline-block footer-links-accordion" aria-expanded="false" aria-controls="footer-panel-collapse-1" aria-label="Toggle   Policies
+" href="#footer-panel-collapse-1">
+            <h2 class="mb-0 text-upcase">
+              Policies
+            </h2>
+</a>        </div>
+      </div>
+
+      <div id="footer-panel-collapse-1" class="footer-panel-collapse collapse show">
+        <div class="panel-body">
+          <nav class="pt-md-0 pt-4" aria-labelledby="heading-1">
+            <ul class="list-unstyled">
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/node/3056521">Language Interpretation Services Policy</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/node/2328306/">Remote Testimony and Remote Participation Policies</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/open-records-requests">Open Records Requests &amp; Policy</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/privacy-policy">Privacy Policy</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/public-wi-fi-policy">Public Wifi</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/workplace-expectations">Workplace Expectations</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/workplace-harassment-policy">Workplace Harassment Policy</a>
+                    </div>
+                  </div>
+                </li>
+
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+<div class="col-md-4 col-12 px-0 pr-md-4 padding-bottom-2">
+  <div class="panel-group" id="accordion" role="group">
+    <div class="panel panel-default">
+      <div class="footer-panel-heading pb-md-3 active mobile-view-padding" id="heading-2">
+        <div class="footer-panel-title d-md-block d-none pb-md-3">
+          <h2 class="mb-0 text-upcase">
+              For Legislators &amp; Staff
+
+          </h2>
+        </div>
+
+        <div class="footer-panel-title d-md-none d-block">
+          <a role="button" data-toggle="collapse" data-parent="#accordion" class="d-inline-block footer-links-accordion" aria-expanded="false" aria-controls="footer-panel-collapse-2" aria-label="Toggle   For Legislators &amp;amp; Staff
+" href="#footer-panel-collapse-2">
+            <h2 class="mb-0 text-upcase">
+              For Legislators &amp; Staff
+            </h2>
+</a>        </div>
+      </div>
+
+      <div id="footer-panel-collapse-2" class="footer-panel-collapse collapse show">
+        <div class="panel-body">
+          <nav class="pt-md-0 pt-4" aria-labelledby="heading-2">
+            <ul class="list-unstyled">
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+
+                          <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" target="_blank" href="https://sites.google.com/view/coga-ethics-tutorial/">
+                            <span>Ethics Tutorial</span><span aria-hidden="true" class=" external-icon"></span>
+</a>                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/social-calendar">Social Calendar</a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+
+                          <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" target="_blank" href="https://www.leg.state.co.us/inethsr.nsf">
+                            <span>House and Senate Rules</span><span aria-hidden="true" class=" external-icon"></span>
+</a>                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="row pb-4">
+                    <div class="col-12 p-0 mobile-view-padding">
+                        <a class="d-inline-block footer-link light-on-dark-link text-decoration-underline" href="https://content.leg.colorado.gov/node/3183431">Policy on Member Requests for CSP Protection</a>
+                    </div>
+                  </div>
+                </li>
+
+                  <li>
+    <div class="row pb-4">
+      <div class="col-12 p-0 mobile-view-padding">
+        <a class="footer-link light-on-dark-link text-decoration-underline" href="https://leg.colorado.gov/admin/login_options">
+            IT Login
+</a>      </div>
+    </div>
+  </li>
+
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+          </div>
+        </div>
+
+        <div class="col-md-3 px-0">
+          <div class="mobile-view-padding">
+  <div class="row pb-4 d-flex justify-content-md-start justify-content-center pt-md-0 pt-4">
+    <a aria-label="Home - Colorado General Assembly" href="https://leg.colorado.gov/">
+      <div class="d-flex align-items-center justify-content-md-start justify-content-center">
+        <img class="footer-cga-logo" alt="" src="Agriculture,%20Water%20&amp;%20Natural%20Resources_files/cga-logo-med-9c368eb444d02cae0be5d0fc4d9bd3a337bdf1e2752998.webp">
+        <p class="mb-0 d-flex flex-column text-left footer-home-logo-text pt-serif-bold font-size-18">
+          Colorado General Assembly
+        </p>
+      </div>
+</a>  </div>
+
+  <div class="row pb-0" aria-hidden="true">
+    <div class="col-12 px-0">
+      
+<hr class="bg-color-secondary-dark-blue height-6">
+
+    </div>
+  </div>
+
+  <div class="row pt-4 pb-3 d-flex justify-content-md-start justify-content-center">
+    <div class="footer-address line-height-150">
+      <p>200 E Colfax Avenue</p>
+      <p>Denver, CO 80203</p>
+    </div>
+  </div>
+
+  <div class="row p-0 d-flex justify-content-md-start justify-content-center pb-md-0 pb-3">
+    <a class="light-on-dark-link text-decoration-underline footer-link" href="mailto:lis.ga@coleg.gov">
+        <i class="fa-regular mr-2 fa-envelope" aria-hidden="true"></i>Contact Us
+</a>  </div>
+</div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="col-12 px-0 pb-md-0 pb-2 bg-color-charcoal-brown">
+  <div class="container-fluid mobile-view-padding">
+    <nav aria-label="Secondary Footer Navigation">
+      <ul class="list-unstyled mb-0 d-flex flex-wrap justify-content-center align-items-center height-90 absolute-footer">
+            <li>
+              <div class="pr-4">
+                  <a class="light-on-black-link d-inline-block" target="_blank" href="https://content.leg.colorado.gov/privacy-policy">
+                    <i class="fa-solid mr-2 fa-file-pdf" aria-hidden="true"></i>Privacy Policy
+</a>              </div>
+            </li>
+      </ul>
+    </nav>
+  </div>
+</div>
+
+</section>
+
+  </div>
+</div>
+
+    </footer>
+  
+
+</body></html>

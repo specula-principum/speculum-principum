@@ -17,7 +17,7 @@ from src.orchestration.planner import DeterministicPlanner
 from src.orchestration.llm import LLMPlanner
 from src.orchestration.safety import SafetyValidator
 from src.orchestration.tools import ToolRegistry
-from src.orchestration.types import ExecutionContext, MissionStatus, AgentStep
+from src.orchestration.types import ExecutionContext, MissionStatus, AgentStep, ToolResult
 from src.integrations.copilot import CopilotClient
 from src.integrations.github.issues import (
     DEFAULT_API_URL,
@@ -211,7 +211,10 @@ class SimpleEvaluator(MissionEvaluator):
     when to finish via FINISH thoughts. It validates whether work was successful
     but does NOT prematurely stop the mission mid-execution.
     """
-    
+
+    def __init__(self, *, required_tools: Sequence[str] | None = None) -> None:
+        self._required_tools = tuple(required_tools or ())
+
     def evaluate(self, mission: Mission, steps: Sequence[AgentStep], context: ExecutionContext) -> EvaluationResult:
         """Validate if the mission accomplished its goals.
         
@@ -225,14 +228,62 @@ class SimpleEvaluator(MissionEvaluator):
         """
         # Count successful tool executions
         successful_steps = [s for s in steps if s.result and s.result.success]
-        
+
+        missing_required_reason = self._missing_required_successes(steps)
+        if missing_required_reason:
+            return EvaluationResult(complete=False, reason=missing_required_reason)
+
         if successful_steps:
             # We have successful work - validation passes
             summary = f"Successfully executed {len(successful_steps)} action(s)"
             return EvaluationResult(complete=True, reason=summary)
-        
+
         # No successful work - validation fails
         return EvaluationResult(complete=False, reason="No successful actions completed")
+
+    def _missing_required_successes(self, steps: Sequence[AgentStep]) -> str | None:
+        """Return a failure reason if any required tools did not succeed."""
+
+        if not self._required_tools:
+            return None
+
+        completed: set[str] = set()
+        last_attempt: dict[str, ToolResult | None] = {}
+
+        for step in steps:
+            call = step.thought.tool_call
+            if call is None:
+                continue
+            name = call.name
+            if name not in self._required_tools:
+                continue
+            last_attempt[name] = step.result
+            if step.result and step.result.success:
+                completed.add(name)
+
+        missing_tools = [name for name in self._required_tools if name not in completed]
+        if not missing_tools:
+            return None
+
+        messages: list[str] = []
+        for name in missing_tools:
+            result = last_attempt.get(name)
+            if result is None:
+                messages.append(f"{name} was not executed successfully.")
+            elif result.error:
+                messages.append(f"{name} failed: {result.error}")
+            else:
+                messages.append(f"{name} did not complete successfully.")
+
+        return "; ".join(messages)
+
+
+def _build_mission_evaluator(mission: Mission) -> MissionEvaluator:
+    """Return an evaluator configured for the given mission."""
+
+    if mission.id == "kb_extraction_full":
+        return SimpleEvaluator(required_tools=("assign_issue_to_copilot",))
+    return SimpleEvaluator()
 
 
 def _prepare_agent_inputs(raw_inputs: dict[str, Any]) -> tuple[dict[str, Any], bool, str | None]:
@@ -452,7 +503,7 @@ def run_mission_cli(args: argparse.Namespace) -> int:
         print("Using deterministic planner (demo mode)")
     
     validator = SafetyValidator()
-    evaluator = SimpleEvaluator()
+    evaluator = _build_mission_evaluator(mission)
     
     print(f"Starting mission: {mission.id}")
     print(f"Goal: {mission.goal}")

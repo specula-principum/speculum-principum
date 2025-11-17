@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import datetime
-from typing import Iterable, Mapping
+from pathlib import Path
+from collections.abc import Iterable, Mapping
 
 from . import ExtractionResult
+from .normalization import normalize_keyword_sequence
 
 __all__ = ["generate_metadata"]
 
@@ -92,15 +95,87 @@ def _collect_paragraphs(text: str) -> list[str]:
     return paragraphs
 
 
-def _collect_keywords(words: Iterable[str], *, max_keywords: int, min_length: int) -> tuple[str, ...]:
+def _collect_keywords(
+    words: Iterable[str],
+    *,
+    max_keywords: int,
+    min_length: int,
+    stopwords: Iterable[str] | None = None,
+) -> tuple[str, ...]:
+    stopword_set = {word.lower() for word in stopwords or ()}
     ranked: dict[str, int] = {}
     for word in words:
         if len(word) < min_length:
             continue
         key = word.lower()
+        if key in stopword_set:
+            continue
         ranked[key] = ranked.get(key, 0) + 1
     ordered = sorted(ranked.items(), key=lambda item: (-item[1], item[0]))
     return tuple(word for word, _ in ordered[:max_keywords])
+
+
+def _load_stopwords_from_file(path_value: str) -> tuple[str, ...]:
+    path = Path(path_value).expanduser()
+    if not path.exists():
+        return ()
+
+    text = path.read_text(encoding="utf-8")
+    suffix = path.suffix.lower()
+    data: object
+    if suffix == ".json":
+        data = json.loads(text)
+    elif suffix in {".yaml", ".yml"}:
+        try:
+            import yaml
+        except ImportError as exc:  # pragma: no cover - PyYAML should be present but guard in tests
+            raise ValueError("yaml stopword files require PyYAML to be installed") from exc
+        data = yaml.safe_load(text)
+    else:
+        data = [line.strip() for line in text.splitlines() if line.strip()]
+
+    tokens: list[str] = []
+    if isinstance(data, Mapping):
+        for value in data.values():
+            candidate = str(value).strip()
+            if candidate:
+                tokens.append(candidate)
+    elif isinstance(data, Iterable) and not isinstance(data, (str, bytes)):
+        for item in data:
+            candidate = str(item).strip()
+            if candidate:
+                tokens.append(candidate)
+    else:
+        candidate = str(data).strip()
+        if candidate:
+            tokens.append(candidate)
+
+    return tuple(tokens)
+
+
+def _collect_keyword_stopwords(config_map: Mapping[str, object]) -> tuple[str, ...]:
+    ordered: list[str] = list(_coerce_sequence(config_map.get("keyword_stopwords")))
+    raw_file = config_map.get("keyword_stopwords_file")
+    files: list[str] = []
+    if isinstance(raw_file, str) and raw_file.strip():
+        files.append(raw_file)
+    elif isinstance(raw_file, (list, tuple, set)):
+        files.extend(str(item) for item in raw_file if str(item).strip())
+
+    for file_path in files:
+        ordered.extend(_load_stopwords_from_file(file_path))
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for token in ordered:
+        lowered = token.strip()
+        if not lowered:
+            continue
+        if lowered in seen:
+            continue
+        deduped.append(lowered)
+        seen.add(lowered)
+    return tuple(deduped)
 
 
 def generate_metadata(
@@ -119,6 +194,7 @@ def generate_metadata(
     include_history = _coerce_bool(config_map.get("include_history"), True)
     min_keyword_length = _coerce_int(config_map.get("min_keyword_length"), 4, minimum=1)
     max_keywords = _coerce_int(config_map.get("max_keywords"), 6, minimum=0, maximum=20)
+    keyword_stopwords = _collect_keyword_stopwords(config_map)
 
     sentences = _collect_sentences(text)
     words = _WORD_PATTERN.findall(text)
@@ -137,7 +213,13 @@ def generate_metadata(
     lexical_density = (unique_words / word_count) if word_count else 0.0
     estimated_reading_time = round(word_count / words_per_minute, 2) if word_count else 0.0
 
-    keywords = _collect_keywords(words, max_keywords=max_keywords, min_length=min_keyword_length)
+    keywords = _collect_keywords(
+        words,
+        max_keywords=max_keywords,
+        min_length=min_keyword_length,
+        stopwords=keyword_stopwords,
+    )
+    keywords = normalize_keyword_sequence(keywords)
 
     title = config_map.get("title") or _extract_title(text) or source_path
     description = config_map.get("description") or _extract_summary(text, summary_length)

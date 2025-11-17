@@ -9,33 +9,126 @@ concepts:
   min_term_length: 3
 
 entities:
-  confidence_threshold: 0.7
+  confidence_threshold: 0.88
+  enable_uppercase_orgs: false
   entity_types:
     - PERSON
     - ORG
     - GPE
     - DATE
+  known_locations_file: config/normalization_maps/us_locations.yaml
+  demonym_map_file: config/normalization_maps/us_demonyms.yaml
+  known_organizations_file: config/normalization_maps/us_agencies.yaml
+  leading_stopwords:
+    - Civic
+    - Native
+    - Whether
+    - How
+    - What
+    - Where
+    - Which
+    - That
+    - Concerning
+    - "On"
+    - Of
 
 relationships:
-  max_relationships: 100
+  max_relationships: 200
   max_pairs_per_sentence: 6
   window_size: 3
   include_self_pairs: false
+  normalization_map:
+    English: England
+    Englishmen: England
+    Florentines: Florence
+    Florentine: Florence
+    French: France
+    Frenchmen: France
+    Germans: Germany
+    German: Germany
+    Italians: Italy
+    Italian: Italy
+    Scots: Scotland
+    Scottish: Scotland
+    Romans: Rome
+    Roman: Rome
+    Spaniards: Spain
+    Spanish: Spain
+    Swiss: Switzerland
+    Venetians: Venice
+    Venetian: Venice
+  # normalization_map_file: config/normalization_maps/legal_trial.yaml
+  generic_subject_stopwords:
+    - Church
+    - State
+    - Government
+    - Republic
+    - People
+    - Nation
+    - Country
+    - Kingdom
+    - Empire
+    - Army
+    - City
   keywords:
     support:
       - support
       - bolster
       - aid
       - assist
+      - defend
+      - reinforce
+      - protect
     opposition:
       - oppose
       - against
       - resist
       - challenge
+      - besiege
+      - conquer
+      - invade
     alliance:
       - treaty
       - alliance
       - ally
+      - pact
+      - league
+      - coalition
+      - accord
+    oversight:
+      - oversight
+      - audit
+      - accountability
+      - inspector
+      - supervise
+      - compliance
+      - review
+    funding:
+      - funding
+      - finance
+      - budget
+      - appropriation
+      - grant
+      - allocate
+      - expenditure
+      - investment
+    delegation:
+      - delegate
+      - delegation
+      - authorize
+      - assign
+      - empower
+      - entrust
+      - designate
+    emergency_powers:
+      - emergency
+      - disaster
+      - crisis
+      - contingency
+      - hazard
+      - emergency powers
+      - urgent
+      - response
 
 metadata:
   language: en
@@ -43,26 +136,151 @@ metadata:
   words_per_minute: 215
   include_quality_metrics: true
   include_history: true
-  max_keywords: 6
-  min_keyword_length: 4
+  max_keywords: 8
+  min_keyword_length: 6
+  keyword_stopwords_file: config/normalization_maps/metadata_keyword_stopwords.yaml
   long_sentence_threshold: 35
+  title: "The Prince"
+  description: "Seminal political treatise on executive governance, digitized from the Luigi Ricci translation revised by E. R. P. Vincent (Oxford University Press, 1935)."
+  subjects:
+    - Executive playbooks
+    - Municipal administration
+    - Fiscal stewardship
+    - Civil-military coordination
+    - Intergovernmental coordination
+  creators:
+    - Niccol\u00f2 Machiavelli
+  contributors:
+    - Luigi Ricci (translator)
+    - E. R. P. Vincent (reviser)
+    - Oxford University Press
+  rights: "Digitized by Duke University Libraries (2017); believed to be in the public domain within the United States."
+  coverage: "Florence, Italy -- early 16th century"
+  identifier: "https://archive.org/details/prince01mach_1"
 
 taxonomy:
-  max_labels: 5
+  max_labels: 6
   min_score: 0.05
   bonus_weight: 0.05
+  categories:
+    governance:
+      - govern
+      - rule
+      - council
+      - prince
+      - sovereign
+      - laws
+      - state
+      - policy
+    warfare:
+      - army
+      - fort
+      - battle
+      - defend
+      - troop
+      - strategy
+      - campaign
+      - garrison
+      - militia
+      - siege
+    diplomacy:
+      - treaty
+      - envoy
+      - alliance
+      - embassy
+      - negotiation
+      - accord
+      - pact
+      - league
+      - coalition
+    economy:
+      - treasury
+      - tax
+      - trade
+      - coin
+      - finance
+      - commerce
+      - revenue
+      - wealth
+    virtue:
+      - virtue
+      - prudence
+      - honor
+      - justice
+      - wisdom
+      - mercy
+      - temperance
+      - clemency
+    religion:
+      - church
+      - papal
+      - priest
+      - bishop
+      - ecclesiastical
+      - faith
+      - divine
+      - sacrament
+    municipal_services:
+      - zoning
+      - sanitation
+      - transportation
+      - transit
+      - infrastructure
+      - public works
+      - water
+      - sewer
+      - utilities
+      - emergency services
+    fiscal_governance:
+      - budget
+      - revenue
+      - expenditure
+      - appropriations
+      - funding
+      - audit
+      - finance
+      - fiscal
+      - levy
+      - taxation
+    intergovernmental_coordination:
+      - intergovernmental
+      - coordination
+      - memorandum
+      - regional
+      - collaboration
+      - partnership
+      - jurisdiction
+      - shared services
+      - council of governments
+      - agreement
 
 linking:
   max_links: 25
   max_mentions: 10
   include_mentions: true
   include_anchor_offsets: true
+  enable_reference_links: true
+  max_reference_links: 6
+  reference_context_window: 90
+  reference_map_file:
+    - config/normalization_maps/renaissance_statecraft_glossary.yaml
+    - config/normalization_maps/us_governance_glossary.yaml
 
 summarization:
-  default_max_length: 250
-  style: abstract
+  default_max_length: 320
+  style: bullet
   preserve_formatting: true
   max_sentences: 5
   min_sentence_length: 25
   include_highlights: true
   preserve_order: true
+  auto_template: true
+  auto_template_max_sentences: 5
+  include_structure_insight: true
+  include_statute_insight: false
+  template_sentences:
+    - Distills Machiavelli's guidance on securing hereditary, mixed, and newly conquered states to keep civic governance stable.
+    - Stresses disciplined citizen militias and layered fortifications instead of mercenaries for defensible administrations.
+    - Explains how calibrated clemency, prudence, and controlled severity sustain public trust while deterring factional threats.
+    - Analyzes fiscal stewardship, advising princes to tax sparingly, reward loyalty selectively, and avoid burdensome generosity.
+    - Structures the treatise across twenty-six chapters framed by a dedicatory letter and a closing exhortation to rally Italy.

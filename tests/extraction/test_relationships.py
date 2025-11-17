@@ -1,6 +1,10 @@
 """Tests for the relationships extractor."""
 from __future__ import annotations
 
+from pathlib import Path
+
+import yaml
+
 from src.extraction.relationships import extract_relationships
 
 
@@ -48,3 +52,23 @@ def test_extract_relationships_include_self_pairs() -> None:
     )
 
     assert any(rel.subject == rel.object for rel in result.data)
+
+
+def test_relationships_default_profile_for_prince_fixture() -> None:
+    text_path = Path("tests/extraction/fixtures/prince01mach_1/sample_combined.md")
+    text = text_path.read_text(encoding="utf-8")
+
+    full_config = yaml.safe_load(Path("config/extraction.yaml").read_text(encoding="utf-8"))
+    relationships_config = dict(full_config["relationships"])  # type: ignore[index]
+    relationships_config["source_path"] = str(text_path)
+
+    result = extract_relationships(text, config=relationships_config)
+
+    triples = {(rel.subject, rel.object, rel.relation_type) for rel in result.data}
+
+    assert ("Machiavelli", "Italy", "association") in triples
+    assert any(
+        rel.subject == "Vincent" and rel.object == "Oxford University Press" and rel.relation_type == "association"
+        for rel in result.data
+    )
+    assert result.metadata["detected_relationships"] == len(result.data)

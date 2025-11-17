@@ -20,6 +20,20 @@ from src.extraction.config import (
 __all__ = ["register_commands", "build_parser"]
 
 
+# Named collections of extractors that mirror common benchmarking workflows.
+_BENCHMARK_PROFILES: dict[str, tuple[str, ...]] = {
+    "governance-default": ("entities", "relationships", "metadata", "summarization"),
+    "governance-full": (
+        "entities",
+        "relationships",
+        "metadata",
+        "summarization",
+        "taxonomy",
+        "linking",
+    ),
+}
+
+
 def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add extraction-related commands to the main CLI parser."""
 
@@ -103,6 +117,11 @@ def _configure_benchmark_parser(parser: argparse.ArgumentParser) -> None:
         "extractors",
         nargs="*",
         help="Optional list of extraction modules to benchmark (default: all).",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=tuple(sorted(_BENCHMARK_PROFILES)),
+        help="Predefined extractor set to benchmark (e.g., governance-full).",
     )
     parser.add_argument(
         "--input",
@@ -206,7 +225,11 @@ def extract_benchmark_cli(args: argparse.Namespace) -> int:
     except (ValueError, ImportError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    selected_extractors = list(args.extractors) if args.extractors else list(available_extractors())
+    try:
+        selected_extractors = _resolve_benchmark_extractors(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     try:
         validate_requested_extractors(selected_extractors)
     except ValueError as exc:
@@ -248,6 +271,22 @@ def extract_benchmark_cli(args: argparse.Namespace) -> int:
         end = "" if output_data.endswith("\n") else "\n"
         sys.stdout.write(output_data + end)
     return 0
+
+
+def _resolve_benchmark_extractors(args: argparse.Namespace) -> list[str]:
+    explicit = list(args.extractors) if getattr(args, "extractors", None) else None
+    profile = getattr(args, "profile", None)
+
+    if profile and explicit:
+        raise ValueError("--profile cannot be combined with explicit extractor names.")
+
+    if profile:
+        return list(_BENCHMARK_PROFILES[profile])
+
+    if explicit is not None and explicit:
+        return explicit
+
+    return list(available_extractors())
 
 
 def _summarize_durations(durations: list[float]) -> dict[str, float | int]:

@@ -1,0 +1,88 @@
+# Known U.S. governance locations and agencies used by the entities extractor.
+states:
+  - Alabama
+  - Alaska
+  - Arizona
+  - Arkansas
+  - California
+  - Colorado
+  - Connecticut
+  - Delaware
+  - Florida
+  - Georgia
+  - Hawaii
+  - Idaho
+  - Illinois
+  - Indiana
+  - Iowa
+  - Kansas
+  - Kentucky
+  - Louisiana
+  - Maine
+  - Maryland
+  - Massachusetts
+  - Michigan
+  - Minnesota
+  - Mississippi
+  - Missouri
+  - Montana
+  - Nebraska
+  - Nevada
+  - New Hampshire
+  - New Jersey
+  - New Mexico
+  - New York
+  - North Carolina
+  - North Dakota
+  - Ohio
+  - Oklahoma
+  - Oregon
+  - Pennsylvania
+  - Rhode Island
+  - South Carolina
+  - South Dakota
+  - Tennessee
+  - Texas
+  - Utah
+  - Vermont
+  - Virginia
+  - Washington
+  - West Virginia
+  - Wisconsin
+  - Wyoming
+  - District of Columbia
+  - United States
+  - United States of America
+  - State of Colorado
+  - State of Texas
+  - State of Florida
+  - State of Washington
+  - State of California
+  - State of New York
+counties:
+  - Los Angeles County
+  - Miami-Dade County
+  - King County
+  - Denver County
+  - El Paso County
+  - Harris County
+  - Travis County
+  - Maricopa County
+  - Cook County
+  - Orange County
+  - Palm Beach County
+  - Broward County
+cities:
+  - Denver
+  - Austin
+  - Miami
+  - Los Angeles
+  - Seattle
+  - Phoenix
+  - Dallas
+  - Houston
+  - San Antonio
+  - Orlando
+  - Boulder
+  - Tallahassee
+  - Sacramento

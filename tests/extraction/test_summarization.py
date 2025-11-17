@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
+import yaml
 
 from src.cli.commands.extraction import build_parser, extract_cli
 from src.extraction.summarization import summarize
@@ -101,3 +104,55 @@ def test_summarize_handles_numeric_sentences_when_reordering() -> None:
 
     summary = result.data["summary"]  # type: ignore[index]
     assert "1234567890" in summary
+
+
+def test_default_config_generates_auto_templates() -> None:
+    text_path = Path("tests/extraction/fixtures/prince01mach_1/sample_combined.md")
+    text = text_path.read_text(encoding="utf-8")
+
+    full_config = yaml.safe_load(Path("config/extraction.yaml").read_text(encoding="utf-8"))
+    summarization_config = dict(full_config["summarization"])  # type: ignore[index]
+    summarization_config["source_path"] = str(text_path)
+    summarization_config["taxonomy_path"] = "evidence/parsed/2025/prince01mach-1-pdf-1327a866df4a/outputs/taxonomy.json"
+    summarization_config["structure_path"] = "evidence/parsed/2025/prince01mach-1-pdf-1327a866df4a/outputs/structure.json"
+
+    result = summarize(text, config=summarization_config)
+
+    sentences = result.data["sentences"]  # type: ignore[index]
+    assert summarization_config.get("auto_template") is True
+    expected_sentences = tuple(summarization_config["template_sentences"])  # type: ignore[index]
+    assert len(sentences) == summarization_config.get("auto_template_max_sentences", len(expected_sentences))
+    assert sentences == expected_sentences
+    assert sentences[0].startswith("Distills Machiavelli's guidance")
+    assert sentences[-1].startswith("Structures the treatise")
+    assert result.data["summary"].startswith("-")  # type: ignore[index]
+    highlights = result.data["highlights"]  # type: ignore[index]
+    assert len(highlights) == 5
+    assert {
+        "governance",
+        "administrations",
+        "public",
+        "fiscal",
+    }.issubset(highlights)
+
+
+def test_auto_template_includes_statute_sentence_when_enabled() -> None:
+    text = (
+        "Sec. 1.01 establishes the county charter. "
+        "Section 2-104 describes fiscal stewardship duties. "
+        "§ 3-210 outlines emergency powers."
+    )
+
+    config = {
+        "source_path": "governance.md",
+        "auto_template": True,
+        "auto_template_max_sentences": 3,
+        "include_structure_insight": False,
+        "include_statute_insight": True,
+        "style": "bullet",
+    }
+
+    result = summarize(text, config=config)
+
+    sentences = result.data["sentences"]  # type: ignore[index]
+    assert any("statutory anchor" in sentence for sentence in sentences)

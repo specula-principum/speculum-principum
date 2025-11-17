@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
+import yaml
 
 from src.cli.commands.extraction import build_parser, extract_cli
 from src.extraction.metadata import generate_metadata
@@ -87,9 +90,43 @@ def test_metadata_cli_integration(tmp_path, capsys) -> None:
     exit_code = extract_cli(args)
     assert exit_code == 0
 
-    out, err = capsys.readouterr()
+    out, _ = capsys.readouterr()
     payload = json.loads(out)
     assert payload["extractor_name"] == "metadata"
     assert payload["data"]["dublin_core"]["title"] == "De Regno"
     assert payload["data"]["statistics"]["word_count"] > 0
+
+
+def test_metadata_default_profile_for_prince() -> None:
+    text_path = Path("tests/extraction/fixtures/prince01mach_1/sample_combined.md")
+    text = text_path.read_text(encoding="utf-8")
+
+    full_config = yaml.safe_load(Path("config/extraction.yaml").read_text(encoding="utf-8"))
+    metadata_config = dict(full_config["metadata"])  # type: ignore[index]
+    metadata_config["source_path"] = str(text_path)
+
+    result = generate_metadata(text, config=metadata_config)
+
+    dublin_core = result.data["dublin_core"]  # type: ignore[index]
+    provenance = result.data["provenance"]  # type: ignore[index]
+
+    assert dublin_core["title"] == "The Prince"
+    assert dublin_core["identifier"] == "https://archive.org/details/prince01mach_1"
+    assert "Luigi Ricci" in " ".join(dublin_core["contributor"])  # type: ignore[index]
+    assert "Duke University Libraries" in dublin_core["rights"]
+    keywords = provenance["keywords"]
+    stopwords = set()
+    stopword_file = metadata_config.get("keyword_stopwords_file")
+    if stopword_file:
+        stopword_path = Path(stopword_file)
+        if not stopword_path.exists():
+            stopword_path = Path.cwd() / stopword_file
+        if stopword_path.exists():
+            raw_stopwords = yaml.safe_load(stopword_path.read_text(encoding="utf-8"))
+            if isinstance(raw_stopwords, list):
+                stopwords.update(str(item).strip().lower() for item in raw_stopwords if str(item).strip())
+    assert all(len(keyword) >= 6 for keyword in keywords)
+    assert not any(keyword.lower() in stopwords for keyword in keywords)
+    assert "niccol0" not in keywords
+    assert not any(any(char.isdigit() for char in keyword) for keyword in keywords)
 

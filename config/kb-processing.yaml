@@ -1,5 +1,56 @@
 # Default configuration for the knowledge base engine pipeline.
 pipeline:
+  parsing:
+    supported_formats:
+      - pdf
+      - html
+      - docx
+          dpi: 300
+          languages:
+            - eng
+        extraction:
+          layout_mode: layout
+          strip_rotated: false
+          collapse_whitespace: true
+          warn_on_empty_pages: true
+    scan:
+      suffixes:
+        - .pdf
+        - .html
+        - .htm
+        - .docx
+      recursive: true
+      include: []
+      exclude: []
+    format_profiles:
+      pdf:
+        ocr:
+          table:
+            preserve_header_rows: true
+            merge_nested_tables: true
+          enable: true
+          deskew: true
+          clean_background: true
+        metadata:
+          capture_bookmarks: true
+          keep_page_labels: true
+      html:
+        selectors:
+          main:
+            - article
+            - main
+            - "[role='main']"
+            - "#content"
+          remove:
+            - nav
+            - header
+            - footer
+            - aside
+        convert_links_to_absolute: true
+        preserve_tables: true
+      docx:
+        normalize_whitespace: true
+        merge_runs: true
   extraction:
     enabled_tools:
       - concepts
