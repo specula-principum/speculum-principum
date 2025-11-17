@@ -1,11 +1,17 @@
 """Tests for the extraction CLI registry and commands."""
 from __future__ import annotations
 
+import argparse
 import json
 
 import pytest
 
-from src.cli.commands.extraction import build_parser, extract_cli
+from src.cli.commands.extraction import (
+    build_parser,
+    extract_benchmark_cli,
+    extract_cli,
+    register_benchmark_command,
+)
 from src.extraction import cli
 
 
@@ -85,3 +91,68 @@ def test_extract_cli_dry_run(tmp_path, capsys) -> None:
 
     out, err = capsys.readouterr()
     assert "Dry run" in out
+
+
+def test_extract_benchmark_profile_selection(tmp_path) -> None:
+    input_path = tmp_path / "doc.md"
+    input_path.write_text("# Title\n\nYet another paragraph.", encoding="utf-8")
+    output_path = tmp_path / "benchmark.json"
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command")
+    register_benchmark_command(subparsers)
+
+    args = parser.parse_args(
+        [
+            "extract-benchmark",
+            "--input",
+            str(input_path),
+            "--profile",
+            "governance-default",
+            "--iterations",
+            "1",
+            "--output",
+            str(output_path),
+            "--output-format",
+            "json",
+        ]
+    )
+
+    exit_code = args.func(args)
+    assert exit_code == 0
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert tuple(payload["extractors"]) == (
+        "entities",
+        "relationships",
+        "metadata",
+        "summarization",
+    )
+
+
+def test_extract_benchmark_profile_conflict(tmp_path, capsys) -> None:
+    input_path = tmp_path / "doc.md"
+    input_path.write_text("# Heading", encoding="utf-8")
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command")
+    register_benchmark_command(subparsers)
+
+    args = parser.parse_args(
+        [
+            "extract-benchmark",
+            "entities",
+            "--input",
+            str(input_path),
+            "--profile",
+            "governance-default",
+            "--iterations",
+            "1",
+        ]
+    )
+
+    exit_code = args.func(args)
+    assert exit_code == 1
+
+    out, err = capsys.readouterr()
+    assert "profile" in err

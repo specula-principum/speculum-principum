@@ -13,28 +13,34 @@
 
 ## Workstreams & Tasks
 ### Workstream A – Parsing & Data Readiness
-- [ ] Verify parsing configuration covers PDFs and update `config/kb-processing.yaml` if gaps exist.
-- [ ] Parse source: `python -m main parsing --output-root evidence/parsed pdf evidence/prince01mach_1.pdf`.
-- [ ] Catalog generated artifact path in `evidence/parsed/README.md` (include checksum, page count, parser warnings).
-- [ ] Spot-check Markdown for layout fidelity (figures, headings, footnotes) and record issues in sprint notes.
+- [x] Verify parsing configuration covers PDFs and update `config/kb-processing.yaml` if gaps exist.
+- [x] Parse source: `python -m main parsing --output-root evidence/parsed pdf evidence/prince01mach_1.pdf`.
+- [x] Catalog generated artifact path in `evidence/parsed/README.md` (include checksum, page count, parser warnings).
+- [x] Spot-check Markdown for layout fidelity (figures, headings, footnotes) and record issues in sprint notes.
 
 ### Workstream B – Segmentation & Structural Analysis
-- [ ] Run segment extractor on parsed artifact: `python -m main extraction extract segments --input <parsed_markdown>`.
-- [ ] Compare segment boundaries against original PDF sections; flag misaligned headers or paragraph merges.
-- [ ] Execute structure analyzer: `python -m main extraction extract structure --input <parsed_markdown>` and review hierarchy depth against Table of Contents.
-- [ ] File configuration or parser tweaks required to correct structural drift.
+- [x] Run segment extractor on parsed artifact: `python -m main extraction extract segments --input <parsed_markdown>`.
+- [x] Compare segment boundaries against original PDF sections; flag misaligned headers or paragraph merges.
+- [x] Execute structure analyzer: `python -m main extraction extract structure --input <parsed_markdown>` and review hierarchy depth against Table of Contents.
+- [x] File configuration or parser tweaks required to correct structural drift.
 
 ### Workstream C – Entities, Relationships, Taxonomy
-- [ ] Benchmark `entities`, `relationships`, and `taxonomy` extractors via `python -m main extraction extract-benchmark --input <parsed_markdown> entities relationships taxonomy` (3 iterations default).
-- [ ] Inspect JSON outputs for terminology coverage (characters, locations, political entities); capture false positives/negatives.
-- [ ] Adjust extractor prompts/config tuning in `config/extraction.yaml`, re-run, and document deltas.
-- [ ] Generate linking output (`linking` extractor) and validate graph consistency (no orphan nodes, consistent IDs).
+- [x] Benchmark `entities`, `relationships`, and `taxonomy` extractors via `python -m main extraction extract-benchmark --input <parsed_markdown> entities relationships taxonomy` (3 iterations default).
+- [x] Inspect JSON outputs for terminology coverage (characters, locations, political entities); capture false positives/negatives.
+- [x] Adjust extractor prompts/config tuning in `config/extraction.yaml`, re-run, and document deltas (externalize normalization maps so domains can swap profiles without code edits).
+- [x] Generate linking output (`linking` extractor) and validate graph consistency (no orphan nodes, consistent IDs).
 
 ### Workstream D – Summaries, Metadata, Quality Loop
-- [ ] Produce metadata (`python -m main extraction extract metadata ...`) and ensure citation info pulls from PDF front matter.
-- [ ] Run summarization module, review thematic accuracy, and iterate prompt/templates if drift detected.
-- [ ] Compile consolidated QA report summarizing issues, fixes, and outstanding risks (store under `reports/quality-*.md`).
-- [ ] Capture regression tests: add fixtures under `tests/extraction/fixtures/prince01mach_1/` and write PyTest cases covering fixed defects.
+- [x] Produce metadata (`python -m main extraction extract metadata ...`) and ensure citation info pulls from PDF front matter.
+- [x] Run summarization module, review thematic accuracy, and iterate prompt/templates if drift detected.
+- [x] Compile consolidated QA report summarizing issues, fixes, and outstanding risks (store under `reports/quality-*.md`).
+- [x] Capture regression tests: add fixtures under `tests/extraction/fixtures/prince01mach_1/` and write PyTest cases covering fixed defects.
+
+### Workstream E – Follow-On Quality Extensions
+- [x] Normalize OCR artifacts that leak into metadata keywords and entities (e.g., convert `niccol0` to `niccolo`) via post-processing filters.
+- [x] Design outbound linking heuristics so `linking` extractor emits references when the source lacks explicit URLs (consider structural anchors or curated glossaries).
+- [x] Prototype automated summary template generation using taxonomy or structural analytics to reduce manual config maintenance.
+- [x] Evaluate metadata keyword stopword lists for reuse across missions and upstream them into shared normalization maps.
 
 ## Milestones & Cadence
 | Date | Milestone | Owner | Notes |

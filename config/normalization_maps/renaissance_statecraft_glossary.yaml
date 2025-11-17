@@ -1,0 +1,32 @@
+Machiavelli:
+  target: https://en.wikipedia.org/wiki/Niccolo_Machiavelli
+  label: Niccolo Machiavelli
+  aliases:
+    - Niccol0 Machiavelli
+    - Niccolo Machiavelli
+    - Machiavelli
+The Prince:
+  target: https://en.wikipedia.org/wiki/The_Prince
+  label: The Prince (treatise)
+  aliases:
+    - Il Principe
+    - The Prince
+Cesare Borgia:
+  target: https://en.wikipedia.org/wiki/Cesare_Borgia
+  label: Cesare Borgia
+  aliases:
+    - Duke Valentino
+    - Valentino
+
+Florence:
+  target: https://en.wikipedia.org/wiki/Republic_of_Florence
+  label: Republic of Florence
+  aliases:
+    - Florentine Republic
+    - Florence
+Italy:
+  target: https://en.wikipedia.org/wiki/Italy
+  label: Italy
+  aliases:
+    - Italian peninsula
+    - Italy

@@ -1,0 +1,34 @@
+State Government:
+  target: https://en.wikipedia.org/wiki/State_government_in_the_United_States
+  label: State government (United States)
+  aliases:
+    - state government
+    - state governments
+    - state executive branch
+County Charter:
+  target: https://en.wikipedia.org/wiki/Home_rule
+  label: County home rule charter
+  aliases:
+    - county charter
+    - home rule charter
+    - charter county
+Municipal Code:
+  target: https://en.wikipedia.org/wiki/Municipal_code
+  label: Municipal code
+  aliases:
+    - municipal code
+    - city code
+    - code of ordinances
+Transportation Authority:
+  target: https://en.wikipedia.org/wiki/Transportation_authority
+  label: Transportation authority
+  aliases:
+    - transit authority
+    - regional transportation authority
+Council of Governments:
+  target: https://en.wikipedia.org/wiki/Council_of_governments
+  label: Council of governments
+  aliases:
+    - council of governments
+    - regional council
+    - metropolitan planning organization

@@ -11,6 +11,10 @@ import requests
 from requests import Response, Session
 from requests.exceptions import RequestException
 import trafilatura
+try:  # pragma: no cover - optional dependency fallback
+    from bs4 import BeautifulSoup
+except ImportError:  # pragma: no cover - executed only if dependency missing
+    BeautifulSoup = None
 
 from . import utils
 from .base import ParsedDocument, ParseTarget, ParserError
@@ -106,7 +110,11 @@ class WebParser:
         return document
 
     def _populate_segments(self, document: ParsedDocument, html: str, target: ParseTarget) -> None:
-        extracted = trafilatura.extract(html, url=target.source if target.is_remote else None)
+        normalized_html = _rewrite_key_value_tables(html)
+        extracted = trafilatura.extract(
+            normalized_html,
+            url=target.source if target.is_remote else None,
+        )
         if not extracted:
             document.warnings.append("No extractable text found in HTML content")
             return
@@ -184,6 +192,69 @@ def _sleep(seconds: float) -> None:
     from time import sleep
 
     sleep(max(seconds, 0.0))
+
+
+def _rewrite_key_value_tables(html: str) -> str:
+    if BeautifulSoup is None:
+        return html
+
+    soup = BeautifulSoup(html, "html.parser")
+    tables = soup.find_all("table")
+    for table in tables:
+        rows = table.find_all("tr")
+        if not rows or len(rows) > 20:
+            continue
+
+        key_value_pairs: list[tuple[str, list[str]]] = []
+        for row in rows:
+            cells = [cell for cell in row.find_all(["th", "td"], recursive=False)]
+            if len(cells) != 2 or cells[0].name != "th" or cells[1].name != "td":
+                key_value_pairs = []
+                break
+
+            label = _normalize_whitespace(cells[0].get_text(" ", strip=True))
+            values = [
+                _normalize_whitespace(token)
+                for token in cells[1].stripped_strings
+                if _normalize_whitespace(token)
+            ]
+            if not label or not values:
+                key_value_pairs = []
+                break
+            key_value_pairs.append((label, values))
+
+        if not key_value_pairs:
+            continue
+
+        wrapper = soup.new_tag("div", attrs={"class": "normalized-key-value"})
+        for label, values in key_value_pairs:
+            section = soup.new_tag("div", attrs={"class": "normalized-key-value__item"})
+            label_tag = soup.new_tag("p")
+            strong = soup.new_tag("strong")
+            strong.string = f"{label}:"
+            label_tag.append(strong)
+
+            if len(values) == 1:
+                label_tag.append(f" {values[0]}")
+                section.append(label_tag)
+            else:
+                section.append(label_tag)
+                list_tag = soup.new_tag("ul")
+                for value in values:
+                    item_tag = soup.new_tag("li")
+                    item_tag.string = value
+                    list_tag.append(item_tag)
+                section.append(list_tag)
+
+            wrapper.append(section)
+
+        table.replace_with(wrapper)
+
+    return str(soup)
+
+
+def _normalize_whitespace(value: str) -> str:
+    return " ".join(value.split())
 
 
 web_parser = WebParser()
