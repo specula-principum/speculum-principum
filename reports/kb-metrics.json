@@ -1,0 +1,27 @@
+{
+  "errors": [],
+  "metrics": {
+    "analysis.characters": 1242.0,
+    "analysis.duration_seconds": 0.000246,
+    "analysis.segments": 1.0,
+    "extraction.duration": 0.028,
+    "extraction.duration_seconds": 0.021902,
+    "extraction.extractors_total": 4.0,
+    "extraction.failures": 0.0,
+    "linking.backlinks_updated": 12.0,
+    "linking.concepts": 13.0,
+    "linking.duration_seconds": 0.106906,
+    "linking.edges": 22.0,
+    "organization.documents": 15.0,
+    "organization.duration_seconds": 0.032777,
+    "quality.duration_seconds": 0.04225,
+    "quality.gaps_errors": 11.0,
+    "quality.gaps_total": 27.0,
+    "quality.gaps_warnings": 13.0,
+    "transformation.concepts": 12.0,
+    "transformation.duration_seconds": 0.001128,
+    "transformation.entities": 3.0
+  },
+  "success": true,
+  "warnings": []
+}

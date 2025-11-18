@@ -1,0 +1,335 @@
+{
+  "documents": {
+    "by_type": {
+      "concept": 12,
+      "entity": 2
+    },
+    "total": 14
+  },
+  "gaps": {
+    "counts": {
+      "error": 11,
+      "info": 3,
+      "total": 27,
+      "warning": 13
+    },
+    "items": [
+      {
+        "details": {
+          "error": "Missing YAML front matter header",
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/concepts/index.md"
+        },
+        "issue": "invalid-front-matter",
+        "kb_id": "concepts/index",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/concepts/political-philosophy-knowledge-base/must.md"
+        },
+        "issue": "missing-backlinks",
+        "kb_id": "concepts/political-philosophy-knowledge-base/must",
+        "severity": "info"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/concepts/political-philosophy-knowledge-base/security.md"
+        },
+        "issue": "missing-backlinks",
+        "kb_id": "concepts/political-philosophy-knowledge-base/security",
+        "severity": "info"
+      },
+      {
+        "details": {
+          "error": "Missing YAML front matter header",
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/entities/index.md"
+        },
+        "issue": "invalid-front-matter",
+        "kb_id": "entities/index",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "error": "Missing YAML front matter header",
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/index.md"
+        },
+        "issue": "invalid-front-matter",
+        "kb_id": "index",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "error": "Missing YAML front matter header",
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/conventions.md"
+        },
+        "issue": "invalid-front-matter",
+        "kb_id": "meta/conventions",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "error": "Missing YAML front matter header",
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/methodology.md"
+        },
+        "issue": "invalid-front-matter",
+        "kb_id": "meta/methodology",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "error": "Missing YAML front matter header",
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/quality-standards.md"
+        },
+        "issue": "invalid-front-matter",
+        "kb_id": "meta/quality-standards",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+        },
+        "issue": "missing-sources",
+        "kb_id": "concepts/example",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+        },
+        "issue": "missing-tags",
+        "kb_id": "concepts/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+        },
+        "issue": "missing-related-concepts",
+        "kb_id": "concepts/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+        },
+        "issue": "missing-backlinks",
+        "kb_id": "concepts/example",
+        "severity": "info"
+      },
+      {
+        "details": {
+          "length": 37,
+          "minimum": 80,
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+        },
+        "issue": "body-too-short",
+        "kb_id": "concepts/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md",
+          "score": 0.0,
+          "threshold": 0.6
+        },
+        "issue": "findability-below-threshold",
+        "kb_id": "concepts/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md",
+          "score": 0.0,
+          "threshold": 0.7
+        },
+        "issue": "completeness-below-threshold",
+        "kb_id": "concepts/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md"
+        },
+        "issue": "missing-sources",
+        "kb_id": "entities/example",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md"
+        },
+        "issue": "missing-tags",
+        "kb_id": "entities/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "length": 53,
+          "minimum": 80,
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md"
+        },
+        "issue": "body-too-short",
+        "kb_id": "entities/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md",
+          "score": 0.0,
+          "threshold": 0.6
+        },
+        "issue": "findability-below-threshold",
+        "kb_id": "entities/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md",
+          "score": 0.0,
+          "threshold": 0.7
+        },
+        "issue": "completeness-below-threshold",
+        "kb_id": "entities/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md"
+        },
+        "issue": "missing-sources",
+        "kb_id": "sources/example",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md"
+        },
+        "issue": "missing-tags",
+        "kb_id": "sources/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "length": 67,
+          "minimum": 80,
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md"
+        },
+        "issue": "body-too-short",
+        "kb_id": "sources/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md",
+          "score": 0.0,
+          "threshold": 0.6
+        },
+        "issue": "findability-below-threshold",
+        "kb_id": "sources/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md",
+          "score": 0.0,
+          "threshold": 0.7
+        },
+        "issue": "completeness-below-threshold",
+        "kb_id": "sources/example",
+        "severity": "warning"
+      },
+      {
+        "details": {
+          "error": "Missing YAML front matter header",
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/relationships/index.md"
+        },
+        "issue": "invalid-front-matter",
+        "kb_id": "relationships/index",
+        "severity": "error"
+      },
+      {
+        "details": {
+          "error": "Missing YAML front matter header",
+          "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/sources/index.md"
+        },
+        "issue": "invalid-front-matter",
+        "kb_id": "sources/index",
+        "severity": "error"
+      }
+    ]
+  },
+  "generated_at": "2025-11-18T02:56:38Z",
+  "invalid_documents": [
+    {
+      "path": "knowledge-base/concepts/index.md",
+      "reason": "missing front matter"
+    },
+    {
+      "path": "knowledge-base/entities/index.md",
+      "reason": "missing front matter"
+    },
+    {
+      "path": "knowledge-base/index.md",
+      "reason": "missing front matter"
+    },
+    {
+      "path": "knowledge-base/relationships/index.md",
+      "reason": "missing front matter"
+    },
+    {
+      "path": "knowledge-base/sources/index.md",
+      "reason": "missing front matter"
+    }
+  ],
+  "kb_root": "knowledge-base",
+  "metrics": {
+    "body_length_characters": {
+      "count": 14.0,
+      "max": 151.0,
+      "mean": 124.428571,
+      "median": 122.5,
+      "min": 88.0,
+      "stdev": 14.261408,
+      "total": 1742.0
+    },
+    "completeness": {
+      "count": 14.0,
+      "max": 0.81,
+      "mean": 0.809143,
+      "median": 0.81,
+      "min": 0.798,
+      "missing": 0.0,
+      "stdev": 0.00309,
+      "total": 11.328
+    },
+    "findability": {
+      "count": 14.0,
+      "max": 0.98,
+      "mean": 0.851429,
+      "median": 0.86,
+      "min": 0.665,
+      "missing": 0.0,
+      "stdev": 0.085741,
+      "total": 11.92
+    },
+    "sources_per_document": {
+      "count": 14.0,
+      "max": 1.0,
+      "mean": 1.0,
+      "median": 1.0,
+      "min": 1.0,
+      "stdev": 0.0,
+      "total": 14.0
+    },
+    "tags_per_document": {
+      "count": 14.0,
+      "max": 3.0,
+      "mean": 2.142857,
+      "median": 2.0,
+      "min": 2.0,
+      "stdev": 0.349927,
+      "total": 30.0
+    }
+  },
+  "output_path": "reports/quality-kb-extract.json"
+}

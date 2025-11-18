@@ -1,3 +1,38 @@
+---
+title: Information Architecture Methodology
+slug: methodology
+kb_id: meta/methodology
+type: meta
+primary_topic: documentation
+secondary_topics: []
+tags:
+  - ia
+  - methodology
+  - standards
+aliases: []
+related_concepts: []
+sources: []
+dublin_core:
+  title: Information Architecture Methodology
+  identifier: meta/methodology
+  language: en
+ia:
+  findability_score: 1.0
+  completeness: 1.0
+  depth: 2
+  audience:
+    - students
+    - researchers
+    - political-scientists
+  navigation_path:
+    - meta
+    - methodology
+  related_by_topic: []
+  related_by_entity: []
+  update_frequency: quarterly
+  last_updated: '2025-11-18T02:56:13'
+---
+
 # Information Architecture Methodology
 
 ## Purpose

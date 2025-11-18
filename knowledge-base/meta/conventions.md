@@ -1,3 +1,38 @@
+---
+title: Information Architecture Conventions
+slug: conventions
+kb_id: meta/conventions
+type: meta
+primary_topic: documentation
+secondary_topics: []
+tags:
+  - ia
+  - conventions
+  - standards
+aliases: []
+related_concepts: []
+sources: []
+dublin_core:
+  title: Information Architecture Conventions
+  identifier: meta/conventions
+  language: en
+ia:
+  findability_score: 1.0
+  completeness: 1.0
+  depth: 2
+  audience:
+    - students
+    - researchers
+    - political-scientists
+  navigation_path:
+    - meta
+    - conventions
+  related_by_topic: []
+  related_by_entity: []
+  update_frequency: quarterly
+  last_updated: '2025-11-18T02:56:13'
+---
+
 # Information Architecture Conventions
 
 ## Purpose

@@ -1,0 +1,316 @@
+{
+  "fixes_applied": [
+    "backlinks:0"
+  ],
+  "gaps": [
+    {
+      "details": {
+        "error": "Missing YAML front matter header",
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/concepts/index.md"
+      },
+      "issue": "invalid-front-matter",
+      "kb_id": "concepts/index",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/concepts/political-philosophy-knowledge-base/must.md"
+      },
+      "issue": "missing-backlinks",
+      "kb_id": "concepts/political-philosophy-knowledge-base/must",
+      "severity": "info"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/concepts/political-philosophy-knowledge-base/security.md"
+      },
+      "issue": "missing-backlinks",
+      "kb_id": "concepts/political-philosophy-knowledge-base/security",
+      "severity": "info"
+    },
+    {
+      "details": {
+        "error": "Missing YAML front matter header",
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/entities/index.md"
+      },
+      "issue": "invalid-front-matter",
+      "kb_id": "entities/index",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "error": "Missing YAML front matter header",
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/index.md"
+      },
+      "issue": "invalid-front-matter",
+      "kb_id": "index",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "error": "Missing YAML front matter header",
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/conventions.md"
+      },
+      "issue": "invalid-front-matter",
+      "kb_id": "meta/conventions",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "error": "Missing YAML front matter header",
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/methodology.md"
+      },
+      "issue": "invalid-front-matter",
+      "kb_id": "meta/methodology",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "error": "Missing YAML front matter header",
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/quality-standards.md"
+      },
+      "issue": "invalid-front-matter",
+      "kb_id": "meta/quality-standards",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+      },
+      "issue": "missing-sources",
+      "kb_id": "concepts/example",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+      },
+      "issue": "missing-tags",
+      "kb_id": "concepts/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+      },
+      "issue": "missing-related-concepts",
+      "kb_id": "concepts/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+      },
+      "issue": "missing-backlinks",
+      "kb_id": "concepts/example",
+      "severity": "info"
+    },
+    {
+      "details": {
+        "length": 37,
+        "minimum": 80,
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md"
+      },
+      "issue": "body-too-short",
+      "kb_id": "concepts/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md",
+        "score": 0.0,
+        "threshold": 0.6
+      },
+      "issue": "findability-below-threshold",
+      "kb_id": "concepts/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/concept.md",
+        "score": 0.0,
+        "threshold": 0.7
+      },
+      "issue": "completeness-below-threshold",
+      "kb_id": "concepts/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md"
+      },
+      "issue": "missing-sources",
+      "kb_id": "entities/example",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md"
+      },
+      "issue": "missing-tags",
+      "kb_id": "entities/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "length": 53,
+        "minimum": 80,
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md"
+      },
+      "issue": "body-too-short",
+      "kb_id": "entities/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md",
+        "score": 0.0,
+        "threshold": 0.6
+      },
+      "issue": "findability-below-threshold",
+      "kb_id": "entities/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/entity.md",
+        "score": 0.0,
+        "threshold": 0.7
+      },
+      "issue": "completeness-below-threshold",
+      "kb_id": "entities/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md"
+      },
+      "issue": "missing-sources",
+      "kb_id": "sources/example",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md"
+      },
+      "issue": "missing-tags",
+      "kb_id": "sources/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "length": 67,
+        "minimum": 80,
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md"
+      },
+      "issue": "body-too-short",
+      "kb_id": "sources/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md",
+        "score": 0.0,
+        "threshold": 0.6
+      },
+      "issue": "findability-below-threshold",
+      "kb_id": "sources/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/meta/templates/source.md",
+        "score": 0.0,
+        "threshold": 0.7
+      },
+      "issue": "completeness-below-threshold",
+      "kb_id": "sources/example",
+      "severity": "warning"
+    },
+    {
+      "details": {
+        "error": "Missing YAML front matter header",
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/relationships/index.md"
+      },
+      "issue": "invalid-front-matter",
+      "kb_id": "relationships/index",
+      "severity": "error"
+    },
+    {
+      "details": {
+        "error": "Missing YAML front matter header",
+        "path": "/home/runner/work/speculum-principum/speculum-principum/knowledge-base/sources/index.md"
+      },
+      "issue": "invalid-front-matter",
+      "kb_id": "sources/index",
+      "severity": "error"
+    }
+  ],
+  "kb_root": "knowledge-base",
+  "metrics": {
+    "backlinks_updated": 0.0,
+    "concepts": 13.0,
+    "edges": 22.0,
+    "gaps_errors": 11.0,
+    "gaps_info": 3.0,
+    "gaps_total": 27.0,
+    "gaps_warnings": 13.0
+  },
+  "success": false,
+  "suggestions": {
+    "concepts/example": [
+      "add source references with citations",
+      "add descriptive tags",
+      "investigate gap: missing-related-concepts",
+      "review backlinks for related coverage",
+      "investigate gap: body-too-short",
+      "add navigation paths or backlinks to raise findability",
+      "expand content and metadata fields to improve completeness"
+    ],
+    "concepts/index": [
+      "investigate gap: invalid-front-matter"
+    ],
+    "concepts/political-philosophy-knowledge-base/must": [
+      "review backlinks for related coverage",
+      "link-to: concepts/political-philosophy-knowledge-base/new"
+    ],
+    "concepts/political-philosophy-knowledge-base/security": [
+      "review backlinks for related coverage"
+    ],
+    "entities/example": [
+      "add source references with citations",
+      "add descriptive tags",
+      "investigate gap: body-too-short",
+      "add navigation paths or backlinks to raise findability",
+      "expand content and metadata fields to improve completeness"
+    ],
+    "entities/index": [
+      "investigate gap: invalid-front-matter"
+    ],
+    "index": [
+      "investigate gap: invalid-front-matter"
+    ],
+    "meta/conventions": [
+      "investigate gap: invalid-front-matter"
+    ],
+    "meta/methodology": [
+      "investigate gap: invalid-front-matter"
+    ],
+    "meta/quality-standards": [
+      "investigate gap: invalid-front-matter"
+    ],
+    "relationships/index": [
+      "investigate gap: invalid-front-matter"
+    ],
+    "sources/example": [
+      "add source references with citations",
+      "add descriptive tags",
+      "investigate gap: body-too-short",
+      "add navigation paths or backlinks to raise findability",
+      "expand content and metadata fields to improve completeness"
+    ],
+    "sources/index": [
+      "investigate gap: invalid-front-matter"
+    ]
+  }
+}
