@@ -1,3 +1,16 @@
+---
+title: Information Architecture Conventions
+slug: conventions
+kb_id: meta/conventions
+type: meta
+primary_topic: political-philosophy-knowledge-base
+tags:
+- meta
+- conventions
+- documentation
+sources: []
+---
+
 # Information Architecture Conventions
 
 ## Purpose

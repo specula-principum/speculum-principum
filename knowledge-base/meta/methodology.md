@@ -1,3 +1,16 @@
+---
+title: Information Architecture Methodology
+slug: methodology
+kb_id: meta/methodology
+type: meta
+primary_topic: political-philosophy-knowledge-base
+tags:
+- meta
+- methodology
+- documentation
+sources: []
+---
+
 # Information Architecture Methodology
 
 ## Purpose
