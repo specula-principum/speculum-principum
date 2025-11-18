@@ -40,7 +40,18 @@ assignees: ''
 ### Tools to Use
 
 ```bash
-# 1. Process source material
+# Option 1: Run the full automated workflow (recommended)
+python -m main copilot kb-automation \
+  --source {source_path} \
+  --kb-root knowledge-base/ \
+  --mission config/mission.yaml \
+  --extract concepts entities relationships structure \
+  --issue {issue_number} \
+  --metrics-output reports/quality-{issue_number}.json
+
+# Option 2: Run steps individually for more control
+
+# Step 1: Process source material
 python -m main kb process \
   --source {source_path} \
   --kb-root knowledge-base/ \
@@ -48,17 +59,14 @@ python -m main kb process \
   --extract concepts entities relationships structure \
   --validate
 
-# 2. Check quality metrics
-python -m main kb metrics \
+# Step 2: Generate quality metrics report
+python -m main kb quality-report \
   --kb-root knowledge-base/ \
   --output reports/quality-{issue_number}.json
 
-# 3. Fix any validation issues
-python -m main kb validate \
-  --kb-root knowledge-base/ \
-  --check-links \
-  --check-metadata \
-  --auto-fix
+# Step 3: Validate knowledge base
+python -m main copilot kb-validate \
+  --kb-root knowledge-base/
 ```
 
 ### Success Criteria

@@ -58,9 +58,8 @@ python -m main kb create-entity \
   --kb-root knowledge-base/
 
 # Validate the new entity entry
-python -m main kb validate \
-  --kb-root knowledge-base/ \
-  --document entities/{entity_type_slug}/{entity_slug}.md
+python -m main copilot kb-validate \
+  --kb-root knowledge-base/
 ```
 
 ### Success Criteria

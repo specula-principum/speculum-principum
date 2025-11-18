@@ -55,9 +55,8 @@ python -m main kb create-concept \
   --kb-root knowledge-base/
 
 # Validate
-python -m main kb validate \
-  --kb-root knowledge-base/ \
-  --document concepts/{topic_path}/{concept_slug}.md
+python -m main copilot kb-validate \
+  --kb-root knowledge-base/
 ```
 
 ### Success Criteria

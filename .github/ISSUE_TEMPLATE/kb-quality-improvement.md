@@ -28,23 +28,20 @@ assignees: ''
 
 ```bash
 # 1. Analyze current quality
-python -m main kb metrics \
+python -m main kb quality-report \
   --kb-root knowledge-base/ \
-  --section {kb_section} \
-  --detailed
+  --output reports/quality-report.json
 
-# 2. Get improvement suggestions
+# 2. Get improvement suggestions and apply fixes
 python -m main kb improve \
   --kb-root knowledge-base/ \
-  --section {kb_section} \
-  --suggest
+  --fix-links \
+  --suggest-tags \
+  --report reports/improvement-report.json
 
-# 3. Apply fixes
-python -m main kb improve \
-  --kb-root knowledge-base/ \
-  --section {kb_section} \
-  --auto-fix \
-  --rebuild-links
+# 3. Validate improvements
+python -m main copilot kb-validate \
+  --kb-root knowledge-base/
 ```
 
 ### Success Criteria

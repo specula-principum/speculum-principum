@@ -53,8 +53,9 @@ def test_kb_extract_template_includes_cli_commands():
     _, body = _load_template_parts(EXTRACT_TEMPLATE)
 
     assert "python -m main kb process" in body
-    assert "python -m main kb metrics" in body
-    assert "python -m main kb validate" in body
+    assert "python -m main kb quality-report" in body
+    assert "python -m main copilot kb-validate" in body
+    assert "python -m main copilot kb-automation" in body
     assert "--kb-root knowledge-base/" in body
 
 
@@ -85,9 +86,9 @@ def test_kb_improve_template_body_contains_required_sections():
 def test_kb_improve_template_includes_cli_commands():
     _, body = _load_template_parts(IMPROVE_TEMPLATE)
 
-    assert "python -m main kb metrics" in body
+    assert "python -m main kb quality-report" in body
     assert "python -m main kb improve" in body
-    assert "--section {kb_section}" in body
+    assert "python -m main copilot kb-validate" in body
     assert "--kb-root knowledge-base/" in body
 
 
@@ -123,7 +124,7 @@ def test_kb_add_concept_template_includes_cli_commands_and_metadata():
     assert "kb_id: concepts/{topic_path}/{concept_slug}" in body
     assert "python -m main extract concepts" in body
     assert "python -m main kb create-concept" in body
-    assert "python -m main kb validate" in body
+    assert "python -m main copilot kb-validate" in body
     assert "--kb-root knowledge-base/" in body
 
 
@@ -158,5 +159,5 @@ def test_kb_add_entity_template_includes_cli_commands_and_metadata():
     assert "kb_id: entities/{entity_type_slug}/{entity_slug}" in body
     assert "python -m main extract entities" in body
     assert "python -m main kb create-entity" in body
-    assert "python -m main kb validate" in body
+    assert "python -m main copilot kb-validate" in body
     assert "--kb-root knowledge-base/" in body
