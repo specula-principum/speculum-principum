@@ -1,0 +1,33 @@
+{
+  "entries": [
+    {
+      "artifact_path": "2025/fy25-26apprept-pdf-90c4d8d76e61/index.md",
+      "checksum": "90c4d8d76e61e19984fd9458de686d7cbbb02e9c3688d559c78eb1dd715a013c",
+      "metadata": {
+        "artifact_type": "page-directory",
+        "file_size": 4072448,
+        "page_count": 184,
+        "page_unit": "page",
+        "pdf_metadata": {
+          "Author": "Justin Brakke",
+          "Comments": "",
+          "Company": "Colorado General Assembly",
+          "CreationDate": "D:20250827152155-06'00'",
+          "Creator": "Acrobat PDFMaker 25 for Word",
+          "Keywords": "",
+          "ModDate": "D:20250827164243-06'00'",
+          "Producer": "Adobe PDF Library 25.1.150",
+          "SourceModified": "D:20250827212018",
+          "Subject": "",
+          "Title": ""
+        },
+        "segments_total": 184
+      },
+      "parser": "pdf",
+      "processed_at": "2025-11-18T04:45:08.167141+00:00",
+      "source": "/home/runner/work/speculum-principum/speculum-principum/evidence/fy25-26apprept.pdf",
+      "status": "completed"
+    }
+  ],
+  "version": 1
+}
