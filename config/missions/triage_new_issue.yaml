@@ -10,8 +10,7 @@ metadata:
 goal: |
   Read the incoming GitHub issue, synthesize a short summary, and determine
   which workflow should handle it. The agent should identify whether the
-  issue is a knowledge-base extraction request, a documentation bug, a
-  feature request, or requires human escalation.
+  issue is a documentation bug, a feature request, or requires human escalation.
   
   Actions Required:
   1. Fetch the issue details and analyze the content
@@ -35,7 +34,7 @@ constraints:
 
 success_criteria:
   - Issue metadata has been retrieved successfully.
-  - Issue type has been classified (kb-extraction, documentation, enhancement, bug, or needs-triage).
+  - Issue type has been classified (documentation, enhancement, bug, or needs-triage).
   - At least one appropriate label has been added to the issue.
   - A comment has been posted summarizing the analysis and recommended next steps.
   - The transcript contains a clear summary of the classification decision and reasoning.

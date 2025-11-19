@@ -19,12 +19,8 @@ from src.cli.commands.github import (
     register_commands as register_github_commands,
 )
 from src.cli.commands.parsing import register_commands as register_parsing_commands
-from src.cli.commands.knowledge_base import (
-    register_commands as register_kb_commands,
-)
-from src.cli.commands.copilot import (
-    register_commands as register_copilot_commands,
-)
+
+
 from src.cli.commands.agent import (
     register_commands as register_agent_commands,
 )
@@ -41,8 +37,7 @@ def _build_command_parser() -> argparse.ArgumentParser:
     subparsers.required = True
     register_github_commands(subparsers)
     register_parsing_commands(subparsers)
-    register_kb_commands(subparsers)
-    register_copilot_commands(subparsers)
+
     register_agent_commands(subparsers)
     return parser
 

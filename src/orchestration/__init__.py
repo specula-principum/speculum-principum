@@ -1,7 +1,6 @@
 """Agent orchestration runtime package."""
 
 from .agent import AgentRuntime, AgentRuntimeError
-from .demo import IssueSummary, run_issue_detail_demo
 from .evaluation import SimpleMissionEvaluator, TriageMissionEvaluator
 from .missions import Mission
 from .planner import (
@@ -37,7 +36,6 @@ __all__ = [
 	"DeterministicPlan",
 	"DeterministicPlanner",
 	"ExecutionContext",
-	"IssueSummary",
 	"Mission",
 	"MissionOutcome",
 	"MissionStatus",
@@ -57,5 +55,4 @@ __all__ = [
 	"load_deterministic_plan",
 	"register_github_read_only_tools",
 	"register_parsing_tools",
-	"run_issue_detail_demo",
 ]
