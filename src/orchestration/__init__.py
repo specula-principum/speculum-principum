@@ -13,7 +13,7 @@ from .planner import (
 	load_deterministic_plan,
 )
 from .safety import ActionRisk, ApprovalDecision, SafetyValidator
-from .toolkit import register_github_read_only_tools, register_knowledge_base_tools, register_parsing_tools
+from .toolkit import register_github_read_only_tools, register_parsing_tools
 from .tools import ToolDefinition, ToolExecution, ToolRegistry
 from .types import (
 	AgentState,
@@ -56,7 +56,6 @@ __all__ = [
 	"ToolResult",
 	"load_deterministic_plan",
 	"register_github_read_only_tools",
-	"register_knowledge_base_tools",
 	"register_parsing_tools",
 	"run_issue_detail_demo",
 ]

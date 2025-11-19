@@ -16,13 +16,11 @@ goal: |
   Actions Required:
   1. Fetch the issue details and analyze the content
   2. Classify the issue type based on its content:
-     - Knowledge-base extraction: mentions "process document" or references evidence/parsed directory
      - Documentation bug: reports errors or issues in existing documentation
      - Feature request: proposes new functionality
      - Bug report: describes unexpected behavior
      - Other: needs human review
   3. Add appropriate label(s) to the issue:
-     - "kb-extraction" for knowledge-base work
      - "documentation" for docs issues
      - "enhancement" for feature requests
      - "bug" for bug reports

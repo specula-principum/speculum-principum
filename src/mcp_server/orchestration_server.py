@@ -12,7 +12,7 @@ from src.orchestration.toolkit import (
     register_github_mutation_tools,
     register_github_pr_tools,
     register_github_read_only_tools,
-    register_knowledge_base_tools,
+    register_github_read_only_tools,
     register_parsing_tools,
 )
 
@@ -33,7 +33,7 @@ class OrchestrationMCPServer:
             register_github_read_only_tools(registry)
             register_github_mutation_tools(registry)
             register_github_pr_tools(registry)
-            register_knowledge_base_tools(registry)
+            register_github_pr_tools(registry)
             register_parsing_tools(registry)
         
         self._registry = registry

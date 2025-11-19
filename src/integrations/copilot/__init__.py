@@ -22,11 +22,7 @@ from .client import (
     Usage,
 )
 from .helpers import (
-    ValidationReport,
     gather_kb_documents,
-    generate_quality_report,
-    prepare_kb_extraction_context,
-    validate_kb_changes,
 )
 
 __all__ = [
@@ -45,9 +41,5 @@ __all__ = [
     "evaluate_accuracy",
     "load_accuracy_scenario",
     "render_accuracy_report",
-    "ValidationReport",
     "gather_kb_documents",
-    "generate_quality_report",
-    "prepare_kb_extraction_context",
-    "validate_kb_changes",
 ]

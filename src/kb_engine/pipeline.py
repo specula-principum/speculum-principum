@@ -42,7 +42,6 @@ class KBPipeline:
         *,
         kb_root: Path,
         mission_config: Path | None = None,
-        extractors: Iterable[str] | None = None,
         validate: bool = False,
         extra: Mapping[str, object] | None = None,
     ) -> KBProcessingResult:
@@ -52,7 +51,6 @@ class KBPipeline:
             source_path,
             kb_root,
             mission_config,
-            tuple(extractors or ()),
             validate,
             dict(extra or {}),
         )
@@ -87,7 +85,6 @@ class KBPipeline:
             effective_source,
             context.kb_root,
             context.mission_config,
-            context.extractors,
             context.validate,
             extra,
         )

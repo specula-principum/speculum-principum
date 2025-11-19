@@ -15,17 +15,7 @@ from time import perf_counter
 from typing import Any, Mapping, MutableMapping, Sequence, cast
 from xml.etree import ElementTree as ET
 
-from src.extraction.config import ExtractionConfig, load_default_or_empty
-from src.knowledge_base import (
-    DublinCoreMetadata,
-    IAMetadata,
-    KBDocument,
-    KBMetadata,
-    MissionConfig,
-    SourceReference,
-)
 from src.kb_engine.config import PipelineConfig, load_pipeline_config
-from src.kb_engine.extraction import ExtractionBundle, ExtractionCoordinator
 from src.kb_engine.links import LinkBuilder
 from src.kb_engine.models import (
     DocumentArtifact,
@@ -44,7 +34,8 @@ from src.kb_engine.organize import KBOrganizer
 from src.kb_engine.pipeline import KBPipeline
 from src.kb_engine.quality import QualityAnalyzer
 from src.kb_engine.stages import QualityStage
-from src.kb_engine.transform import KBTransformer, TransformContext
+from src.kb_engine.quality import QualityAnalyzer
+from src.kb_engine.stages import QualityStage
 from .utils import slugify
 
 try:  # pragma: no cover - dependency guarded for environments missing PyYAML
@@ -571,203 +562,7 @@ class SourceAnalysisStage:
         return StageResult(stage=self.name, metrics=metrics, warnings=tuple(warnings))
 
 
-class ExtractionStage:
-    """Run configured extractors against aggregated source text."""
 
-    name = "extraction"
-
-    def __init__(self, coordinator: ExtractionCoordinator, *, config: ExtractionConfig) -> None:
-        self._coordinator = coordinator
-        self._config = config
-
-    def run(self, context: ProcessingContext, previous: tuple[StageResult, ...]) -> StageResult:
-        del previous
-        analysis = _get_section(context, "analysis")
-        text = analysis.get("text", "")
-        if not isinstance(text, str):
-            raise PipelineStageError("analysis stage did not provide textual content")
-
-        if context.extractors:
-            bundle = self._coordinator.extract_selective(
-                text,
-                context.extractors,
-                self._config,
-                source_path=str(context.source_path),
-            )
-        else:
-            bundle = self._coordinator.extract_all(
-                text,
-                self._config,
-                source_path=str(context.source_path),
-            )
-
-        extraction_section = _ensure_section(context, "extraction")
-        extraction_section["bundle"] = bundle
-
-        total_duration = sum(summary.duration for summary in bundle.summaries)
-        metrics = {
-            "extractors_total": float(len(bundle.summaries)),
-            "failures": float(len(bundle.failures)),
-            "duration": float(round(total_duration, 3)),
-        }
-        notes = tuple(summary.extractor for summary in bundle.summaries[:5])
-        warnings = tuple(f"{name}: {error}" for name, error in bundle.failures.items())
-        return StageResult(stage=self.name, metrics=metrics, notes=notes, warnings=warnings)
-
-
-class TransformationStage:
-    """Convert extraction bundles into knowledge base documents."""
-
-    name = "transformation"
-
-    def __init__(
-        self,
-        transformer: KBTransformer,
-        *,
-        mission: MissionConfig | None,
-        options: Mapping[str, Any],
-    ) -> None:
-        self._transformer = transformer
-        self._mission = mission
-        self._options = dict(options)
-
-    def run(self, context: ProcessingContext, previous: tuple[StageResult, ...]) -> StageResult:
-        del previous
-        bundle = self._require_bundle(context)
-        analysis = _get_section(context, "analysis")
-        reference = analysis.get("source_reference")
-        if not isinstance(reference, SourceReference):
-            raise PipelineStageError("analysis stage did not provide source reference")
-
-        transform_context = self._build_context(reference)
-        min_concept_frequency = _coerce_int(self._options.get("min_concept_frequency"), default=1)
-        min_entity_confidence = _coerce_float(self._options.get("min_entity_confidence"), default=0.0)
-
-        documents: list[KBDocument] = []
-        artifacts: list[DocumentArtifact] = []
-        warnings: list[str] = []
-
-        concept_result = bundle.results.get("concepts")
-        concept_count = 0
-        if concept_result and isinstance(concept_result.data, Sequence):
-            for concept in concept_result.data:
-                frequency = getattr(concept, "frequency", 0)
-                if frequency < min_concept_frequency:
-                    continue
-                document = self._transformer.create_concept_document(concept, transform_context)
-                if not self._include_document(context, document.kb_id):
-                    continue
-                documents.append(document)
-                concept_count += 1
-                artifacts.append(
-                    DocumentArtifact(
-                        kb_id=document.kb_id,
-                        path=context.kb_root / f"{document.kb_id}.md",
-                        doc_type=document.metadata.doc_type,
-                        metadata={"title": document.title},
-                    )
-                )
-
-        entity_result = bundle.results.get("entities")
-        entity_count = 0
-        if entity_result and isinstance(entity_result.data, Sequence):
-            for entity in entity_result.data:
-                confidence = getattr(entity, "confidence", 0.0)
-                if confidence < min_entity_confidence:
-                    continue
-                document = self._transformer.create_entity_document(entity, transform_context)
-                if not self._include_document(context, document.kb_id):
-                    continue
-                documents.append(document)
-                entity_count += 1
-                artifacts.append(
-                    DocumentArtifact(
-                        kb_id=document.kb_id,
-                        path=context.kb_root / f"{document.kb_id}.md",
-                        doc_type=document.metadata.doc_type,
-                        metadata={"title": document.title},
-                    )
-                )
-
-        update_target = self._target_kb_id(context)
-        if update_target and not any(doc.kb_id == update_target for doc in documents):
-            warnings.append(f"target '{update_target}' not generated")
-
-        _ensure_section(context, "transformation")["documents"] = tuple(documents)
-        metrics = {
-            "concepts": float(concept_count),
-            "entities": float(entity_count),
-        }
-        return StageResult(stage=self.name, artifacts=tuple(artifacts), metrics=metrics, warnings=tuple(warnings))
-
-    def _include_document(self, context: ProcessingContext, kb_id: str) -> bool:
-        target = self._target_kb_id(context)
-        if target is None:
-            return True
-        return target == kb_id
-
-    @staticmethod
-    def _target_kb_id(context: ProcessingContext) -> str | None:
-        update_section = _get_section(context, "update")
-        target = update_section.get("target_kb_id")
-        if not isinstance(target, str):
-            return None
-        token = target.strip()
-        return token or None
-
-    def _require_bundle(self, context: ProcessingContext) -> ExtractionBundle:
-        extraction = _get_section(context, "extraction")
-        bundle = extraction.get("bundle")
-        if not isinstance(bundle, ExtractionBundle):
-            raise PipelineStageError("extraction stage did not produce a bundle")
-        return bundle
-
-    def _build_context(self, reference: SourceReference) -> TransformContext:
-        mission = self._mission
-        primary_topic_override = self._options.get("primary_topic")
-        if isinstance(primary_topic_override, str) and primary_topic_override.strip():
-            primary_topic = slugify(primary_topic_override)
-        elif mission is not None:
-            primary_topic = slugify(mission.mission.title)
-        else:
-            primary_topic = "source"
-
-        findability = _coerce_optional_float(self._options.get("findability_baseline"))
-        completeness = _coerce_optional_float(self._options.get("completeness_baseline"))
-        depth = _coerce_optional_int(self._options.get("depth"))
-
-        if mission is not None:
-            secondary_topics = tuple(slugify(value) for value in mission.information_architecture.organization_types)
-            default_tags = (slugify(mission.mission.title),)
-            audience = mission.mission.audience
-            if findability is None:
-                findability = mission.information_architecture.quality_standards.min_findability
-            if completeness is None:
-                completeness = mission.information_architecture.quality_standards.min_completeness
-            if depth is None:
-                depth = mission.information_architecture.quality_standards.link_depth
-        else:
-            secondary_topics = ()
-            default_tags = (primary_topic,)
-            audience = ("general",)
-            if findability is None:
-                findability = 0.6
-            if completeness is None:
-                completeness = 0.7
-            if depth is None:
-                depth = 3
-
-        return TransformContext(
-            primary_topic=primary_topic,
-            secondary_topics=secondary_topics,
-            default_tags=default_tags,
-            audience=audience,
-            source_references=(reference,),
-            findability_baseline=float(findability),
-            completeness_baseline=float(completeness),
-            depth=int(depth),
-            timestamp=datetime.utcnow(),
-        )
 
 
 class OrganizationStage:
@@ -862,28 +657,7 @@ def _normalize_collision_strategy(value: Any) -> str:
     return "backup"
 
 
-def _build_extraction_coordinator(section: Mapping[str, Any]) -> tuple[ExtractionCoordinator, ExtractionConfig]:
-    enabled_raw = section.get("enabled_tools")
-    if isinstance(enabled_raw, str):
-        enabled_tools = (enabled_raw,)
-    elif isinstance(enabled_raw, Sequence):
-        enabled_tools = tuple(str(item) for item in enabled_raw)
-    else:
-        enabled_tools = ()
 
-    config_raw = section.get("config") if isinstance(section, Mapping) else None
-    if isinstance(config_raw, Mapping):
-        extraction_config = ExtractionConfig.from_mapping(config_raw)
-    else:
-        extraction_config = load_default_or_empty()
-
-    coordinator = ExtractionCoordinator(
-        enabled_tools=enabled_tools,
-        parallel_execution=bool(section.get("parallel_execution", True)),
-        cache_results=bool(section.get("cache_results", True)),
-        cache_ttl=_coerce_optional_float(section.get("cache_ttl"), default=86_400.0),
-    )
-    return coordinator, extraction_config
 
 
 def _build_organizer(section: Mapping[str, Any]) -> tuple[KBOrganizer, bool]:
@@ -934,15 +708,11 @@ def build_process_pipeline(
     mission: MissionConfig | None,
     validate: bool,
 ) -> KBPipeline:
-    coordinator, extraction_config = _build_extraction_coordinator(config.extraction)
     organizer, ensure_indexes = _build_organizer(config.organization)
     builder, linking_options = _build_linking(config.linking)
-    transformer = KBTransformer()
 
     stages: list[PipelineStage] = [
         SourceAnalysisStage(),
-        ExtractionStage(coordinator, config=extraction_config),
-        TransformationStage(transformer, mission=mission, options=config.transformation),
         OrganizationStage(organizer, ensure_indexes=ensure_indexes),
     ]
 
@@ -1036,8 +806,6 @@ class ProcessOptions:
     source_path: Path
     kb_root: Path
     mission_path: Path | None
-    extractors: Sequence[str] | None = None
-    validate: bool = False
     metrics_path: Path | None = None
 
 
@@ -1062,7 +830,6 @@ def run_process_workflow(
         options.source_path,
         kb_root=options.kb_root,
         mission_config=options.mission_path,
-        extractors=options.extractors,
         validate=options.validate,
         extra={"mission": mission_config, "pipeline_config": pipeline_config},
     )
@@ -1082,9 +849,6 @@ class UpdateOptions:
     source_path: Path
     kb_root: Path
     mission_path: Path | None
-    extractors: Sequence[str] | None = None
-    validate: bool = False
-    reextract: bool = True
     rebuild_links: bool = False
     metrics_path: Path | None = None
 
@@ -1129,7 +893,6 @@ def run_update_workflow(
         "pipeline_config": pipeline_config,
         "update": {
             "target_kb_id": options.kb_id,
-            "reextract": options.reextract,
             "rebuild_links": options.rebuild_links,
             "existing_document": existing_document,
         },
@@ -1139,7 +902,6 @@ def run_update_workflow(
         options.source_path,
         options.kb_root,
         options.mission_path,
-        tuple(options.extractors or ()),
         options.validate,
         extra,
     )
@@ -1268,7 +1030,6 @@ def run_benchmark_workflow(
             source_path,
             kb_root=iteration_root,
             mission_config=options.mission_path,
-            extractors=options.extractors,
             validate=options.validate,
             extra={"mission": mission_config, "pipeline_config": benchmark_config},
         )

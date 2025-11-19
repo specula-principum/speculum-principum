@@ -14,12 +14,10 @@ class ProcessingContext:
     source_path: Path
     kb_root: Path
     mission_config: Path | None = None
-    extractors: Sequence[str] = field(default_factory=tuple)
     validate: bool = False
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "extractors", tuple(self.extractors))
         object.__setattr__(self, "extra", dict(self.extra))
 
     def ensure_paths(self) -> None:
@@ -43,7 +41,6 @@ class ProcessingContext:
             source_path=self.source_path,
             kb_root=self.kb_root,
             mission_config=self.mission_config,
-            extractors=self.extractors,
             validate=self.validate,
             extra=merged,
         )

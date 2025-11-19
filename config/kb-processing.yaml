@@ -51,16 +51,6 @@ pipeline:
       docx:
         normalize_whitespace: true
         merge_runs: true
-  extraction:
-    enabled_tools:
-      - concepts
-      - entities
-      - structure
-      - relationships
-    parallel_execution: true
-    cache_results: true
-    cache_ttl: 86400
-
   transformation:
     templates_dir: config/templates/
     apply_quality_filters: true
