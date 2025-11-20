@@ -64,7 +64,7 @@ class TestAddLabel:
         
         assert result.success is False
         assert result.error is not None
-        assert "non-empty" in result.error
+        assert "Argument validation failed" in result.error
 
 
 class TestRemoveLabel:
@@ -142,7 +142,7 @@ class TestPostComment:
         
         assert result.success is False
         assert result.error is not None
-        assert "non-empty" in result.error
+        assert "Argument validation failed" in result.error
 
 
 class TestAssignIssue:

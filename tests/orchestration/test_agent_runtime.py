@@ -10,9 +10,9 @@ import pytest
 from src.orchestration.agent import AgentRuntime, AgentRuntimeError, EvaluationResult
 from src.orchestration.missions import Mission
 from src.orchestration.safety import ActionRisk, ApprovalDecision, SafetyValidator
-from src.orchestration.planner import DeterministicPlanner, PlanStep
 from src.orchestration.tools import ToolDefinition, ToolRegistry
 from src.orchestration.types import AgentStep, ExecutionContext, MissionStatus
+from tests.orchestration.utils import MockPlanner, PlanStep
 
 
 @dataclass
@@ -68,7 +68,7 @@ def test_agent_runtime_executes_tool_and_succeeds():
         allowed_tools=("echo",),
     )
 
-    planner = DeterministicPlanner(
+    planner = MockPlanner(
         steps=[
             PlanStep(
                 description="Call echo",
@@ -107,7 +107,7 @@ def test_agent_runtime_rejects_disallowed_tool():
         allowed_tools=("other",),
     )
 
-    planner = DeterministicPlanner(
+    planner = MockPlanner(
         steps=[
             PlanStep(
                 description="Try echo",
@@ -144,7 +144,7 @@ def test_agent_runtime_blocks_when_safety_denies():
         approval_callback=deny_callback,
     )
 
-    planner = DeterministicPlanner(
+    planner = MockPlanner(
         steps=[
             PlanStep(
                 description="Call echo",
@@ -179,7 +179,7 @@ def test_agent_runtime_surfaces_validation_errors():
         allowed_tools=("needs_int",),
     )
 
-    planner = DeterministicPlanner(
+    planner = MockPlanner(
         steps=[
             PlanStep(
                 description="Call needs_int with a non-integer value",

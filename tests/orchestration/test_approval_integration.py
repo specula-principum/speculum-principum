@@ -10,10 +10,10 @@ from src.orchestration.agent import AgentRuntime
 from src.orchestration.approval import ApprovalGate, ApprovalStatus, MockApprovalGate, create_approval_callback
 from src.orchestration.evaluation import SimpleMissionEvaluator
 from src.orchestration.missions import Mission
-from src.orchestration.planner import DeterministicPlanner, PlanStep
 from src.orchestration.safety import ActionRisk, SafetyValidator
 from src.orchestration.tools import ToolRegistry
 from src.orchestration.types import ExecutionContext
+from tests.orchestration.utils import MockPlanner, PlanStep
 
 
 @pytest.fixture
@@ -77,7 +77,7 @@ class TestApprovalGateIntegration:
             ),
         ]
         
-        planner = DeterministicPlanner(steps=steps, default_finish="Mission complete")
+        planner = MockPlanner(steps=steps, default_finish="Mission complete")
         evaluator = SimpleMissionEvaluator(
             success_condition=lambda steps: len(steps) > 0,
         )
@@ -138,7 +138,7 @@ class TestApprovalGateIntegration:
             ),
         ]
         
-        planner = DeterministicPlanner(steps=steps, default_finish="Mission complete")
+        planner = MockPlanner(steps=steps, default_finish="Mission complete")
         evaluator = SimpleMissionEvaluator(
             success_condition=lambda steps: len(steps) > 0,
         )
@@ -200,7 +200,7 @@ class TestApprovalGateIntegration:
             ),
         ]
         
-        planner = DeterministicPlanner(steps=steps, default_finish="Mission complete")
+        planner = MockPlanner(steps=steps, default_finish="Mission complete")
         evaluator = SimpleMissionEvaluator(
             success_condition=lambda steps: len(steps) > 0,
         )

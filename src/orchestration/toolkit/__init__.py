@@ -7,13 +7,11 @@ from .github import (
     register_github_pr_tools,
     register_github_read_only_tools,
 )
-from .knowledge_base import register_knowledge_base_tools
 from .parsing import register_parsing_tools
 
 __all__ = [
 	"register_github_read_only_tools",
 	"register_github_pr_tools",
 	"register_github_mutation_tools",
-	"register_knowledge_base_tools",
 	"register_parsing_tools",
 ]

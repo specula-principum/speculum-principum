@@ -38,7 +38,7 @@ def _run_template_cli(
 
     monkeypatch.setattr("src.cli.commands.github.create_issue", _fake_create_issue)
 
-    argv: list[str] = ["--title", title, "--template", str(template)]
+    argv: list[str] = ["create", "--title", title, "--template", str(template)]
     for label in labels:
         argv.extend(["--label", label])
     for key, value in variables.items():
