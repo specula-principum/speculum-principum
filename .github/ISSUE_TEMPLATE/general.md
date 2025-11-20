@@ -1,7 +1,7 @@
 ---
 name: General Request
 about: Open a lightweight issue without a specialized template
-title: "[Task] <replace with summary>"
+title: ""
 labels: []
 assignees: ''
 ---

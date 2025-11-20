@@ -110,10 +110,10 @@ def resolve_token(explicit_token: str | None) -> str:
 
     if explicit_token:
         return explicit_token
-    token = os.environ.get("GITHUB_TOKEN")
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
         raise GitHubIssueError(
-            "Token not provided; set --token or the GITHUB_TOKEN environment variable."
+            "Token not provided; set --token or the GH_TOKEN/GITHUB_TOKEN environment variable."
         )
     return token
 
