@@ -41,6 +41,10 @@ def test_get_issue_details_returns_normalized_payload(monkeypatch, registry: Too
         "src.integrations.github.issues.fetch_issue",
         lambda *, token, repository, issue_number: sample_payload,
     )
+    monkeypatch.setattr(
+        "src.integrations.github.issues.fetch_issue_comments",
+        lambda *, token, repository, issue_number: [],
+    )
 
     result = registry.execute_tool("get_issue_details", {"issue_number": 42})
 
@@ -58,7 +62,7 @@ def test_get_issue_details_returns_normalized_payload(monkeypatch, registry: Too
         "created_at": "2025-10-01T00:00:00Z",
         "updated_at": "2025-10-02T00:00:00Z",
         "closed_at": None,
-        "comments": 3,
+        "comments": [],
     }
 
 

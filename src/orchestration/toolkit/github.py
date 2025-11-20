@@ -198,10 +198,12 @@ def _get_issue_details_handler(args: Mapping[str, Any]) -> ToolResult:
 
     try:
         raw_issue = github_issues.fetch_issue(token=token, repository=repository, issue_number=issue_number)
+        raw_comments = github_issues.fetch_issue_comments(token=token, repository=repository, issue_number=issue_number)
     except github_issues.GitHubIssueError as exc:
         return ToolResult(success=False, output=None, error=str(exc))
 
     normalized = _normalize_issue_payload(raw_issue)
+    normalized["comments"] = [_normalize_comment_payload(c) for c in raw_comments]
     return ToolResult(success=True, output=normalized, error=None)
 
 
@@ -329,6 +331,17 @@ def _normalize_issue_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         "updated_at": payload.get("updated_at"),
         "closed_at": payload.get("closed_at"),
         "comments": _as_int(payload.get("comments")),
+    }
+
+
+def _normalize_comment_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": payload.get("id"),
+        "body": payload.get("body"),
+        "author": _extract_author_login(payload.get("user")),
+        "created_at": payload.get("created_at"),
+        "updated_at": payload.get("updated_at"),
+        "url": payload.get("html_url"),
     }
 
 
@@ -960,11 +973,14 @@ def _post_comment_handler(args: Mapping[str, Any]) -> ToolResult:
         return ToolResult(success=False, output=None, error=str(exc))
 
     try:
+        # Append hidden marker to identify agent responses
+        final_body = f"{str(body)}\n\n<!-- agent-response -->"
+        
         comment_url = github_issues.post_comment(
             token=token,
             repository=repository,
             issue_number=issue_number,
-            body=str(body),
+            body=final_body,
         )
         return ToolResult(
             success=True,

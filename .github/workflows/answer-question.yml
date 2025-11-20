@@ -3,6 +3,8 @@ name: Answer Question
 on:
   issues:
     types: [labeled]
+  issue_comment:
+    types: [created]
 
 permissions:
   issues: write
@@ -10,7 +12,9 @@ permissions:
 
 jobs:
   answer-question:
-    if: github.event.label.name == 'question'
+    if: >
+      (github.event_name == 'issues' && github.event.label.name == 'question') ||
+      (github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'question') && !contains(github.event.comment.body, '<!-- agent-response -->'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -267,6 +267,42 @@ def fetch_issue(
     return payload
 
 
+def fetch_issue_comments(
+    *,
+    token: str,
+    repository: str,
+    issue_number: int,
+    api_url: str = DEFAULT_API_URL,
+) -> Sequence[Mapping[str, object]]:
+    """Return the list of comments for a GitHub issue."""
+
+    if issue_number < 1:
+        raise GitHubIssueError("Issue number must be a positive integer.")
+
+    owner, name = normalize_repository(repository)
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}/comments"
+    req = request.Request(url, method="GET")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+
+    try:
+        with request.urlopen(req) as response:
+            response_bytes = response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+    payload = json.loads(response_bytes.decode("utf-8"))
+    if not isinstance(payload, Sequence):
+        raise GitHubIssueError("Unexpected GitHub comments payload type.")
+    return payload
+
+
 def assign_issue_to_copilot(
     *,
     token: str,
