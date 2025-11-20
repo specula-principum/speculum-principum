@@ -65,7 +65,6 @@ goal: |
   Actions Required:
   1. Fetch the issue details and analyze the content
   2. Classify the issue type based on its content:
-     - Knowledge-base extraction: mentions "process document"...
      - Documentation bug: reports errors in docs
      - Feature request: proposes new functionality
      - Bug report: describes unexpected behavior
@@ -78,7 +77,7 @@ goal: |
 ```yaml
 success_criteria:
   - Issue metadata has been retrieved successfully.
-  - Issue type has been classified (kb-extraction, documentation, enhancement, bug, or needs-triage).
+  - Issue type has been classified (documentation, enhancement, bug, or needs-triage).
   - At least one appropriate label has been added to the issue.
   - A comment has been posted summarizing the analysis and recommended next steps.
   - The transcript contains a clear summary of the classification decision and reasoning.
@@ -133,12 +132,12 @@ if outcome.steps:
 When running `agent run --mission config/missions/triage_new_issue.yaml --input issue_number=118`, the agent should now:
 
 1. **Fetch issue #118** using `get_issue_details`
-2. **Analyze the content** to classify it as a kb-extraction request (based on "Process document: prince01mach_1.pdf" and the evidence path)
-3. **Add the "kb-extraction" label** using `add_label`
+2. **Analyze the content** to classify it as a bug report (based on "Error in..." and the stack trace)
+3. **Add the "bug" label** using `add_label`
 4. **Post a comment** using `post_comment` with:
    - Summary of what the issue is about
-   - Classification as kb-extraction work
-   - Recommended next steps (e.g., "This will be processed by the KB extraction pipeline")
+   - Classification as bug report
+   - Recommended next steps (e.g., "This will be prioritized for the next sprint")
 5. **Complete successfully** with all success criteria met
 
 The console output will show:
@@ -155,9 +154,9 @@ Execution trace:
     Result: ✓ Success
 
   Step 2:
-    Reasoning: Issue mentions "process document" and evidence path - classifying as kb-extraction
+    Reasoning: Issue describes unexpected behavior and includes error logs - classifying as bug
     Tool: add_label
-    Arguments: {"issue_number": 118, "labels": ["kb-extraction"]}
+    Arguments: {"issue_number": 118, "labels": ["bug"]}
     Result: ✓ Success
 
   Step 3:
@@ -169,7 +168,7 @@ Execution trace:
     }
     Result: ✓ Success
 
-Summary: Successfully triaged issue #118 as kb-extraction work
+Summary: Successfully triaged issue #118 as bug report
 ```
 
 ## Testing Recommendations
@@ -180,7 +179,7 @@ Summary: Successfully triaged issue #118 as kb-extraction work
    ```
 
 2. **Verify on GitHub that:**
-   - The issue has a new label (e.g., "kb-extraction")
+   - The issue has a new label (e.g., "bug")
    - A comment was posted with the agent's analysis
 
 3. **Check the transcript JSON** to ensure it captures:
