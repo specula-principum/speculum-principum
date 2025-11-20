@@ -102,10 +102,10 @@ class CopilotClient:
             temperature: Default sampling temperature (0.0-1.0).
             timeout: Request timeout in seconds.
         """
-        self.api_key = api_key or os.environ.get("GITHUB_TOKEN")
+        self.api_key = api_key or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
         if not self.api_key:
             raise CopilotClientError(
-                "GitHub token required. Set GITHUB_TOKEN environment variable "
+                "GitHub token required. Set GH_TOKEN or GITHUB_TOKEN environment variable "
                 "or pass api_key parameter."
             )
         
