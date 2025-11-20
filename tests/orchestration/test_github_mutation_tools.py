@@ -121,6 +121,10 @@ class TestPostComment:
             assert result.output is not None
             assert result.output["comment_url"] == "https://github.com/owner/repo/issues/42#comment-123"
             mock_post.assert_called_once()
+            
+            # Verify marker was appended
+            call_kwargs = mock_post.call_args.kwargs
+            assert "<!-- agent-response -->" in call_kwargs["body"]
 
     def test_post_comment_requires_review(self, mutation_registry: ToolRegistry) -> None:
         """Verify post_comment is classified as REVIEW risk."""
