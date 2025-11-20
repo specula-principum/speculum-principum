@@ -6,10 +6,10 @@ from typing import Mapping
 
 from src.orchestration.agent import AgentRuntime, EvaluationResult
 from src.orchestration.missions import Mission
-from src.orchestration.planner import DeterministicPlanner, PlanStep
 from src.orchestration.safety import SafetyValidator
 from src.orchestration.tools import ToolDefinition, ToolRegistry
 from src.orchestration.types import ExecutionContext, MissionStatus, ToolResult
+from tests.orchestration.utils import MockPlanner, PlanStep
 
 
 def test_agent_executes_three_step_reasoning_loop():
@@ -47,7 +47,7 @@ def test_agent_executes_three_step_reasoning_loop():
         allowed_tools=("record_step",),
     )
 
-    planner = DeterministicPlanner(
+    planner = MockPlanner(
         steps=[
             PlanStep(description="Step one", tool_name="record_step", arguments={"label": "one"}),
             PlanStep(description="Step two", tool_name="record_step", arguments={"label": "two"}),

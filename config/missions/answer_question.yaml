@@ -1,0 +1,32 @@
+# Mission to answer a question posed in a GitHub issue.
+
+id: answer_question
+version: 1
+metadata:
+  owner: copilot-orchestrator
+  created_at: 2025-11-18
+  summary_tooling: issue-qa
+
+goal: |
+  Read the specified GitHub issue, understand the question or request within it,
+  and post a helpful, accurate response as a comment.
+
+  Actions Required:
+  1. Fetch the issue details to read the question.
+  2. Formulate a clear and concise answer.
+  3. Post the answer as a comment on the issue.
+
+constraints:
+  - The answer must be polite and professional.
+  - If the question is unclear, ask for clarification.
+  - Do not close the issue.
+
+success_criteria:
+  - The issue details have been retrieved.
+  - A relevant answer has been posted as a comment.
+
+max_steps: 5
+allowed_tools:
+  - get_issue_details
+  - post_comment
+requires_approval: false

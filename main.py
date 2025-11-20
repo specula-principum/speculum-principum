@@ -15,12 +15,8 @@ if _env_file.exists():
     load_dotenv(_env_file)
 
 from src.cli.commands.github import (
-    build_default_create_parser,
     register_commands as register_github_commands,
 )
-from src.cli.commands.parsing import register_commands as register_parsing_commands
-
-
 from src.cli.commands.agent import (
     register_commands as register_agent_commands,
 )
@@ -30,14 +26,12 @@ def _build_command_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m main",
         description=(
-            "Automation entry point for GitHub issue workflows and document parsing."
+            "Automation entry point for GitHub issue workflows and agent orchestration."
         ),
     )
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
     subparsers.required = True
     register_github_commands(subparsers)
-    register_parsing_commands(subparsers)
-
     register_agent_commands(subparsers)
     return parser
 
@@ -52,13 +46,7 @@ def _dispatch(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
 
-    default_parser = build_default_create_parser()
     command_parser = _build_command_parser()
-
-    if not raw_args or raw_args[0].startswith("-"):
-        args = default_parser.parse_args(raw_args)
-        return _dispatch(args)
-
     args = command_parser.parse_args(raw_args)
     return _dispatch(args)
 

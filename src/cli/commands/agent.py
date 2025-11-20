@@ -11,9 +11,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from src.orchestration.agent import AgentRuntime, MissionEvaluator, EvaluationResult
-from src.orchestration.missions import load_mission, Mission
+from src.orchestration.missions import load_mission, create_ephemeral_mission, Mission
 from src.orchestration.monitoring import AgentMonitor
-from src.orchestration.planner import DeterministicPlanner
 from src.orchestration.llm import LLMPlanner
 from src.orchestration.safety import SafetyValidator
 from src.orchestration.tools import ToolRegistry
@@ -89,14 +88,9 @@ def _register_run_command(subparsers: argparse._SubParsersAction[argparse.Argume
     )
     parser.add_argument(
         "--planner",
-        choices=["llm", "copilot-cli", "deterministic"],
+        choices=["llm"],
         default="llm",
-        help="Planner to use: 'llm' for GitHub Models API (default), 'copilot-cli' for Copilot CLI with workspace access, 'deterministic' for fixed plans",
-    )
-    parser.add_argument(
-        "--copilot-bin",
-        default="copilot",
-        help="Path to Copilot CLI executable (only for --planner copilot-cli). Defaults to 'copilot'",
+        help="Planner to use: 'llm' for GitHub Models API (default)",
     )
     parser.add_argument(
         "--model",
@@ -392,23 +386,28 @@ def run_mission_cli(args: argparse.Namespace) -> int:
         Exit code (0 for success, 1 for failure)
     """
     # Load mission
-    mission_path = Path(args.mission)
-    if not mission_path.is_absolute():
-        # Try config/missions directory
-        config_path = Path("config/missions") / args.mission
-        if config_path.with_suffix(".yaml").exists():
-            mission_path = config_path.with_suffix(".yaml")
-        elif mission_path.exists():
-            pass
-        else:
-            print(f"error: Mission file not found: {args.mission}", file=sys.stderr)
-            return 1
+    mission_arg = args.mission
+    mission_path = Path(mission_arg)
     
-    try:
-        mission = load_mission(mission_path)
-    except Exception as e:
-        print(f"error: Failed to load mission: {e}", file=sys.stderr)
-        return 1
+    if mission_path.is_absolute() and mission_path.exists():
+        # Absolute path to file
+        try:
+            mission = load_mission(mission_path)
+        except Exception as e:
+            print(f"error: Failed to load mission: {e}", file=sys.stderr)
+            return 1
+    elif (Path("config/missions") / mission_arg).with_suffix(".yaml").exists():
+        # Relative path in config/missions
+        try:
+            mission = load_mission((Path("config/missions") / mission_arg).with_suffix(".yaml"))
+        except Exception as e:
+            print(f"error: Failed to load mission: {e}", file=sys.stderr)
+            return 1
+    else:
+        # Treat as ephemeral goal
+        mission = create_ephemeral_mission(goal=mission_arg)
+        print(f"Created ephemeral mission with goal: {mission.goal}")
+
     # Parse inputs
     inputs = {}
     for input_str in args.input:
@@ -443,7 +442,6 @@ def run_mission_cli(args: argparse.Namespace) -> int:
         register_github_mutation_tools,
         register_github_pr_tools,
         register_github_read_only_tools,
-        register_knowledge_base_tools,
         register_parsing_tools,
     )
     
@@ -456,51 +454,24 @@ def run_mission_cli(args: argparse.Namespace) -> int:
     # Register other tools as needed
     # TODO: Make this configurable based on mission definition
     register_github_pr_tools(registry)
-    register_knowledge_base_tools(registry)
     register_parsing_tools(registry)
     
     # Choose planner based on flag
     planner_type = args.planner
     planner_model = args.model
     
-    if args.planner == "llm":
-        try:
-            copilot_client = CopilotClient(model=args.model)
-            planner = LLMPlanner(
-                copilot_client=copilot_client,
-                tool_registry=registry,
-            )
-            planner_model = copilot_client.model  # Get actual model used
-            print(f"Using LLM planner with model: {copilot_client.model}")
-        except Exception as e:
-            print(f"error: Failed to initialize LLM planner: {e}", file=sys.stderr)
-            print("Tip: Set GITHUB_TOKEN environment variable with GitHub Models API access", file=sys.stderr)
-            return 1
-    elif args.planner == "copilot-cli":
-        try:
-            from src.orchestration.copilot_cli_planner import CopilotCLIPlanner
-            
-            planner = CopilotCLIPlanner(
-                tool_registry=registry,
-                copilot_command=args.copilot_bin,
-                model=args.model,
-            )
-            planner_model = planner.model
-            print(f"Using Copilot CLI planner with command: {args.copilot_bin}")
-            print(f"Model: {planner_model}")
-            print("Note: Copilot CLI has workspace access and can read/edit files")
-        except Exception as e:
-            print(f"error: Failed to initialize Copilot CLI planner: {e}", file=sys.stderr)
-            print("Tip: Install with 'npm install -g @githubnext/github-copilot-cli'", file=sys.stderr)
-            return 1
-    else:
-        # Deterministic planner for testing/demo
-        planner = DeterministicPlanner(
-            steps=[],  # Empty steps will trigger immediate finish
-            default_finish="Mission planning not yet implemented - use demo mode"
+    try:
+        copilot_client = CopilotClient(model=args.model)
+        planner = LLMPlanner(
+            copilot_client=copilot_client,
+            tool_registry=registry,
         )
-        planner_model = None
-        print("Using deterministic planner (demo mode)")
+        planner_model = copilot_client.model  # Get actual model used
+        print(f"Using LLM planner with model: {copilot_client.model}")
+    except Exception as e:
+        print(f"error: Failed to initialize LLM planner: {e}", file=sys.stderr)
+        print("Tip: Set GITHUB_TOKEN environment variable with GitHub Models API access", file=sys.stderr)
+        return 1
     
     validator = SafetyValidator()
     evaluator = _build_mission_evaluator(mission)

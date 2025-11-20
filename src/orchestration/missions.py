@@ -35,6 +35,19 @@ class Mission:
         return tool_name in self.allowed_tools
 
 
+def create_ephemeral_mission(goal: str) -> Mission:
+    """Create a temporary mission from a goal string."""
+    return Mission(
+        id="ephemeral_mission",
+        goal=goal,
+        max_steps=10,
+        constraints=(),
+        success_criteria=(),
+        allowed_tools=None,  # Allow all tools
+        requires_approval=False,
+    )
+
+
 def load_mission(path: Path) -> Mission:
     """Load a mission configuration from a YAML file."""
 
@@ -113,4 +126,5 @@ def _string_sequence(value: Any, *, label: str) -> tuple[str, ...]:
 __all__ = [
     "Mission",
     "load_mission",
+    "create_ephemeral_mission",
 ]
