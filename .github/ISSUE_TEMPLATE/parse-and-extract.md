@@ -24,8 +24,9 @@ assignees: ''
 
 ---
 **Instructions:**
-This issue will automatically trigger the parse-and-extract workflow which will:
-1. Parse the document from the provided source
-2. Extract person names using AI
+This issue will automatically trigger the parse-and-extract workflow which will assign it to GitHub Copilot.
+Copilot will:
+1. Parse the document from the provided source using `python -m main parse`
+2. Extract person names using `python -m main extract`
 3. Save the extracted information to the knowledge graph
-4. Report the results as a comment on this issue
+4. Create a branch with all changes and open a pull request
