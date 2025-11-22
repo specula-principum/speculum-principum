@@ -9,7 +9,7 @@ import pytest
 
 from src.integrations.copilot import CopilotClient, ChatCompletionResponse, Choice, ChatMessage
 from src.knowledge.storage import KnowledgeGraphStorage, ExtractedPeople
-from src.parsing.extraction import PersonExtractor, process_document
+from src.knowledge.extraction import PersonExtractor, process_document
 from src.parsing.storage import ManifestEntry, ParseStorage
 
 
