@@ -1,0 +1,29 @@
+{
+  "entries": [
+    {
+      "artifact_path": "2025/prince01mach-1-pdf-1327a866df4a/index.md",
+      "checksum": "1327a866df4a9ac3dc17963ca19ce7aa033bbd10debc9d073319e72c523a3ed3",
+      "metadata": {
+        "artifact_type": "page-directory",
+        "file_size": 3802570,
+        "page_count": 158,
+        "page_unit": "page",
+        "pdf_metadata": {
+          "Author": "Machiavelli, Niccolo\u0300, 1469-1527",
+          "CreationDate": "D:20170928204606Z",
+          "Creator": "Digitized by the Internet Archive",
+          "Keywords": "http://archive.org/details/prince01mach_1",
+          "ModDate": "D:20170928204915Z",
+          "Producer": "Recoded by LuraDocument PDF v2.65",
+          "Title": "The prince"
+        },
+        "segments_total": 150
+      },
+      "parser": "pdf",
+      "processed_at": "2025-11-22T05:29:54.772897+00:00",
+      "source": "/home/runner/work/speculum-principum/speculum-principum/evidence/prince01mach_1.pdf",
+      "status": "completed"
+    }
+  ],
+  "version": 1
+}

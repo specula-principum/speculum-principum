@@ -1,0 +1,23 @@
+{
+  "source_checksum": "1327a866df4a9ac3dc17963ca19ce7aa033bbd10debc9d073319e72c523a3ed3",
+  "source_path": "evidence/prince01mach_1.pdf",
+  "document_title": "The Prince",
+  "document_author": "Niccolò Machiavelli",
+  "parsing_status": "completed",
+  "parsing_completed_at": "2025-11-22T05:29:54.772897+00:00",
+  "artifact_path": "evidence/parsed/2025/prince01mach-1-pdf-1327a866df4a/",
+  "page_count": 158,
+  "extraction_status": "pending",
+  "extraction_note": "Requires GitHub Models API token (GITHUB_TOKEN environment variable) to perform AI-powered person name extraction",
+  "metadata": {
+    "parser": "pdf",
+    "segments_total": 150,
+    "file_size": 3802570,
+    "pdf_metadata": {
+      "Author": "Machiavelli, Niccolò, 1469-1527",
+      "Creator": "Digitized by the Internet Archive",
+      "Title": "The prince",
+      "Keywords": "http://archive.org/details/prince01mach_1"
+    }
+  }
+}
