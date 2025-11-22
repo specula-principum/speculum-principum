@@ -1,11 +1,11 @@
-# Workflow to parse a document and extract person names from it.
+# Workflow to assign document parsing and extraction work to GitHub Copilot.
 # 
 # Triggered when an issue is labeled with 'parse-and-extract'.
-# The agent will:
+# This workflow assigns the issue to GitHub Copilot which will:
 # 1. Parse the document from the source URL/path specified in the issue
 # 2. Extract person names using AI
 # 3. Save extracted people to the knowledge graph
-# 4. Report results as a comment on the issue
+# 4. Create a branch with the changes and open a PR
 #
 # To use: Create an issue using the 'Parse and Extract Document' template
 # or manually add the 'parse-and-extract' label to any issue with a

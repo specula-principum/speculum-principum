@@ -1,43 +1,37 @@
-# Mission to parse a document and extract person names from it.
+# Mission to assign an issue to GitHub Copilot for document parsing and extraction.
 
 id: parse_and_extract
 version: 1
 metadata:
   owner: copilot-orchestrator
   created_at: 2025-11-21
-  summary_tooling: document-processing
+  summary_tooling: copilot-assignment
 
 goal: |
-  Parse a document from a file path or URL, then extract person names from the
-  parsed content and save them to the knowledge graph.
-
-  This mission combines document parsing with information extraction to test
-  the end-to-end workflow on GitHub.
+  Instruct GitHub Copilot to parse a document and extract person names from it,
+  saving the results to the knowledge graph and committing the changes.
 
   Actions Required:
-  1. Get the issue details to extract the document source from the issue body.
-  2. Use preview_parse_document to parse the document and get its content.
-  3. If parsing succeeds, extract the checksum from the parsing result.
-  4. Use extract_people_from_document with the checksum to extract person names.
-  5. Post a comment to the issue with the extracted people and summary.
+  1. Fetch the issue details to understand the document source and context.
+  2. Post a comment explicitly instructing Copilot to:
+     "Parse the document specified in this issue using `python -m main parse`, 
+     extract person names using `python -m main extract`, save the results to 
+     the knowledge graph, and commit all changes to a new branch."
+  3. Assign the issue to 'copilot-swe-agent' (or 'github-copilot') to trigger the work.
 
 constraints:
-  - The source must be a valid file path or URL specified in the issue.
-  - Parsing must complete successfully before extraction.
-  - Only extract from documents with "completed" status.
-  - Person names should be deduplicated and normalized.
+  - Ensure the instruction comment is posted BEFORE assigning the agent.
+  - Verify the issue is open before acting.
+  - The document source must be clearly specified in the issue body.
 
 success_criteria:
-  - Issue details have been retrieved and document source extracted.
-  - Document has been successfully parsed.
-  - Person names have been extracted using the LLM.
-  - Extracted people have been saved to the knowledge graph.
-  - Summary comment has been posted to the GitHub issue.
+  - Issue details retrieved.
+  - Instruction comment posted with clear parsing and extraction steps.
+  - Issue assigned to Copilot.
 
-max_steps: 10
+max_steps: 5
 allowed_tools:
   - get_issue_details
-  - preview_parse_document
-  - extract_people_from_document
   - post_comment
+  - assign_issue_to_copilot
 requires_approval: false
