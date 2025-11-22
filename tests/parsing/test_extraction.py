@@ -89,22 +89,32 @@ def test_extractor_handles_markdown_json(mock_client):
 def test_process_document(mock_client, mock_storage, mock_kb_storage):
     extractor = PersonExtractor(mock_client)
     
-    # Setup artifact
+    # Setup artifact - create a page-directory structure
     checksum = "abc123checksum"
-    artifact_path = mock_storage.root / "2023" / "doc-abc123checksum" / "index.md"
-    artifact_path.parent.mkdir(parents=True)
-    artifact_path.write_text("Content with John Doe.", encoding="utf-8")
+    doc_dir = mock_storage.root / "2023" / "doc-abc123checksum"
+    doc_dir.mkdir(parents=True)
+    
+    # Create index.md
+    index_path = doc_dir / "index.md"
+    index_path.write_text("# Index\n", encoding="utf-8")
+    
+    # Create page files
+    page1 = doc_dir / "page-001.md"
+    page1.write_text("Content with John Doe.", encoding="utf-8")
+    page2 = doc_dir / "page-002.md"
+    page2.write_text("More content with Jane Smith.", encoding="utf-8")
     
     entry = ManifestEntry(
         source="test.pdf",
         checksum=checksum,
         parser="pdf",
-        artifact_path=str(artifact_path.relative_to(mock_storage.root)),
+        artifact_path=str(index_path.relative_to(mock_storage.root)),
         processed_at=datetime.now(timezone.utc),
+        metadata={"artifact_type": "page-directory"},
     )
     
     # Mock extraction
-    mock_message = ChatMessage(role="assistant", content='["John Doe"]')
+    mock_message = ChatMessage(role="assistant", content='["John Doe", "Jane Smith"]')
     mock_choice = Choice(index=0, message=mock_message)
     mock_response = ChatCompletionResponse(
         id="test-id",
@@ -115,12 +125,12 @@ def test_process_document(mock_client, mock_storage, mock_kb_storage):
     
     people = process_document(entry, mock_storage, mock_kb_storage, extractor)
     
-    assert people == ["John Doe"]
+    assert people == ["John Doe", "Jane Smith"]
     
     # Verify storage
     stored = mock_kb_storage.get_extracted_people(checksum)
     assert stored is not None
-    assert stored.people == ["John Doe"]
+    assert stored.people == ["John Doe", "Jane Smith"]
     assert stored.source_checksum == checksum
 
 

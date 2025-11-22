@@ -11,6 +11,12 @@ from src.parsing.base import ParsedDocument
 from src.parsing.storage import ManifestEntry, ParseStorage
 
 
+# Max tokens per chunk (leaving room for system prompt and response)
+_MAX_CHUNK_TOKENS = 6000
+# Rough estimate: 1 token ~= 4 characters
+_CHARS_PER_TOKEN = 4
+
+
 class ExtractionError(RuntimeError):
     """Raised when extraction fails."""
 
@@ -26,6 +32,15 @@ class PersonExtractor:
         if not text.strip():
             return []
 
+        # Check if text needs chunking
+        max_chars = _MAX_CHUNK_TOKENS * _CHARS_PER_TOKEN
+        if len(text) > max_chars:
+            return self._extract_people_chunked(text, max_chars)
+        
+        return self._extract_from_chunk(text)
+
+    def _extract_from_chunk(self, text: str) -> List[str]:
+        """Extract people from a single chunk of text."""
         system_prompt = (
             "You are an expert entity extractor. Your task is to extract all unique person names "
             "from the provided text. Return ONLY a JSON array of strings. "
@@ -70,6 +85,45 @@ class PersonExtractor:
         except json.JSONDecodeError as exc:
             raise ExtractionError(f"Failed to parse LLM response as JSON: {content}") from exc
 
+    def _extract_people_chunked(self, text: str, chunk_size: int) -> List[str]:
+        """Extract people from text by processing it in chunks and deduplicating."""
+        # Split text into chunks at paragraph boundaries when possible
+        chunks = []
+        current_chunk = ""
+        
+        for paragraph in text.split("\n\n"):
+            if len(current_chunk) + len(paragraph) + 2 < chunk_size:
+                current_chunk += "\n\n" + paragraph if current_chunk else paragraph
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = paragraph
+        
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        # Extract from each chunk
+        all_people = []
+        for chunk in chunks:
+            try:
+                people = self._extract_from_chunk(chunk)
+                all_people.extend(people)
+            except ExtractionError:
+                # Continue with other chunks if one fails
+                continue
+        
+        # Deduplicate while preserving order
+        seen = set()
+        unique_people = []
+        for name in all_people:
+            # Normalize for comparison
+            normalized = name.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                unique_people.append(name)
+        
+        return unique_people
+
 
 def process_document(
     entry: ManifestEntry,
@@ -91,10 +145,21 @@ def process_document(
     # If it's a file, read it directly
     full_text = ""
     
-    if artifact_path.is_dir():
-        # It's a directory of pages
-        # We should look for index.md to find the order, or just glob
-        # For simplicity, let's glob *.md excluding index.md and sort
+    # Check if this is a page-directory artifact type
+    is_page_directory = entry.metadata.get("artifact_type") == "page-directory"
+    
+    if is_page_directory:
+        # For page-directory, artifact_path points to index.md
+        # We need to read from the parent directory
+        directory = artifact_path.parent
+        if not directory.exists():
+            raise ExtractionError(f"Page directory not found: {directory}")
+        
+        # Read all pages except index.md
+        pages = sorted([p for p in directory.glob("*.md") if p.name != "index.md"])
+        full_text = "\n\n".join([p.read_text(encoding="utf-8") for p in pages])
+    elif artifact_path.is_dir():
+        # Legacy: artifact_path is a directory itself
         pages = sorted([p for p in artifact_path.glob("*.md") if p.name != "index.md"])
         full_text = "\n\n".join([p.read_text(encoding="utf-8") for p in pages])
     else:
