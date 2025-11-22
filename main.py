@@ -23,6 +23,9 @@ from src.cli.commands.agent import (
 from src.cli.commands.extraction import (
     register_commands as register_extraction_commands,
 )
+from src.cli.commands.parse import (
+    register_commands as register_parse_commands,
+)
 
 
 def _build_command_parser() -> argparse.ArgumentParser:
@@ -36,6 +39,7 @@ def _build_command_parser() -> argparse.ArgumentParser:
     subparsers.required = True
     register_github_commands(subparsers)
     register_agent_commands(subparsers)
+    register_parse_commands(subparsers)
     register_extraction_commands(subparsers)
     return parser
 
