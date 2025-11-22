@@ -66,3 +66,7 @@ switches to ignore patterns defined in the YAML configuration.
 Each parsing run streams status lines to stdout indicating the parser, output
 artifact path, and warnings. Non-zero exit codes signal at least one failed
 parse.
+
+## Information Architecture
+
+Coming soon...

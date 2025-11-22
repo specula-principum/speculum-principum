@@ -1,0 +1,79 @@
+"""Extraction tools for the agent."""
+
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+from src.integrations.copilot import CopilotClient
+from src.knowledge.storage import KnowledgeGraphStorage
+from src.orchestration.tools import ToolDefinition
+from src.parsing.config import load_parsing_config
+from src.parsing.extraction import PersonExtractor, process_document
+from src.parsing.storage import ParseStorage
+from src.orchestration.tools import ToolRegistry
+
+
+def register_extraction_tools(registry: ToolRegistry) -> None:
+    """Register extraction tools with the provided registry."""
+    toolkit = ExtractionToolkit()
+    for tool in toolkit.get_tools():
+        registry.register_tool(tool)
+
+
+class ExtractionToolkit:
+    """Toolkit for extracting information from documents."""
+
+    def __init__(self) -> None:
+        # Initialize with defaults
+        config = load_parsing_config(None)
+        self.storage = ParseStorage(config.output_root)
+        self.kb_storage = KnowledgeGraphStorage(None)
+        
+        # Client will be initialized on first use or we can try now
+        # Ideally we share the client but for now we create a new one
+        self.client = CopilotClient()
+        self.extractor = PersonExtractor(self.client)
+
+    def get_tools(self) -> list[ToolDefinition]:
+        return [
+            ToolDefinition(
+                name="extract_people_from_document",
+                description="Extract person names from a parsed document using its checksum.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "checksum": {
+                            "type": "string",
+                            "description": "Checksum of the document to process.",
+                        },
+                    },
+                    "required": ["checksum"],
+                },
+                handler=self._extract_people,
+            ),
+        ]
+
+    def _extract_people(self, args: Mapping[str, Any]) -> Any:
+        checksum = args["checksum"]
+        
+        entry = self.storage.manifest().get(checksum)
+        if not entry:
+            return f"Error: Document with checksum {checksum} not found in manifest."
+            
+        if entry.status != "completed":
+            return f"Error: Document {checksum} is not successfully parsed (status: {entry.status})."
+
+        try:
+            people = process_document(
+                entry,
+                self.storage,
+                self.kb_storage,
+                self.extractor,
+            )
+            return {
+                "status": "success",
+                "extracted_count": len(people),
+                "people": people,
+            }
+        except Exception as exc:
+            return f"Error during extraction: {exc}"
