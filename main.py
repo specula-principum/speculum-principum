@@ -14,14 +14,14 @@ _env_file = Path(__file__).parent / ".env"
 if _env_file.exists():
     load_dotenv(_env_file)
 
-from src.cli.commands.github import (
-    register_commands as register_github_commands,
-)
 from src.cli.commands.agent import (
     register_commands as register_agent_commands,
 )
 from src.cli.commands.extraction import (
     register_commands as register_extraction_commands,
+)
+from src.cli.commands.github import (
+    register_commands as register_github_commands,
 )
 from src.cli.commands.parse import (
     register_commands as register_parse_commands,

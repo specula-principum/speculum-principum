@@ -21,7 +21,6 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
     
     subcommand_parsers = parser.add_subparsers(dest="parse_command", metavar="COMMAND")
     subcommand_parsers.required = True
-    
     # parse pdf
     _register_pdf_command(subcommand_parsers)
     
