@@ -160,6 +160,27 @@ class OrganizationExtractor(BaseExtractor):
         return self._call_llm(system_prompt, text)
 
 
+class ConceptExtractor(BaseExtractor):
+    """Extracts concepts from text using an LLM."""
+
+    def extract_concepts(self, text: str) -> List[str]:
+        """Extract a list of concepts from the provided text."""
+        return self.extract(text)
+
+    def _extract_from_chunk(self, text: str) -> List[str]:
+        """Extract concepts from a single chunk of text."""
+        system_prompt = (
+            "You are an expert entity extractor. Extract all key concepts, themes, "
+            "definitions, and abstract ideas from the text. "
+            "Return ONLY a JSON array of strings. "
+            "Focus on capturing the core ideas and terminology used in the text. "
+            "Avoid summarizing the entire document; instead, list specific concepts. "
+            "Normalize concepts to a standard form where possible (e.g., 'The Social Contract' -> 'Social Contract'). "
+            "If no concepts are found, return []."
+        )
+        return self._call_llm(system_prompt, text)
+
+
 def read_document_content(entry: ManifestEntry, storage: ParseStorage) -> str:
     """Read the full text content of a parsed document."""
     # The artifact path in manifest is relative to storage root
@@ -236,3 +257,24 @@ def process_document_organizations(
     kb_storage.save_extracted_organizations(entry.checksum, organizations)
 
     return organizations
+
+
+def process_document_concepts(
+    entry: ManifestEntry,
+    storage: ParseStorage,
+    kb_storage: KnowledgeGraphStorage,
+    extractor: ConceptExtractor,
+) -> List[str]:
+    """Process a parsed document to extract concepts and save to KB."""
+    full_text = read_document_content(entry, storage)
+
+    if not full_text.strip():
+        return []
+
+    # Extract concepts
+    concepts = extractor.extract_concepts(full_text)
+
+    # Save to KB
+    kb_storage.save_extracted_concepts(entry.checksum, concepts)
+
+    return concepts

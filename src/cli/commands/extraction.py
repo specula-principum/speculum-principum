@@ -9,10 +9,12 @@ from pathlib import Path
 
 from src.integrations.copilot import CopilotClient, CopilotClientError
 from src.knowledge.extraction import (
+    process_document, 
+    process_document_organizations,
+    process_document_concepts,
     PersonExtractor, 
     OrganizationExtractor,
-    process_document, 
-    process_document_organizations
+    ConceptExtractor,
 )
 from src.knowledge.storage import KnowledgeGraphStorage
 from src.parsing.config import load_parsing_config
@@ -58,6 +60,11 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         action="store_true",
         help="Extract organizations instead of people.",
     )
+    parser.add_argument(
+        "--concepts",
+        action="store_true",
+        help="Extract concepts instead of people or organizations.",
+    )
     parser.set_defaults(func=extract_cli, command="extract")
 
 
@@ -78,6 +85,10 @@ def extract_cli(args: argparse.Namespace) -> int:
             extractor = OrganizationExtractor(client)
             process_func = process_document_organizations
             entity_type = "organizations"
+        elif args.concepts:
+            extractor = ConceptExtractor(client)
+            process_func = process_document_concepts
+            entity_type = "concepts"
         else:
             extractor = PersonExtractor(client)
             process_func = process_document
@@ -99,6 +110,8 @@ def extract_cli(args: argparse.Namespace) -> int:
         if not args.force:
             if args.extract_orgs:
                 existing = kb_storage.get_extracted_organizations(checksum)
+            elif args.concepts:
+                existing = kb_storage.get_extracted_concepts(checksum)
             else:
                 existing = kb_storage.get_extracted_people(checksum)
                 
