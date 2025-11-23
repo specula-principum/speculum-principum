@@ -41,6 +41,35 @@ class ExtractedPeople:
         )
 
 
+
+@dataclass(slots=True)
+class ExtractedOrganizations:
+    """List of organizations extracted from a source document."""
+    
+    source_checksum: str
+    organizations: List[str]
+    extracted_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_checksum": self.source_checksum,
+            "organizations": self.organizations,
+            "extracted_at": self.extracted_at.isoformat(),
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ExtractedOrganizations":
+        extracted_at = datetime.fromisoformat(payload["extracted_at"])
+        return cls(
+            source_checksum=payload["source_checksum"],
+            organizations=payload["organizations"],
+            extracted_at=extracted_at,
+            metadata=payload.get("metadata", {}),
+        )
+
+
 class KnowledgeGraphStorage:
     """Manages storage of extracted knowledge graph entities."""
 
@@ -50,6 +79,8 @@ class KnowledgeGraphStorage:
         utils.ensure_directory(self.root)
         self._people_dir = self.root / "people"
         utils.ensure_directory(self._people_dir)
+        self._organizations_dir = self.root / "organizations"
+        utils.ensure_directory(self._organizations_dir)
 
     def save_extracted_people(self, source_checksum: str, people: List[str]) -> None:
         """Save extracted people for a given source document."""
@@ -73,7 +104,33 @@ class KnowledgeGraphStorage:
         except (json.JSONDecodeError, KeyError):
             return None
 
+    def save_extracted_organizations(self, source_checksum: str, organizations: List[str]) -> None:
+        """Save extracted organizations for a given source document."""
+        entry = ExtractedOrganizations(source_checksum=source_checksum, organizations=organizations)
+        path = self._get_organizations_path(source_checksum)
+        
+        # Write atomic
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
+        tmp_path.replace(path)
+
+    def get_extracted_organizations(self, source_checksum: str) -> ExtractedOrganizations | None:
+        """Retrieve extracted organizations for a given source document."""
+        path = self._get_organizations_path(source_checksum)
+        if not path.exists():
+            return None
+        
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return ExtractedOrganizations.from_dict(data)
+        except (json.JSONDecodeError, KeyError):
+            return None
+
     def _get_people_path(self, checksum: str) -> Path:
         """Get the path for the people file corresponding to a checksum."""
         # Use a sharded structure if needed, but flat is fine for now
         return self._people_dir / f"{checksum}.json"
+
+    def _get_organizations_path(self, checksum: str) -> Path:
+        """Get the path for the organizations file corresponding to a checksum."""
+        return self._organizations_dir / f"{checksum}.json"

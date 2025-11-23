@@ -1,3 +1,4 @@
+
 """CLI commands for person extraction."""
 
 from __future__ import annotations
@@ -7,7 +8,12 @@ import sys
 from pathlib import Path
 
 from src.integrations.copilot import CopilotClient, CopilotClientError
-from src.knowledge.extraction import PersonExtractor, process_document
+from src.knowledge.extraction import (
+    PersonExtractor, 
+    OrganizationExtractor,
+    process_document, 
+    process_document_organizations
+)
 from src.knowledge.storage import KnowledgeGraphStorage
 from src.parsing.config import load_parsing_config
 from src.parsing.storage import ParseStorage
@@ -17,8 +23,8 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
     """Add extraction-focused subcommands to the main CLI parser."""
     parser = subparsers.add_parser(
         "extract",
-        description="Extract people from parsed documents.",
-        help="Extract people from parsed documents.",
+        description="Extract entities from parsed documents.",
+        help="Extract entities from parsed documents.",
     )
     parser.add_argument(
         "--limit",
@@ -45,6 +51,13 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         type=Path,
         help="Path to parsing configuration file.",
     )
+    parser.add_argument(
+        "--orgs",
+        "--organizations",
+        dest="extract_orgs",
+        action="store_true",
+        help="Extract organizations instead of people.",
+    )
     parser.set_defaults(func=extract_cli, command="extract")
 
 
@@ -60,7 +73,15 @@ def extract_cli(args: argparse.Namespace) -> int:
         # Initialize Copilot client
         # This will raise if token is missing
         client = CopilotClient()
-        extractor = PersonExtractor(client)
+        
+        if args.extract_orgs:
+            extractor = OrganizationExtractor(client)
+            process_func = process_document_organizations
+            entity_type = "organizations"
+        else:
+            extractor = PersonExtractor(client)
+            process_func = process_document
+            entity_type = "people"
         
     except (FileNotFoundError, ValueError, CopilotClientError) as exc:
         print(f"Initialization error: {exc}", file=sys.stderr)
@@ -76,17 +97,21 @@ def extract_cli(args: argparse.Namespace) -> int:
             
         # Check if already extracted
         if not args.force:
-            existing = kb_storage.get_extracted_people(checksum)
+            if args.extract_orgs:
+                existing = kb_storage.get_extracted_organizations(checksum)
+            else:
+                existing = kb_storage.get_extracted_people(checksum)
+                
             if existing:
                 continue
                 
         candidates.append(entry)
 
     if not candidates:
-        print("No documents found needing extraction.")
+        print(f"No documents found needing {entity_type} extraction.")
         return 0
 
-    print(f"Found {len(candidates)} documents to process.")
+    print(f"Found {len(candidates)} documents to process for {entity_type}.")
     
     # Apply limit
     if args.limit:
@@ -100,12 +125,12 @@ def extract_cli(args: argparse.Namespace) -> int:
         print(f"Processing {entry.source} ({entry.checksum[:8]})...")
         
         if args.dry_run:
-            print("  (dry run) would extract people")
+            print(f"  (dry run) would extract {entity_type}")
             continue
 
         try:
-            people = process_document(entry, storage, kb_storage, extractor)
-            print(f"  Extracted {len(people)} people: {', '.join(people[:5])}{'...' if len(people) > 5 else ''}")
+            entities = process_func(entry, storage, kb_storage, extractor)
+            print(f"  Extracted {len(entities)} {entity_type}: {', '.join(entities[:5])}{'...' if len(entities) > 5 else ''}")
             success_count += 1
         except Exception as exc:
             print(f"  Failed: {exc}", file=sys.stderr)
