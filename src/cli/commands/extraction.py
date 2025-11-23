@@ -11,8 +11,10 @@ from src.integrations.copilot import CopilotClient, CopilotClientError
 from src.knowledge.extraction import (
     PersonExtractor, 
     OrganizationExtractor,
+    AssociationExtractor,
     process_document, 
-    process_document_organizations
+    process_document_organizations,
+    process_document_associations
 )
 from src.knowledge.storage import KnowledgeGraphStorage
 from src.parsing.config import load_parsing_config
@@ -58,6 +60,12 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         action="store_true",
         help="Extract organizations instead of people.",
     )
+    parser.add_argument(
+        "--associations",
+        dest="extract_associations",
+        action="store_true",
+        help="Extract associations between people and organizations.",
+    )
     parser.set_defaults(func=extract_cli, command="extract")
 
 
@@ -78,6 +86,10 @@ def extract_cli(args: argparse.Namespace) -> int:
             extractor = OrganizationExtractor(client)
             process_func = process_document_organizations
             entity_type = "organizations"
+        elif args.extract_associations:
+            extractor = AssociationExtractor(client)
+            process_func = process_document_associations
+            entity_type = "associations"
         else:
             extractor = PersonExtractor(client)
             process_func = process_document
@@ -99,6 +111,8 @@ def extract_cli(args: argparse.Namespace) -> int:
         if not args.force:
             if args.extract_orgs:
                 existing = kb_storage.get_extracted_organizations(checksum)
+            elif args.extract_associations:
+                existing = kb_storage.get_extracted_associations(checksum)
             else:
                 existing = kb_storage.get_extracted_people(checksum)
                 
@@ -130,7 +144,8 @@ def extract_cli(args: argparse.Namespace) -> int:
 
         try:
             entities = process_func(entry, storage, kb_storage, extractor)
-            print(f"  Extracted {len(entities)} {entity_type}: {', '.join(entities[:5])}{'...' if len(entities) > 5 else ''}")
+            preview = [str(e) for e in entities[:5]]
+            print(f"  Extracted {len(entities)} {entity_type}: {', '.join(preview)}{'...' if len(entities) > 5 else ''}")
             success_count += 1
         except Exception as exc:
             print(f"  Failed: {exc}", file=sys.stderr)
