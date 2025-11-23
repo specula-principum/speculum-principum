@@ -71,31 +71,65 @@ class ExtractedOrganizations:
 
 
 @dataclass(slots=True)
-class EntityAssociation:
-    """Represents an association between a person and an organization."""
+class ExtractedConcepts:
+    """List of concepts extracted from a source document."""
     
-    person_name: str
-    organization_name: str
+    source_checksum: str
+    concepts: List[str]
+    extracted_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_checksum": self.source_checksum,
+            "concepts": self.concepts,
+            "extracted_at": self.extracted_at.isoformat(),
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ExtractedConcepts":
+        extracted_at = datetime.fromisoformat(payload["extracted_at"])
+        return cls(
+            source_checksum=payload["source_checksum"],
+            concepts=payload["concepts"],
+            extracted_at=extracted_at,
+            metadata=payload.get("metadata", {}),
+        )
+
+
+@dataclass(slots=True)
+class EntityAssociation:
+    """Represents an association between two entities."""
+    
+    source: str
+    target: str
     relationship: str
     evidence: str
+    source_type: str = "Unknown"
+    target_type: str = "Unknown"
     confidence: float = 1.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "person_name": self.person_name,
-            "organization_name": self.organization_name,
+            "source": self.source,
+            "target": self.target,
             "relationship": self.relationship,
             "evidence": self.evidence,
+            "source_type": self.source_type,
+            "target_type": self.target_type,
             "confidence": self.confidence,
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "EntityAssociation":
         return cls(
-            person_name=payload["person_name"],
-            organization_name=payload["organization_name"],
+            source=payload["source"],
+            target=payload["target"],
             relationship=payload["relationship"],
             evidence=payload.get("evidence", ""),
+            source_type=payload.get("source_type", "Unknown"),
+            target_type=payload.get("target_type", "Unknown"),
             confidence=payload.get("confidence", 1.0),
         )
 
@@ -139,6 +173,8 @@ class KnowledgeGraphStorage:
         utils.ensure_directory(self._people_dir)
         self._organizations_dir = self.root / "organizations"
         utils.ensure_directory(self._organizations_dir)
+        self._concepts_dir = self.root / "concepts"
+        utils.ensure_directory(self._concepts_dir)
         self._associations_dir = self.root / "associations"
         utils.ensure_directory(self._associations_dir)
 
@@ -186,6 +222,28 @@ class KnowledgeGraphStorage:
         except (json.JSONDecodeError, KeyError):
             return None
 
+    def save_extracted_concepts(self, source_checksum: str, concepts: List[str]) -> None:
+        """Save extracted concepts for a given source document."""
+        entry = ExtractedConcepts(source_checksum=source_checksum, concepts=concepts)
+        path = self._get_concepts_path(source_checksum)
+        
+        # Write atomic
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
+        tmp_path.replace(path)
+
+    def get_extracted_concepts(self, source_checksum: str) -> ExtractedConcepts | None:
+        """Retrieve extracted concepts for a given source document."""
+        path = self._get_concepts_path(source_checksum)
+        if not path.exists():
+            return None
+        
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return ExtractedConcepts.from_dict(data)
+        except (json.JSONDecodeError, KeyError):
+            return None
+
     def save_extracted_associations(self, source_checksum: str, associations: List[EntityAssociation]) -> None:
         """Save extracted associations for a given source document."""
         entry = ExtractedAssociations(source_checksum=source_checksum, associations=associations)
@@ -216,6 +274,10 @@ class KnowledgeGraphStorage:
     def _get_organizations_path(self, checksum: str) -> Path:
         """Get the path for the organizations file corresponding to a checksum."""
         return self._organizations_dir / f"{checksum}.json"
+
+    def _get_concepts_path(self, checksum: str) -> Path:
+        """Get the path for the concepts file corresponding to a checksum."""
+        return self._concepts_dir / f"{checksum}.json"
 
     def _get_associations_path(self, checksum: str) -> Path:
         """Get the path for the associations file corresponding to a checksum."""

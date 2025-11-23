@@ -9,8 +9,12 @@ from pathlib import Path
 
 from src.integrations.copilot import CopilotClient, CopilotClientError
 from src.knowledge.extraction import (
+    process_document, 
+    process_document_organizations,
+    process_document_concepts,
     PersonExtractor, 
     OrganizationExtractor,
+    ConceptExtractor,
     AssociationExtractor,
     process_document, 
     process_document_organizations,
@@ -61,6 +65,11 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         help="Extract organizations instead of people.",
     )
     parser.add_argument(
+        "--concepts",
+        action="store_true",
+        help="Extract concepts instead of people or organizations.",
+    )
+    parser.add_argument(
         "--associations",
         dest="extract_associations",
         action="store_true",
@@ -86,6 +95,10 @@ def extract_cli(args: argparse.Namespace) -> int:
             extractor = OrganizationExtractor(client)
             process_func = process_document_organizations
             entity_type = "organizations"
+        elif args.concepts:
+            extractor = ConceptExtractor(client)
+            process_func = process_document_concepts
+            entity_type = "concepts"
         elif args.extract_associations:
             extractor = AssociationExtractor(client)
             process_func = process_document_associations
@@ -111,6 +124,8 @@ def extract_cli(args: argparse.Namespace) -> int:
         if not args.force:
             if args.extract_orgs:
                 existing = kb_storage.get_extracted_organizations(checksum)
+            elif args.concepts:
+                existing = kb_storage.get_extracted_concepts(checksum)
             elif args.extract_associations:
                 existing = kb_storage.get_extracted_associations(checksum)
             else:
