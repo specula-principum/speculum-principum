@@ -1,3 +1,4 @@
+
 """Extraction tools for the agent."""
 
 from __future__ import annotations
@@ -8,7 +9,12 @@ from src.integrations.copilot import CopilotClient
 from src.knowledge.storage import KnowledgeGraphStorage
 from src.orchestration.tools import ToolDefinition
 from src.parsing.config import load_parsing_config
-from src.knowledge.extraction import PersonExtractor, process_document
+from src.knowledge.extraction import (
+    PersonExtractor, 
+    OrganizationExtractor,
+    process_document,
+    process_document_organizations
+)
 from src.parsing.storage import ParseStorage
 from src.orchestration.tools import ToolRegistry
 
@@ -33,6 +39,7 @@ class ExtractionToolkit:
         # Ideally we share the client but for now we create a new one
         self.client = CopilotClient()
         self.extractor = PersonExtractor(self.client)
+        self.org_extractor = OrganizationExtractor(self.client)
 
     def get_tools(self) -> list[ToolDefinition]:
         return [
@@ -50,6 +57,21 @@ class ExtractionToolkit:
                     "required": ["checksum"],
                 },
                 handler=self._extract_people,
+            ),
+            ToolDefinition(
+                name="extract_organizations_from_document",
+                description="Extract organization names from a parsed document using its checksum.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "checksum": {
+                            "type": "string",
+                            "description": "Checksum of the document to process.",
+                        },
+                    },
+                    "required": ["checksum"],
+                },
+                handler=self._extract_organizations,
             ),
         ]
 
@@ -74,6 +96,31 @@ class ExtractionToolkit:
                 "status": "success",
                 "extracted_count": len(people),
                 "people": people,
+            }
+        except Exception as exc:
+            return f"Error during extraction: {exc}"
+
+    def _extract_organizations(self, args: Mapping[str, Any]) -> Any:
+        checksum = args["checksum"]
+        
+        entry = self.storage.manifest().get(checksum)
+        if not entry:
+            return f"Error: Document with checksum {checksum} not found in manifest."
+            
+        if entry.status != "completed":
+            return f"Error: Document {checksum} is not successfully parsed (status: {entry.status})."
+
+        try:
+            organizations = process_document_organizations(
+                entry,
+                self.storage,
+                self.kb_storage,
+                self.org_extractor,
+            )
+            return {
+                "status": "success",
+                "extracted_count": len(organizations),
+                "organizations": organizations,
             }
         except Exception as exc:
             return f"Error during extraction: {exc}"
