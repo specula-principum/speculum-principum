@@ -6,7 +6,7 @@ import json
 from typing import List
 
 from src.integrations.copilot import CopilotClient, CopilotClientError
-from src.knowledge.storage import KnowledgeGraphStorage
+from src.knowledge.storage import EntityAssociation, KnowledgeGraphStorage
 from src.parsing.base import ParsedDocument
 from src.parsing.storage import ManifestEntry, ParseStorage
 
@@ -179,6 +179,135 @@ class ConceptExtractor(BaseExtractor):
             "If no concepts are found, return []."
         )
         return self._call_llm(system_prompt, text)
+    
+    
+class AssociationExtractor(BaseExtractor):
+    """Extracts associations between people and organizations from text using an LLM."""
+
+    def extract_associations(
+        self, 
+        text: str, 
+        people_hints: List[str] | None = None, 
+        org_hints: List[str] | None = None
+    ) -> List[EntityAssociation]:
+        """Extract a list of associations from the provided text."""
+        # We override the base extract method because we return objects, not strings
+        if not text.strip():
+            return []
+
+        # Check if text needs chunking
+        max_chars = _MAX_CHUNK_TOKENS * _CHARS_PER_TOKEN
+        if len(text) > max_chars:
+            return self._extract_chunked_associations(text, max_chars, people_hints, org_hints)
+        
+        return self._extract_from_chunk_associations(text, people_hints, org_hints)
+
+    def _extract_from_chunk_associations(
+        self, 
+        text: str, 
+        people_hints: List[str] | None = None, 
+        org_hints: List[str] | None = None
+    ) -> List[EntityAssociation]:
+        """Extract associations from a single chunk of text."""
+        
+        hints_str = ""
+        if people_hints:
+            hints_str += f"\nKnown People: {', '.join(people_hints)}"
+        if org_hints:
+            hints_str += f"\nKnown Organizations: {', '.join(org_hints)}"
+
+        system_prompt = (
+            "You are an expert entity extractor. Extract associations between people and organizations "
+            "from the text. Return ONLY a JSON array of objects with these fields: "
+            "'person_name', 'organization_name', 'relationship' (e.g., 'CEO', 'Member', 'Employee'), "
+            "'evidence' (a brief quote from the text supporting this), and 'confidence' (0.0 to 1.0). "
+            "Normalize names. If no associations found, return []."
+            f"{hints_str}"
+            "\nUse the known entities as a guide, but only extract associations explicitly supported by the text."
+        )
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text},
+        ]
+
+        try:
+            response = self.client.chat_completion(
+                messages=messages,
+                temperature=0.1,
+                max_tokens=2000,
+            )
+        except CopilotClientError:
+            return []
+
+        if not response.choices:
+            return []
+
+        content = response.choices[0].message.content or "[]"
+        content = content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        
+        if content.endswith("```"):
+            content = content[:-3]
+        
+        try:
+            data = json.loads(content)
+            if not isinstance(data, list):
+                return []
+            
+            associations = []
+            for item in data:
+                if isinstance(item, dict):
+                    try:
+                        associations.append(EntityAssociation.from_dict(item))
+                    except (KeyError, TypeError):
+                        continue
+            return associations
+        except json.JSONDecodeError:
+            return []
+
+    def _extract_chunked_associations(
+        self, 
+        text: str, 
+        chunk_size: int,
+        people_hints: List[str] | None = None,
+        org_hints: List[str] | None = None
+    ) -> List[EntityAssociation]:
+        """Extract associations from text by processing it in chunks."""
+        # Similar to base _extract_chunked but for objects
+        chunks = []
+        current_chunk = ""
+        
+        for paragraph in text.split("\n\n"):
+            if len(current_chunk) + len(paragraph) + 2 < chunk_size:
+                current_chunk += "\n\n" + paragraph if current_chunk else paragraph
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = paragraph
+        
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        all_associations = []
+        for chunk in chunks:
+            all_associations.extend(self._extract_from_chunk_associations(chunk, people_hints, org_hints))
+        
+        # Deduplicate based on person+org+relationship
+        seen = set()
+        unique_associations = []
+        for assoc in all_associations:
+            key = (assoc.person_name.lower(), assoc.organization_name.lower(), assoc.relationship.lower())
+            if key not in seen:
+                seen.add(key)
+                unique_associations.append(assoc)
+        
+        return unique_associations
 
 
 def read_document_content(entry: ManifestEntry, storage: ParseStorage) -> str:
@@ -266,6 +395,33 @@ def process_document_concepts(
     extractor: ConceptExtractor,
 ) -> List[str]:
     """Process a parsed document to extract concepts and save to KB."""
+     # Load hints from KB
+    people_hints = []
+    extracted_people = kb_storage.get_extracted_people(entry.checksum)
+    if extracted_people:
+        people_hints = extracted_people.people
+
+    org_hints = []
+    extracted_orgs = kb_storage.get_extracted_organizations(entry.checksum)
+    if extracted_orgs:
+        org_hints = extracted_orgs.organizations
+
+    # Extract associations
+    associations = extractor.extract_associations(full_text, people_hints, org_hints)
+
+    # Save to KB
+    kb_storage.save_extracted_associations(entry.checksum, associations)
+
+    return associations
+
+    
+def process_document_associations(
+    entry: ManifestEntry,
+    storage: ParseStorage,
+    kb_storage: KnowledgeGraphStorage,
+    extractor: AssociationExtractor,
+) -> List[EntityAssociation]:
+    """Process a parsed document to extract associations and save to KB."""
     full_text = read_document_content(entry, storage)
 
     if not full_text.strip():
@@ -278,3 +434,4 @@ def process_document_concepts(
     kb_storage.save_extracted_concepts(entry.checksum, concepts)
 
     return concepts
+   

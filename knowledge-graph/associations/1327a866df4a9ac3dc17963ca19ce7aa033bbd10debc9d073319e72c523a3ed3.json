@@ -1,0 +1,210 @@
+{
+  "source_checksum": "1327a866df4a9ac3dc17963ca19ce7aa033bbd10debc9d073319e72c523a3ed3",
+  "associations": [
+    {
+      "person_name": "Niccolo Machiavelli",
+      "organization_name": "Duke of Milan",
+      "relationship": "Author",
+      "evidence": "The newly founded ones are either entirely new, as was Milan to Francesco Sforza.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Niccolo Machiavelli",
+      "organization_name": "King of Spain",
+      "relationship": "Author",
+      "evidence": "the kingdom of Naples to the King of Spain.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Niccolo Machiavelli",
+      "organization_name": "France",
+      "relationship": "Author",
+      "evidence": "Louis XII of France, though able to occupy Milan without trouble, immediately lost it.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Niccolo Machiavelli",
+      "organization_name": "Pope",
+      "relationship": "Author",
+      "evidence": "the assaults of the Venetians in 1484 and of Pope Julius in 1510.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Niccolo Machiavelli",
+      "organization_name": "Duke Ludovico",
+      "relationship": "Author",
+      "evidence": "the mere appearance of such a person as Duke Ludovico on the frontier was sufficient to cause France to lose Milan.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Louis XII",
+      "organization_name": "France",
+      "relationship": "King",
+      "evidence": "But let us return to France and examine whether she did any of these things; and I will speak not of Charles, but of Louis as the one whose proceedings can be better seen.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Cardinal Rohan",
+      "organization_name": "Church",
+      "relationship": "Cardinal",
+      "evidence": "I spoke of this matter with Cardinal Rohan at Nantes when Valentine, as Cesare Borgia, son of Pope Alexander, was commonly called, was occupying the Romagna.",
+      "confidence": 0.8
+    },
+    {
+      "person_name": "Cesare Borgia",
+      "organization_name": "Church",
+      "relationship": "Son of Pope Alexander",
+      "evidence": "when Valentine, as Cesare Borgia, son of Pope Alexander, was commonly called, was occupying the Romagna.",
+      "confidence": 0.8
+    },
+    {
+      "person_name": "Francesco Sforza",
+      "organization_name": "Duke of Milan",
+      "relationship": "Duke",
+      "evidence": "Francesco, by appropriate means and through great abilities, from citizen became Duke of Milan",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Cesare Borgia",
+      "organization_name": "Duke of Valentino",
+      "relationship": "Duke",
+      "evidence": "Cesare Borgia, commonly called Duke Valentino, acquired the state by the influence of his father",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Alexander VI",
+      "organization_name": "Church",
+      "relationship": "Pope",
+      "evidence": "In wishing to aggrandise the duke his son, Alexander VI had to meet very great difficulties",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Oliverotto da Fermo",
+      "organization_name": "Fermo",
+      "relationship": "Prince",
+      "evidence": "Oliverotto...made himself prince.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Giovanni Fogliani",
+      "organization_name": "Fermo",
+      "relationship": "Uncle",
+      "evidence": "left as a young fatherless boy under the care of his maternal uncle, Giovanni Fogliani.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Cesare Borgia",
+      "organization_name": "Pope",
+      "relationship": "Son",
+      "evidence": "the greatness of Pope Alexander, and of his son Cesare.",
+      "confidence": 0.8
+    },
+    {
+      "person_name": "Alexander VI",
+      "organization_name": "Pope",
+      "relationship": "Pope",
+      "evidence": "during the pontificate of Alexander VI.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Paolo Vitelli",
+      "organization_name": "Vitelli",
+      "relationship": "Leader",
+      "evidence": "he fought under Paolo Vitelli.",
+      "confidence": 0.8
+    },
+    {
+      "person_name": "Vitellozzo",
+      "organization_name": "Vitelli",
+      "relationship": "Leader",
+      "evidence": "he fought under his brother Vitellozzo.",
+      "confidence": 0.8
+    },
+    {
+      "person_name": "Pope Julius II",
+      "organization_name": "Church",
+      "relationship": "Pope",
+      "evidence": "Then came Pope Julius, who found the Church powerful, possessing all Romagna, all the Roman barons suppressed, and the factions destroyed by the severity of Alexander.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Pope Leo X",
+      "organization_name": "Church",
+      "relationship": "Pope",
+      "evidence": "His holiness, Pope Leo X, therefore, has found the pontificate in a very powerful condition.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Charles",
+      "organization_name": "France",
+      "relationship": "King",
+      "evidence": "Then came Charles, King of France, who was allowed to take Italy without the slightest trouble.",
+      "confidence": 0.8
+    },
+    {
+      "person_name": "Louis",
+      "organization_name": "France",
+      "relationship": "King",
+      "evidence": "Italy has been overrun by Charles, preyed on by Louis.",
+      "confidence": 0.8
+    },
+    {
+      "person_name": "Julius II",
+      "organization_name": "Church",
+      "relationship": "Pope",
+      "evidence": "I will not depart from the example of Pope Julius II, which is still fresh.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Ferrando",
+      "organization_name": "King of Spain",
+      "relationship": "King",
+      "evidence": "arranged with Ferrando, King of Spain, that he should help him with his armies.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Cesare Borgia",
+      "organization_name": "Duke of Milan",
+      "relationship": "Duke",
+      "evidence": "the duke when he had only the French, when he had the Orsini and Vitelli, and when he had, to rely on himself and his own soldiers.",
+      "confidence": 0.8
+    },
+    {
+      "person_name": "Charles VII",
+      "organization_name": "France",
+      "relationship": "King",
+      "evidence": "Charles VII, father of King Louis XI, having through good fortune and bravery liberated France from the English.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Louis XI",
+      "organization_name": "France",
+      "relationship": "King",
+      "evidence": "King Louis his son abolished the infantry and began to hire Swiss.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Ferdinand",
+      "organization_name": "King of Aragon",
+      "relationship": "King",
+      "evidence": "We have in our own day Ferdinand, King of Aragon, the present King of Spain.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Ferdinand",
+      "organization_name": "King of Spain",
+      "relationship": "King",
+      "evidence": "We have in our own day Ferdinand, King of Aragon, the present King of Spain.",
+      "confidence": 0.9
+    },
+    {
+      "person_name": "Pandolfo Petrucci",
+      "organization_name": "Siena",
+      "relationship": "Prince",
+      "evidence": "Messer Antonio da Venafro as the minister of Pandolfo Petrucci, Prince of Siena.",
+      "confidence": 0.8
+    }
+  ],
+  "extracted_at": "2025-11-23T04:25:06.182337+00:00",
+  "metadata": {}
+}
