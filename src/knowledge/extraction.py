@@ -188,7 +188,8 @@ class AssociationExtractor(BaseExtractor):
         self, 
         text: str, 
         people_hints: List[str] | None = None, 
-        org_hints: List[str] | None = None
+        org_hints: List[str] | None = None,
+        concept_hints: List[str] | None = None
     ) -> List[EntityAssociation]:
         """Extract a list of associations from the provided text."""
         # We override the base extract method because we return objects, not strings
@@ -198,15 +199,16 @@ class AssociationExtractor(BaseExtractor):
         # Check if text needs chunking
         max_chars = _MAX_CHUNK_TOKENS * _CHARS_PER_TOKEN
         if len(text) > max_chars:
-            return self._extract_chunked_associations(text, max_chars, people_hints, org_hints)
+            return self._extract_chunked_associations(text, max_chars, people_hints, org_hints, concept_hints)
         
-        return self._extract_from_chunk_associations(text, people_hints, org_hints)
+        return self._extract_from_chunk_associations(text, people_hints, org_hints, concept_hints)
 
     def _extract_from_chunk_associations(
         self, 
         text: str, 
         people_hints: List[str] | None = None, 
-        org_hints: List[str] | None = None
+        org_hints: List[str] | None = None,
+        concept_hints: List[str] | None = None
     ) -> List[EntityAssociation]:
         """Extract associations from a single chunk of text."""
         
@@ -215,11 +217,15 @@ class AssociationExtractor(BaseExtractor):
             hints_str += f"\nKnown People: {', '.join(people_hints)}"
         if org_hints:
             hints_str += f"\nKnown Organizations: {', '.join(org_hints)}"
+        if concept_hints:
+            hints_str += f"\nKnown Concepts: {', '.join(concept_hints)}"
 
         system_prompt = (
-            "You are an expert entity extractor. Extract associations between people and organizations "
+            "You are an expert entity extractor. Extract associations between entities (People, Organizations, Concepts) "
             "from the text. Return ONLY a JSON array of objects with these fields: "
-            "'person_name', 'organization_name', 'relationship' (e.g., 'CEO', 'Member', 'Employee'), "
+            "'source' (name of first entity), 'target' (name of second entity), "
+            "'source_type' (Person, Organization, or Concept), 'target_type' (Person, Organization, or Concept), "
+            "'relationship' (e.g., 'Author of', 'Member of', 'Related to', 'Opposed to'), "
             "'evidence' (a brief quote from the text supporting this), and 'confidence' (0.0 to 1.0). "
             "Normalize names. If no associations found, return []."
             f"{hints_str}"
@@ -276,7 +282,8 @@ class AssociationExtractor(BaseExtractor):
         text: str, 
         chunk_size: int,
         people_hints: List[str] | None = None,
-        org_hints: List[str] | None = None
+        org_hints: List[str] | None = None,
+        concept_hints: List[str] | None = None
     ) -> List[EntityAssociation]:
         """Extract associations from text by processing it in chunks."""
         # Similar to base _extract_chunked but for objects
@@ -296,13 +303,13 @@ class AssociationExtractor(BaseExtractor):
         
         all_associations = []
         for chunk in chunks:
-            all_associations.extend(self._extract_from_chunk_associations(chunk, people_hints, org_hints))
+            all_associations.extend(self._extract_from_chunk_associations(chunk, people_hints, org_hints, concept_hints))
         
-        # Deduplicate based on person+org+relationship
+        # Deduplicate based on source+target+relationship
         seen = set()
         unique_associations = []
         for assoc in all_associations:
-            key = (assoc.person_name.lower(), assoc.organization_name.lower(), assoc.relationship.lower())
+            key = (assoc.source.lower(), assoc.target.lower(), assoc.relationship.lower())
             if key not in seen:
                 seen.add(key)
                 unique_associations.append(assoc)
@@ -395,24 +402,18 @@ def process_document_concepts(
     extractor: ConceptExtractor,
 ) -> List[str]:
     """Process a parsed document to extract concepts and save to KB."""
-     # Load hints from KB
-    people_hints = []
-    extracted_people = kb_storage.get_extracted_people(entry.checksum)
-    if extracted_people:
-        people_hints = extracted_people.people
+    full_text = read_document_content(entry, storage)
 
-    org_hints = []
-    extracted_orgs = kb_storage.get_extracted_organizations(entry.checksum)
-    if extracted_orgs:
-        org_hints = extracted_orgs.organizations
+    if not full_text.strip():
+        return []
 
-    # Extract associations
-    associations = extractor.extract_associations(full_text, people_hints, org_hints)
+    # Extract concepts
+    concepts = extractor.extract_concepts(full_text)
 
     # Save to KB
-    kb_storage.save_extracted_associations(entry.checksum, associations)
+    kb_storage.save_extracted_concepts(entry.checksum, concepts)
 
-    return associations
+    return concepts
 
     
 def process_document_associations(
@@ -427,11 +428,27 @@ def process_document_associations(
     if not full_text.strip():
         return []
 
-    # Extract concepts
-    concepts = extractor.extract_concepts(full_text)
+    # Load hints from KB
+    people_hints = []
+    extracted_people = kb_storage.get_extracted_people(entry.checksum)
+    if extracted_people:
+        people_hints = extracted_people.people
+
+    org_hints = []
+    extracted_orgs = kb_storage.get_extracted_organizations(entry.checksum)
+    if extracted_orgs:
+        org_hints = extracted_orgs.organizations
+
+    concept_hints = []
+    extracted_concepts = kb_storage.get_extracted_concepts(entry.checksum)
+    if extracted_concepts:
+        concept_hints = extracted_concepts.concepts
+
+    # Extract associations
+    associations = extractor.extract_associations(full_text, people_hints, org_hints, concept_hints)
 
     # Save to KB
-    kb_storage.save_extracted_concepts(entry.checksum, concepts)
+    kb_storage.save_extracted_associations(entry.checksum, associations)
 
-    return concepts
+    return associations
    

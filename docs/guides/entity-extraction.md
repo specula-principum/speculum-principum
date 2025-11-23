@@ -49,6 +49,7 @@ python -m main extract [options]
 -   `--config PATH`: Specify custom parsing configuration file
 -   `--orgs` / `--organizations`: Extract organizations instead of people
 -   `--concepts`: Extract concepts instead of people
+-   `--associations`: Extract associations between entities (People, Organizations, Concepts)
 
 ### Examples
 
@@ -62,11 +63,36 @@ python -m main extract --orgs
 # Extract concepts
 python -m main extract --concepts
 
+# Extract associations
+python -m main extract --associations
+
 # Test concept extraction on first document only
 python -m main extract --concepts --limit 1
 
 # Reprocess all documents for people
 python -m main extract --force
+```
+
+## Recommended Workflow
+
+For the best results, especially when extracting associations, it is recommended to run extractions in the following order:
+
+1.  **Entities**: Extract People and Organizations first.
+2.  **Concepts**: Extract Concepts next.
+3.  **Associations**: Extract Associations last.
+
+This order allows the Association Extractor to utilize the previously extracted entities as "hints" to identify relationships more accurately.
+
+```bash
+# 1. Extract base entities
+python -m main extract
+python -m main extract --orgs
+
+# 2. Extract concepts
+python -m main extract --concepts
+
+# 3. Extract associations (uses hints from above)
+python -m main extract --associations
 ```
 
 ## Extraction Methodology
@@ -97,6 +123,12 @@ The extraction system uses an LLM-based approach with `gpt-4o-mini` via GitHub M
 -   **Focus**: Core ideas and terminology, not document summarization.
 -   **Normalization**: Standard forms (e.g., 'Social Contract').
 
+### 4. Association Extraction
+
+-   **Target**: Relationships between entities (People, Organizations, Concepts).
+-   **Fields**: Source, Target, Relationship, Evidence, Source Type, Target Type, Confidence.
+-   **Hints**: Uses previously extracted people, organizations, and concepts as hints to guide the LLM.
+
 ## Storage Format
 
 Extracted entities are stored in the `knowledge-graph/` directory, organized by entity type.
@@ -110,6 +142,8 @@ knowledge-graph/
   organizations/
     {checksum}.json
   concepts/
+    {checksum}.json
+  associations/
     {checksum}.json
 ```
 
@@ -126,6 +160,27 @@ All extraction types share a similar JSON schema:
 }
 ```
 
+For associations, the schema is:
+
+```json
+{
+  "source_checksum": "1327a866df4a...",
+  "associations": [
+    {
+      "source": "Niccolo Machiavelli",
+      "target": "The Prince",
+      "relationship": "Author of",
+      "evidence": "...",
+      "source_type": "Person",
+      "target_type": "Concept",
+      "confidence": 0.9
+    }
+  ],
+  "extracted_at": "...",
+  "metadata": {}
+}
+```
+
 ## Orchestration Integration
 
 The extraction toolkit is registered in the orchestration system and exposes the following tools:
@@ -133,6 +188,7 @@ The extraction toolkit is registered in the orchestration system and exposes the
 -   `extract_people_from_document`
 -   `extract_organizations_from_document`
 -   `extract_concepts_from_document`
+-   `extract_associations_from_document`
 
 Each tool accepts a `checksum` and returns the extracted list.
 

@@ -2,209 +2,591 @@
   "source_checksum": "1327a866df4a9ac3dc17963ca19ce7aa033bbd10debc9d073319e72c523a3ed3",
   "associations": [
     {
-      "person_name": "Niccolo Machiavelli",
-      "organization_name": "Duke of Milan",
-      "relationship": "Author",
-      "evidence": "The newly founded ones are either entirely new, as was Milan to Francesco Sforza.",
+      "source": "Niccolo Machiavelli",
+      "target": "Lorenzo the Magnificent",
+      "relationship": "Dedicated to",
+      "evidence": "NICCOLO MACHIAVELLI TO LORENZO THE MAGNIFICENT",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 1.0
+    },
+    {
+      "source": "Niccolo Machiavelli",
+      "target": "Luigi Ricci",
+      "relationship": "Translation by",
+      "evidence": "THE TRANSLATION BY LUIGI RICCI",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 1.0
+    },
+    {
+      "source": "Luigi Ricci",
+      "target": "E.R.P. Vincent",
+      "relationship": "Revised by",
+      "evidence": "REVISED BY E.R. P.VINCENT",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 1.0
+    },
+    {
+      "source": "Niccolo Machiavelli",
+      "target": "The Prince",
+      "relationship": "Author of",
+      "evidence": "THE PRINCE BY NICCOLO MACHIAVELLI",
+      "source_type": "Person",
+      "target_type": "Concept",
+      "confidence": 1.0
+    },
+    {
+      "source": "Edward Meyer",
+      "target": "Mario Praz",
+      "relationship": "Illustrated by",
+      "evidence": "Professor Mario Praz has recently illustrated",
+      "source_type": "Person",
+      "target_type": "Person",
       "confidence": 0.9
     },
     {
-      "person_name": "Niccolo Machiavelli",
-      "organization_name": "King of Spain",
-      "relationship": "Author",
-      "evidence": "the kingdom of Naples to the King of Spain.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Niccolo Machiavelli",
-      "organization_name": "France",
-      "relationship": "Author",
-      "evidence": "Louis XII of France, though able to occupy Milan without trouble, immediately lost it.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Niccolo Machiavelli",
-      "organization_name": "Pope",
-      "relationship": "Author",
-      "evidence": "the assaults of the Venetians in 1484 and of Pope Julius in 1510.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Niccolo Machiavelli",
-      "organization_name": "Duke Ludovico",
-      "relationship": "Author",
-      "evidence": "the mere appearance of such a person as Duke Ludovico on the frontier was sufficient to cause France to lose Milan.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Louis XII",
-      "organization_name": "France",
-      "relationship": "King",
-      "evidence": "But let us return to France and examine whether she did any of these things; and I will speak not of Charles, but of Louis as the one whose proceedings can be better seen.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Cardinal Rohan",
-      "organization_name": "Church",
-      "relationship": "Cardinal",
-      "evidence": "I spoke of this matter with Cardinal Rohan at Nantes when Valentine, as Cesare Borgia, son of Pope Alexander, was commonly called, was occupying the Romagna.",
+      "source": "Niccolo Machiavelli",
+      "target": "Pasquale Villari",
+      "relationship": "Referenced in",
+      "evidence": "pasquale viLLARi, The Life and Times of JViccold Machiavelli.",
+      "source_type": "Person",
+      "target_type": "Person",
       "confidence": 0.8
     },
     {
-      "person_name": "Cesare Borgia",
-      "organization_name": "Church",
-      "relationship": "Son of Pope Alexander",
-      "evidence": "when Valentine, as Cesare Borgia, son of Pope Alexander, was commonly called, was occupying the Romagna.",
+      "source": "Niccolo Machiavelli",
+      "target": "L.A. Burd",
+      "relationship": "Referenced in",
+      "evidence": "l. a. burd, II Principe.",
+      "source_type": "Person",
+      "target_type": "Person",
       "confidence": 0.8
     },
     {
-      "person_name": "Francesco Sforza",
-      "organization_name": "Duke of Milan",
-      "relationship": "Duke",
-      "evidence": "Francesco, by appropriate means and through great abilities, from citizen became Duke of Milan",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Cesare Borgia",
-      "organization_name": "Duke of Valentino",
-      "relationship": "Duke",
-      "evidence": "Cesare Borgia, commonly called Duke Valentino, acquired the state by the influence of his father",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Alexander VI",
-      "organization_name": "Church",
-      "relationship": "Pope",
-      "evidence": "In wishing to aggrandise the duke his son, Alexander VI had to meet very great difficulties",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Oliverotto da Fermo",
-      "organization_name": "Fermo",
-      "relationship": "Prince",
-      "evidence": "Oliverotto...made himself prince.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Giovanni Fogliani",
-      "organization_name": "Fermo",
-      "relationship": "Uncle",
-      "evidence": "left as a young fatherless boy under the care of his maternal uncle, Giovanni Fogliani.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Cesare Borgia",
-      "organization_name": "Pope",
-      "relationship": "Son",
-      "evidence": "the greatness of Pope Alexander, and of his son Cesare.",
+      "source": "Louis XII",
+      "target": "Italy",
+      "relationship": "Possession of",
+      "evidence": "the one whose proceedings can be better seen, as he held possession in Italy for a longer time",
+      "source_type": "Person",
+      "target_type": "Concept",
       "confidence": 0.8
     },
     {
-      "person_name": "Alexander VI",
-      "organization_name": "Pope",
-      "relationship": "Pope",
-      "evidence": "during the pontificate of Alexander VI.",
+      "source": "Alexander the Great",
+      "target": "Darius",
+      "relationship": "Conquered",
+      "evidence": "how it came to pass that Alexander the Great became master of Asia in a few years, and had hardly occupied it when he died",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.85
+    },
+    {
+      "source": "Pope Alexander VI",
+      "target": "Cesare Borgia",
+      "relationship": "Father of",
+      "evidence": "Valentine, as Cesare Borgia, son of Pope Alexander",
+      "source_type": "Organization",
+      "target_type": "Person",
       "confidence": 0.9
     },
     {
-      "person_name": "Paolo Vitelli",
-      "organization_name": "Vitelli",
-      "relationship": "Leader",
-      "evidence": "he fought under Paolo Vitelli.",
+      "source": "France",
+      "target": "King of Spain",
+      "relationship": "Partition of",
+      "evidence": "he now coveting the kingdom of Naples, divided it with the king of Spain",
+      "source_type": "Concept",
+      "target_type": "Person",
+      "confidence": 0.75
+    },
+    {
+      "source": "Romans",
+      "target": "Greece",
+      "relationship": "Conquered",
+      "evidence": "the Romans in the provinces they took",
+      "source_type": "Organization",
+      "target_type": "Concept",
       "confidence": 0.8
     },
     {
-      "person_name": "Vitellozzo",
-      "organization_name": "Vitelli",
-      "relationship": "Leader",
-      "evidence": "he fought under his brother Vitellozzo.",
+      "source": "Moses",
+      "target": "Cyrus",
+      "relationship": "Comparable to",
+      "evidence": "I regard as the greatest, Moses, Cyrus, Romulus, Theseus, and their like.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Moses",
+      "target": "Romulus",
+      "relationship": "Comparable to",
+      "evidence": "I regard as the greatest, Moses, Cyrus, Romulus, Theseus, and their like.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Cyrus",
+      "target": "Romulus",
+      "relationship": "Comparable to",
+      "evidence": "I regard as the greatest, Moses, Cyrus, Romulus, Theseus, and their like.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Francesco Sforza",
+      "target": "Duke of Milan",
+      "relationship": "Became",
+      "evidence": "Francesco, by appropriate means and through great abilities, from citizen became Duke of Milan.",
+      "source_type": "Person",
+      "target_type": "Concept",
+      "confidence": 0.9
+    },
+    {
+      "source": "Cesare Borgia",
+      "target": "Alexander VI",
+      "relationship": "Son of",
+      "evidence": "In wishing to aggrandise the duke his son, Alexander VI had to meet very great difficulties.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Cesare Borgia",
+      "target": "Duke Valentino",
+      "relationship": "Also known as",
+      "evidence": "Cesare Borgia, commonly called Duke Valentino.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Duke Valentino",
+      "target": "Duke of Milan",
+      "relationship": "Related to",
+      "evidence": "Cesare Borgia, commonly called Duke Valentino, acquired the state by the influence of his father.",
+      "source_type": "Person",
+      "target_type": "Concept",
       "confidence": 0.8
     },
     {
-      "person_name": "Pope Julius II",
-      "organization_name": "Church",
-      "relationship": "Pope",
+      "source": "Niccolo Machiavelli",
+      "target": "Alexander VI",
+      "relationship": "Contemporary of",
+      "evidence": "In our own times, during the pontificate of Alexander VI...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Niccolo Machiavelli",
+      "target": "Oliverotto da Fermo",
+      "relationship": "Describes actions of",
+      "evidence": "In our own times, during the pontificate of Alexander VI, Oliverotto da Fermo had been left as a young fatherless boy...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Oliverotto da Fermo",
+      "target": "Giovanni Fogliani",
+      "relationship": "Nephew of",
+      "evidence": "Oliverotto had been left as a young fatherless boy under the care of his maternal uncle, Giovanni Fogliani...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Oliverotto da Fermo",
+      "target": "Cesare Borgia",
+      "relationship": "Deceived by",
+      "evidence": "his over-throw would have been difficult... if he had not allowed himself to be deceived by Cesare Borgia...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Agathocles",
+      "target": "Hamilcar",
+      "relationship": "Collaborated with",
+      "evidence": "having imparted his design to Hamilcar the Carthaginian...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Agathocles",
+      "target": "Carthaginians",
+      "relationship": "Fought against",
+      "evidence": "he was twice beaten by the Carthaginians...",
+      "source_type": "Person",
+      "target_type": "Organization",
+      "confidence": 0.9
+    },
+    {
+      "source": "Pope Julius II",
+      "target": "Alexander VI",
+      "relationship": "Successor of",
+      "evidence": "the creation of Julius II he made a bad choice...",
+      "source_type": "Organization",
+      "target_type": "Organization",
+      "confidence": 0.8
+    },
+    {
+      "source": "Pope Julius II",
+      "target": "San Pietro ad Vincula",
+      "relationship": "Opposed by",
+      "evidence": "he ought never to have permitted any of those cardinals to be raised to the papacy whom he had injured...",
+      "source_type": "Organization",
+      "target_type": "Organization",
+      "confidence": 0.8
+    },
+    {
+      "source": "Pope Julius II",
+      "target": "Colonna",
+      "relationship": "Opposed by",
+      "evidence": "he ought never to have permitted any of those cardinals to be raised to the papacy whom he had injured...",
+      "source_type": "Organization",
+      "target_type": "Organization",
+      "confidence": 0.8
+    },
+    {
+      "source": "Pope Julius II",
+      "target": "San Giorgio",
+      "relationship": "Opposed by",
+      "evidence": "he ought never to have permitted any of those cardinals to be raised to the papacy whom he had injured...",
+      "source_type": "Organization",
+      "target_type": "Organization",
+      "confidence": 0.8
+    },
+    {
+      "source": "Pope Julius II",
+      "target": "Rohan",
+      "relationship": "Considered for papacy",
+      "evidence": "the duke ought above all things to have created a Spaniard pope; and if unable, then he should have consented to Rohan being appointed...",
+      "source_type": "Organization",
+      "target_type": "Organization",
+      "confidence": 0.8
+    },
+    {
+      "source": "Alexander VI",
+      "target": "Pope Julius II",
+      "relationship": "Predecessor of",
       "evidence": "Then came Pope Julius, who found the Church powerful, possessing all Romagna, all the Roman barons suppressed, and the factions destroyed by the severity of Alexander.",
+      "source_type": "Person",
+      "target_type": "Organization",
       "confidence": 0.9
     },
     {
-      "person_name": "Pope Leo X",
-      "organization_name": "Church",
-      "relationship": "Pope",
-      "evidence": "His holiness, Pope Leo X, therefore, has found the pontificate in a very powerful condition.",
+      "source": "Pope Julius II",
+      "target": "Pope Leo X",
+      "relationship": "Successor of",
+      "evidence": "His holiness, Pope Leo X, therefore, has found the pontificate in a very powerful condition, from which it is hoped that as those Popes made it great by force of arms, so he through his goodness and infinite other virtues will make it both great and venerated.",
+      "source_type": "Organization",
+      "target_type": "Organization",
       "confidence": 0.9
     },
     {
-      "person_name": "Charles",
-      "organization_name": "France",
-      "relationship": "King",
-      "evidence": "Then came Charles, King of France, who was allowed to take Italy without the slightest trouble.",
+      "source": "Francesco Sforza",
+      "target": "Duke of Milan",
+      "relationship": "Associated with",
+      "evidence": "The Milanese, on the death of Duke Philip, hired Francesco Sforza against the Venetians.",
+      "source_type": "Person",
+      "target_type": "Organization",
       "confidence": 0.8
     },
     {
-      "person_name": "Louis",
-      "organization_name": "France",
-      "relationship": "King",
-      "evidence": "Italy has been overrun by Charles, preyed on by Louis.",
+      "source": "Charles",
+      "target": "King of France",
+      "relationship": "Related to",
+      "evidence": "Before Charles, King of France, came into Italy, this country was under the rule of the Pope, the Venetians, the King of Naples, the Duke of Milan, and the Florentines.",
+      "source_type": "Person",
+      "target_type": "Organization",
       "confidence": 0.8
     },
     {
-      "person_name": "Julius II",
-      "organization_name": "Church",
-      "relationship": "Pope",
-      "evidence": "I will not depart from the example of Pope Julius II, which is still fresh.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Ferrando",
-      "organization_name": "King of Spain",
-      "relationship": "King",
-      "evidence": "arranged with Ferrando, King of Spain, that he should help him with his armies.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Cesare Borgia",
-      "organization_name": "Duke of Milan",
-      "relationship": "Duke",
-      "evidence": "the duke when he had only the French, when he had the Orsini and Vitelli, and when he had, to rely on himself and his own soldiers.",
+      "source": "Alberigo da Como",
+      "target": "Braccio",
+      "relationship": "Trained",
+      "evidence": "The first to bring into reputation this kind of militia was Alberigo da Como, a native of Romagna. Braccio and Sforza, who were in their day the arbiters of Italy were, amongst others, trained by him.",
+      "source_type": "Person",
+      "target_type": "Person",
       "confidence": 0.8
     },
     {
-      "person_name": "Charles VII",
-      "organization_name": "France",
-      "relationship": "King",
-      "evidence": "Charles VII, father of King Louis XI, having through good fortune and bravery liberated France from the English.",
+      "source": "Alberigo da Como",
+      "target": "Francesco Sforza",
+      "relationship": "Trained",
+      "evidence": "The first to bring into reputation this kind of militia was Alberigo da Como, a native of Romagna. Braccio and Sforza, who were in their day the arbiters of Italy were, amongst others, trained by him.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.8
+    },
+    {
+      "source": "Pope Julius II",
+      "target": "Ferrando, King of Spain",
+      "relationship": "Arranged with",
+      "evidence": "Pope Julius II...had recourse to auxiliaries, and arranged with Ferrando, King of Spain, that he should help him with his armies.",
+      "source_type": "Organization",
+      "target_type": "Person",
       "confidence": 0.9
     },
     {
-      "person_name": "Louis XI",
-      "organization_name": "France",
-      "relationship": "King",
-      "evidence": "King Louis his son abolished the infantry and began to hire Swiss.",
+      "source": "Cesare Borgia",
+      "target": "Orsini",
+      "relationship": "Hired",
+      "evidence": "he had recourse to mercenaries as a less risky policy, and hired the Orsini and Vitelli.",
+      "source_type": "Person",
+      "target_type": "Organization",
       "confidence": 0.9
     },
     {
-      "person_name": "Ferdinand",
-      "organization_name": "King of Aragon",
-      "relationship": "King",
+      "source": "Cesare Borgia",
+      "target": "Vitelli",
+      "relationship": "Hired",
+      "evidence": "he had recourse to mercenaries as a less risky policy, and hired the Orsini and Vitelli.",
+      "source_type": "Person",
+      "target_type": "Organization",
+      "confidence": 0.9
+    },
+    {
+      "source": "Charles VII",
+      "target": "King Louis XI",
+      "relationship": "Father of",
+      "evidence": "Charles VII, father of King Louis XI, having through good fortune and bravery liberated France from the English...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Pope Julius II",
+      "target": "King of France",
+      "relationship": "Waged war",
+      "evidence": "Pope Julius II...did not seek to retain it afterwards, so that he might be able to wage war.",
+      "source_type": "Organization",
+      "target_type": "Organization",
+      "confidence": 0.8
+    },
+    {
+      "source": "Cyrus",
+      "target": "Alexander the Great",
+      "relationship": "Imitated",
+      "evidence": "who has been much praised and glorified, and have always kept his deeds and actions before them, as they say Alexander the Great imitated Achilles.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.8
+    },
+    {
+      "source": "Caesar",
+      "target": "Alexander",
+      "relationship": "Imitated",
+      "evidence": "Caesar Alexander, and Scipio Cyrus.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.8
+    },
+    {
+      "source": "Scipio",
+      "target": "Cyrus",
+      "relationship": "Imitated",
+      "evidence": "whoever reads the life of Cyrus written by Xenophon, will perceive in the life of Scipio how gloriously he imitated the former.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.8
+    },
+    {
+      "source": "Cesare Borgia",
+      "target": "Romagna",
+      "relationship": "Brought order to",
+      "evidence": "Cesare Borgia was considered cruel, but his cruelty had brought order to the Romagna.",
+      "source_type": "Person",
+      "target_type": "Concept",
+      "confidence": 0.9
+    },
+    {
+      "source": "Virgil",
+      "target": "Dido",
+      "relationship": "Quoted by",
+      "evidence": "Virgil through the mouth of Dido says: Res dura, et regni novitas me tali ac cogunt Moliri, et late fines custode tueri.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.8
+    },
+    {
+      "source": "Hannibal",
+      "target": "soldiers",
+      "relationship": "Maintained unity among",
+      "evidence": "this could not be due to anything but his inhuman cruelty, which together with his infinite other virtues, made him always venerated and terrible in the sight of his soldiers.",
+      "source_type": "Person",
+      "target_type": "Concept",
+      "confidence": 0.85
+    },
+    {
+      "source": "Scipio",
+      "target": "Roman militia",
+      "relationship": "Corrupted by",
+      "evidence": "He was reproached with this in the senate by Fabius Maximus, who called him a corrupter of the Roman militia.",
+      "source_type": "Person",
+      "target_type": "Concept",
+      "confidence": 0.8
+    },
+    {
+      "source": "Alexander VI",
+      "target": "men",
+      "relationship": "Deceived",
+      "evidence": "Alexander VI did nothing else but deceive men, he thought of nothing else, and found the occasion for it.",
+      "source_type": "Person",
+      "target_type": "Concept",
+      "confidence": 0.9
+    },
+    {
+      "source": "Annibale Bentivogli",
+      "target": "Canneschi",
+      "relationship": "Killed by",
+      "evidence": "Messer Annibale Bentivogli, Prince of Bologna, ancestor of the present Messer Annibale, was killed by the Canneschi, who conspired against him.",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.85
+    },
+    {
+      "source": "Marcus",
+      "target": "Pertinax",
+      "relationship": "Contrasted with",
+      "evidence": "Marcus alone lived and died in honour, because he succeeded to the empire by hereditary right and did not owe it either to the soldiers or to the people; besides which, possessing many virtues which made him revered, he kept both parties in their place as long as he lived and was never either hated or despised. But Pertinax was created emperor against the will of the soldiers...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Pertinax",
+      "target": "Commodus",
+      "relationship": "Contrasted with",
+      "evidence": "Pertinax was created emperor against the will of the soldiers... But being of a cruel and bestial disposition, in order to be able to exercise his rapacity on the people, he sought to favour the soldiers and render them licentious...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Severus",
+      "target": "Commodus",
+      "relationship": "Contrasted with",
+      "evidence": "Severus, however, had such abilities that by maintaining the soldiers friendly to him, he was able to reign happily, although he oppressed the people, for his virtues made him so admirable in the sight both of the soldiers and the people...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Severus",
+      "target": "Maximinus",
+      "relationship": "Contrasted with",
+      "evidence": "Maximinus... did not enjoy it for long, as two things made him hated and despised: the one his base origin... the other, because he had at the commencement of his rule deferred going to Rome to take possession of the Imperial seat...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Antoninus",
+      "target": "Commodus",
+      "relationship": "Contrasted with",
+      "evidence": "Antoninus his son was also a man of great ability, and possessed qualities that rendered him admirable in the sight of the people and also made him popular with the soldiers... However, his ferocity and cruelty were so great and unheard of...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Pertinax",
+      "target": "Severus",
+      "relationship": "Contrasted with",
+      "evidence": "Thus a new prince cannot imitate the actions of Marcus, in his dominions, nor is it necessary for him to imitate those of Severus; but he must take from Severus those things that are necessary to found his state...",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Niccolo Machiavelli",
+      "target": "Cesare Borgia",
+      "relationship": "Discussed in relation to",
+      "evidence": "they were of little use to her when Cesare Borgia attacked her",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Niccolo Machiavelli",
+      "target": "Ferdinand, King of Aragon",
+      "relationship": "Mentioned as an example of",
       "evidence": "We have in our own day Ferdinand, King of Aragon, the present King of Spain.",
+      "source_type": "Person",
+      "target_type": "Person",
       "confidence": 0.9
     },
     {
-      "person_name": "Ferdinand",
-      "organization_name": "King of Spain",
-      "relationship": "King",
-      "evidence": "We have in our own day Ferdinand, King of Aragon, the present King of Spain.",
-      "confidence": 0.9
-    },
-    {
-      "person_name": "Pandolfo Petrucci",
-      "organization_name": "Siena",
-      "relationship": "Prince",
-      "evidence": "Messer Antonio da Venafro as the minister of Pandolfo Petrucci, Prince of Siena.",
+      "source": "Ferdinand, King of Aragon",
+      "target": "Moors",
+      "relationship": "Drove out",
+      "evidence": "he had recourse to a pious cruelty, driving out the Moors from his kingdom",
+      "source_type": "Person",
+      "target_type": "People",
       "confidence": 0.8
+    },
+    {
+      "source": "Niccolo Machiavelli",
+      "target": "Pandolfo Petrucci",
+      "relationship": "Mentioned in relation to",
+      "evidence": "Messer Antonio da Venafro as the minister of Pandolfo Petrucci, Prince of Siena",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.8
+    },
+    {
+      "source": "Niccolo Machiavelli",
+      "target": "Philip of Macedon",
+      "relationship": "Compared to",
+      "evidence": "Philip of Macedon, not the father of Alexander the Great, but the one who was conquered by Titus Quintius",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.8
+    },
+    {
+      "source": "Pope Julius II",
+      "target": "King of France",
+      "relationship": "Engaged with",
+      "evidence": "he engaged with him the King of France, because seeing him make this move and desiring his friendship",
+      "source_type": "Person",
+      "target_type": "Person",
+      "confidence": 0.9
+    },
+    {
+      "source": "Moses",
+      "target": "Cyrus",
+      "relationship": "Example of",
+      "evidence": "if, as I said, it was necessary in order that the power of Moses should be displayed that the people of Israel should be slaves in Egypt, and to give scope for the greatness and courage of Cyrus that the Persians should be oppressed by the Medes",
+      "source_type": "Concept",
+      "target_type": "Person",
+      "confidence": 0.8
+    },
+    {
+      "source": "Theseus",
+      "target": "Athenians",
+      "relationship": "Example of",
+      "evidence": "to illustrate the pre-eminence of Theseus that the Athenians should be dispersed",
+      "source_type": "Concept",
+      "target_type": "Concept",
+      "confidence": 0.8
+    },
+    {
+      "source": "Petrarch",
+      "target": "Italian genius",
+      "relationship": "Inspiration for",
+      "evidence": "under its auspices be verified that saying of Petrarch: Valour against fell wrath Will take up arms; and be the combat quickly sped!",
+      "source_type": "Person",
+      "target_type": "Concept",
+      "confidence": 0.85
     }
   ],
-  "extracted_at": "2025-11-23T04:25:06.182337+00:00",
+  "extracted_at": "2025-11-23T19:15:59.383561+00:00",
   "metadata": {}
 }

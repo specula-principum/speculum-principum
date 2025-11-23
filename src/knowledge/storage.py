@@ -100,30 +100,36 @@ class ExtractedConcepts:
 
 @dataclass(slots=True)
 class EntityAssociation:
-    """Represents an association between a person and an organization."""
+    """Represents an association between two entities."""
     
-    person_name: str
-    organization_name: str
+    source: str
+    target: str
     relationship: str
     evidence: str
+    source_type: str = "Unknown"
+    target_type: str = "Unknown"
     confidence: float = 1.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "person_name": self.person_name,
-            "organization_name": self.organization_name,
+            "source": self.source,
+            "target": self.target,
             "relationship": self.relationship,
             "evidence": self.evidence,
+            "source_type": self.source_type,
+            "target_type": self.target_type,
             "confidence": self.confidence,
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "EntityAssociation":
         return cls(
-            person_name=payload["person_name"],
-            organization_name=payload["organization_name"],
+            source=payload["source"],
+            target=payload["target"],
             relationship=payload["relationship"],
             evidence=payload.get("evidence", ""),
+            source_type=payload.get("source_type", "Unknown"),
+            target_type=payload.get("target_type", "Unknown"),
             confidence=payload.get("confidence", 1.0),
         )
 
