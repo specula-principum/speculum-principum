@@ -12,8 +12,10 @@ from src.parsing.config import load_parsing_config
 from src.knowledge.extraction import (
     PersonExtractor, 
     OrganizationExtractor,
+    ProfileExtractor,
     process_document,
-    process_document_organizations
+    process_document_organizations,
+    process_document_profiles,
 )
 from src.parsing.storage import ParseStorage
 from src.orchestration.tools import ToolRegistry
@@ -40,6 +42,7 @@ class ExtractionToolkit:
         self.client = CopilotClient()
         self.extractor = PersonExtractor(self.client)
         self.org_extractor = OrganizationExtractor(self.client)
+        self.profile_extractor = ProfileExtractor(self.client)
 
     def get_tools(self) -> list[ToolDefinition]:
         return [
@@ -72,6 +75,21 @@ class ExtractionToolkit:
                     "required": ["checksum"],
                 },
                 handler=self._extract_organizations,
+            ),
+            ToolDefinition(
+                name="extract_profiles_from_document",
+                description="Extract detailed profiles for entities from a parsed document using its checksum.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "checksum": {
+                            "type": "string",
+                            "description": "Checksum of the document to process.",
+                        },
+                    },
+                    "required": ["checksum"],
+                },
+                handler=self._extract_profiles,
             ),
         ]
 
@@ -121,6 +139,31 @@ class ExtractionToolkit:
                 "status": "success",
                 "extracted_count": len(organizations),
                 "organizations": organizations,
+            }
+        except Exception as exc:
+            return f"Error during extraction: {exc}"
+
+    def _extract_profiles(self, args: Mapping[str, Any]) -> Any:
+        checksum = args["checksum"]
+        
+        entry = self.storage.manifest().get(checksum)
+        if not entry:
+            return f"Error: Document with checksum {checksum} not found in manifest."
+            
+        if entry.status != "completed":
+            return f"Error: Document {checksum} is not successfully parsed (status: {entry.status})."
+
+        try:
+            profiles = process_document_profiles(
+                entry,
+                self.storage,
+                self.kb_storage,
+                self.profile_extractor,
+            )
+            return {
+                "status": "success",
+                "extracted_count": len(profiles),
+                "profiles": [p.to_dict() for p in profiles],
             }
         except Exception as exc:
             return f"Error during extraction: {exc}"

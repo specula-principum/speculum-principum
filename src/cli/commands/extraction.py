@@ -16,9 +16,11 @@ from src.knowledge.extraction import (
     OrganizationExtractor,
     ConceptExtractor,
     AssociationExtractor,
+    ProfileExtractor,
     process_document, 
     process_document_organizations,
-    process_document_associations
+    process_document_associations,
+    process_document_profiles,
 )
 from src.knowledge.storage import KnowledgeGraphStorage
 from src.parsing.config import load_parsing_config
@@ -75,6 +77,11 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         action="store_true",
         help="Extract associations between people and organizations.",
     )
+    parser.add_argument(
+        "--profiles",
+        action="store_true",
+        help="Extract detailed profiles for entities.",
+    )
     parser.set_defaults(func=extract_cli, command="extract")
 
 
@@ -103,6 +110,10 @@ def extract_cli(args: argparse.Namespace) -> int:
             extractor = AssociationExtractor(client)
             process_func = process_document_associations
             entity_type = "associations"
+        elif args.profiles:
+            extractor = ProfileExtractor(client)
+            process_func = process_document_profiles
+            entity_type = "profiles"
         else:
             extractor = PersonExtractor(client)
             process_func = process_document
@@ -128,6 +139,8 @@ def extract_cli(args: argparse.Namespace) -> int:
                 existing = kb_storage.get_extracted_concepts(checksum)
             elif args.extract_associations:
                 existing = kb_storage.get_extracted_associations(checksum)
+            elif args.profiles:
+                existing = kb_storage.get_extracted_profiles(checksum)
             else:
                 existing = kb_storage.get_extracted_people(checksum)
                 

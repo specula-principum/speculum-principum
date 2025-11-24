@@ -6,7 +6,7 @@ import json
 from typing import List
 
 from src.integrations.copilot import CopilotClient, CopilotClientError
-from src.knowledge.storage import EntityAssociation, KnowledgeGraphStorage
+from src.knowledge.storage import EntityAssociation, EntityProfile, KnowledgeGraphStorage
 from src.parsing.base import ParsedDocument
 from src.parsing.storage import ManifestEntry, ParseStorage
 
@@ -452,3 +452,170 @@ def process_document_associations(
 
     return associations
    
+    
+    
+class ProfileExtractor(BaseExtractor):
+    """Extracts detailed profiles for entities from text using an LLM."""
+
+    def extract_profiles(
+        self, 
+        text: str, 
+        entities: List[str]
+    ) -> List[EntityProfile]:
+        """Extract profiles for the provided entities from the text."""
+        if not text.strip() or not entities:
+            return []
+
+        # Check if text needs chunking
+        max_chars = _MAX_CHUNK_TOKENS * _CHARS_PER_TOKEN
+        if len(text) > max_chars:
+            return self._extract_chunked_profiles(text, max_chars, entities)
+        
+        return self._extract_from_chunk_profiles(text, entities)
+
+    def _extract_from_chunk_profiles(
+        self, 
+        text: str, 
+        entities: List[str]
+    ) -> List[EntityProfile]:
+        """Extract profiles from a single chunk of text."""
+        
+        entities_str = ", ".join(entities)
+        system_prompt = (
+            "You are an expert analyst. Create detailed profiles for the following entities based ONLY on the provided text: "
+            f"{entities_str}. "
+            "Return ONLY a JSON array of objects with these fields: "
+            "'name' (entity name), 'entity_type' (Person, Organization, or Concept), "
+            "'summary' (concise summary of the entity's role/definition in this text), "
+            "'attributes' (dictionary of key-value pairs for specific details like age, role, location, dates), "
+            "'mentions' (list of specific quotes or context where the entity appears), "
+            "and 'confidence' (0.0 to 1.0). "
+            "If an entity is not mentioned in the text, do not include it in the output."
+        )
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text},
+        ]
+
+        try:
+            response = self.client.chat_completion(
+                messages=messages,
+                temperature=0.1,
+                max_tokens=2000,
+            )
+        except CopilotClientError:
+            return []
+
+        if not response.choices:
+            return []
+
+        content = response.choices[0].message.content or "[]"
+        content = content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        
+        try:
+            data = json.loads(content)
+            if not isinstance(data, list):
+                return []
+            
+            profiles = []
+            for item in data:
+                if isinstance(item, dict):
+                    try:
+                        profiles.append(EntityProfile.from_dict(item))
+                    except (KeyError, TypeError):
+                        continue
+            return profiles
+        except json.JSONDecodeError:
+            return []
+
+    def _extract_chunked_profiles(
+        self, 
+        text: str, 
+        chunk_size: int,
+        entities: List[str]
+    ) -> List[EntityProfile]:
+        """Extract profiles from text by processing it in chunks and aggregating."""
+        chunks = []
+        current_chunk = ""
+        
+        for paragraph in text.split("\n\n"):
+            if len(current_chunk) + len(paragraph) + 2 < chunk_size:
+                current_chunk += "\n\n" + paragraph if current_chunk else paragraph
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = paragraph
+        
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        all_profiles = []
+        for chunk in chunks:
+            all_profiles.extend(self._extract_from_chunk_profiles(chunk, entities))
+        
+        return self._aggregate_profiles(all_profiles)
+
+    def _aggregate_profiles(self, profiles: List[EntityProfile]) -> List[EntityProfile]:
+        """Aggregate multiple profile fragments for the same entity."""
+        merged = {}
+        for p in profiles:
+            if p.name not in merged:
+                merged[p.name] = p
+            else:
+                existing = merged[p.name]
+                # Merge summary (simple concatenation for now, could be LLM summarized)
+                existing.summary += " " + p.summary
+                # Merge attributes
+                existing.attributes.update(p.attributes)
+                # Merge mentions
+                existing.mentions.extend(p.mentions)
+                # Average confidence
+                existing.confidence = (existing.confidence + p.confidence) / 2
+        
+        return list(merged.values())
+
+
+def process_document_profiles(
+    entry: ManifestEntry,
+    storage: ParseStorage,
+    kb_storage: KnowledgeGraphStorage,
+    extractor: ProfileExtractor,
+) -> List[EntityProfile]:
+    """Process a parsed document to extract profiles and save to KB."""
+    full_text = read_document_content(entry, storage)
+
+    if not full_text.strip():
+        return []
+
+    # Gather all known entities for this document to profile
+    entities = set()
+    
+    people = kb_storage.get_extracted_people(entry.checksum)
+    if people:
+        entities.update(people.people)
+        
+    orgs = kb_storage.get_extracted_organizations(entry.checksum)
+    if orgs:
+        entities.update(orgs.organizations)
+        
+    concepts = kb_storage.get_extracted_concepts(entry.checksum)
+    if concepts:
+        entities.update(concepts.concepts)
+
+    if not entities:
+        return []
+
+    # Extract profiles
+    profiles = extractor.extract_profiles(full_text, list(entities))
+
+    # Save to KB
+    kb_storage.save_extracted_profiles(entry.checksum, profiles)
+
+    return profiles

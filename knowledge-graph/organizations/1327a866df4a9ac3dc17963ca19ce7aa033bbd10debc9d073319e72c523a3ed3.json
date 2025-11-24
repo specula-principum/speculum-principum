@@ -1,23 +1,6 @@
 {
   "source_checksum": "1327a866df4a9ac3dc17963ca19ce7aa033bbd10debc9d073319e72c523a3ed3",
-  "organizations": [
-    "Pope Julius II",
-    "Pope Alexander VI",
-    "Carthaginian",
-    "King of Syracuse",
-    "Cesare Borgia",
-    "Orsini",
-    "Vitelli",
-    "Fermo",
-    "San Pietro ad Vincula",
-    "Colonna",
-    "San Giorgio",
-    "Hamilcar",
-    "Paolo Vitelli",
-    "Giovanni Fogliani",
-    "Nabis",
-    "Spartans"
-  ],
-  "extracted_at": "2025-11-23T19:12:44.959104+00:00",
+  "organizations": [],
+  "extracted_at": "2025-11-24T00:32:59.576430+00:00",
   "metadata": {}
 }

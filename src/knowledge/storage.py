@@ -177,6 +177,8 @@ class KnowledgeGraphStorage:
         utils.ensure_directory(self._concepts_dir)
         self._associations_dir = self.root / "associations"
         utils.ensure_directory(self._associations_dir)
+        self._profiles_dir = self.root / "profiles"
+        utils.ensure_directory(self._profiles_dir)
 
     def save_extracted_people(self, source_checksum: str, people: List[str]) -> None:
         """Save extracted people for a given source document."""
@@ -266,6 +268,28 @@ class KnowledgeGraphStorage:
         except (json.JSONDecodeError, KeyError):
             return None
 
+    def save_extracted_profiles(self, source_checksum: str, profiles: List[EntityProfile]) -> None:
+        """Save extracted profiles for a given source document."""
+        entry = ExtractedProfiles(source_checksum=source_checksum, profiles=profiles)
+        path = self._get_profiles_path(source_checksum)
+        
+        # Write atomic
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
+        tmp_path.replace(path)
+
+    def get_extracted_profiles(self, source_checksum: str) -> ExtractedProfiles | None:
+        """Retrieve extracted profiles for a given source document."""
+        path = self._get_profiles_path(source_checksum)
+        if not path.exists():
+            return None
+        
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return ExtractedProfiles.from_dict(data)
+        except (json.JSONDecodeError, KeyError):
+            return None
+
     def _get_people_path(self, checksum: str) -> Path:
         """Get the path for the people file corresponding to a checksum."""
         # Use a sharded structure if needed, but flat is fine for now
@@ -282,3 +306,69 @@ class KnowledgeGraphStorage:
     def _get_associations_path(self, checksum: str) -> Path:
         """Get the path for the associations file corresponding to a checksum."""
         return self._associations_dir / f"{checksum}.json"
+
+    def _get_profiles_path(self, checksum: str) -> Path:
+        """Get the path for the profiles file corresponding to a checksum."""
+        return self._profiles_dir / f"{checksum}.json"
+
+
+@dataclass(slots=True)
+class EntityProfile:
+    """Detailed profile of an entity."""
+    
+    name: str
+    entity_type: str  # Person, Organization, Concept
+    summary: str
+    attributes: dict[str, Any] = field(default_factory=dict)
+    mentions: List[str] = field(default_factory=list)
+    confidence: float = 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "entity_type": self.entity_type,
+            "summary": self.summary,
+            "attributes": self.attributes,
+            "mentions": self.mentions,
+            "confidence": self.confidence,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "EntityProfile":
+        return cls(
+            name=payload["name"],
+            entity_type=payload["entity_type"],
+            summary=payload["summary"],
+            attributes=payload.get("attributes", {}),
+            mentions=payload.get("mentions", []),
+            confidence=payload.get("confidence", 1.0),
+        )
+
+
+@dataclass(slots=True)
+class ExtractedProfiles:
+    """List of entity profiles extracted from a source document."""
+    
+    source_checksum: str
+    profiles: List[EntityProfile]
+    extracted_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_checksum": self.source_checksum,
+            "profiles": [p.to_dict() for p in self.profiles],
+            "extracted_at": self.extracted_at.isoformat(),
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ExtractedProfiles":
+        extracted_at = datetime.fromisoformat(payload["extracted_at"])
+        return cls(
+            source_checksum=payload["source_checksum"],
+            profiles=[EntityProfile.from_dict(p) for p in payload["profiles"]],
+            extracted_at=extracted_at,
+            metadata=payload.get("metadata", {}),
+        )
+
