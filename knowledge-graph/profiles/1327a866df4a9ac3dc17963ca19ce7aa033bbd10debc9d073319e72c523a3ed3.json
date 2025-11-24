@@ -1,0 +1,525 @@
+{
+  "source_checksum": "1327a866df4a9ac3dc17963ca19ce7aa033bbd10debc9d073319e72c523a3ed3",
+  "profiles": [
+    {
+      "name": "Pasquale Villari",
+      "entity_type": "Person",
+      "summary": "An author who wrote about Niccol\u00f2 Machiavelli's life and times.",
+      "attributes": {
+        "role": "Author",
+        "work": "The Life and Times of Niccol\u00f2 Machiavelli",
+        "publication_year": 1892
+      },
+      "mentions": [
+        "pasquale viLLARi, The Life and Times of JViccold Machiavelli. London, Fisher Unwin. 1892."
+      ],
+      "confidence": 0.9
+    },
+    {
+      "name": "L.A. Burd",
+      "entity_type": "Person",
+      "summary": "An author who provided a text and commentary on Machiavelli's 'The Prince'.",
+      "attributes": {
+        "role": "Author",
+        "work": "II Principe",
+        "publication_year": 1891
+      },
+      "mentions": [
+        "l. a. burd, IIPrincipe. Oxford, 1891 (text and commentary)"
+      ],
+      "confidence": 0.9
+    },
+    {
+      "name": "Francesco Sforza",
+      "entity_type": "Person",
+      "summary": "A historical figure referenced as an example of a newly founded monarchy. A historical figure who rose from a private citizen to become the Duke of Milan through his own abilities. A military leader who became Duke of Milan, known for his role in the political dynamics of Italy during the Renaissance. Francesco Sforza is noted for becoming Duke of Milan through military prowess and organization, emphasizing the importance of being well-armed. A historical figure noted for his role in the establishment of the Sforza dynasty in Milan, mentioned in the context of fortresses and their implications for rulers.",
+      "attributes": {
+        "role": "Duke of Milan",
+        "context": "Example of a new dominion acquired through ability.",
+        "method_of_acquisition": "by ability",
+        "status": "maintained position with little trouble",
+        "notable_actions": "Hired by the Milanese against the Venetians",
+        "historical_context": "Involved in the power struggles of Italy",
+        "notable_action": "Rose from private status to duke through military strength",
+        "dynasty": "Sforza"
+      },
+      "mentions": [
+        "as was Milan to Francesco Sforza",
+        "Francesco, by appropriate means and through great abilities, from citizen became Duke of Milan, and what he had attained after a thousand difficulties he maintained with little trouble.",
+        "Francesco directed his ambition towards Lombardy...",
+        "The Milanese, on the death of Duke Philip, hired Francesco Sforza against the Venetians...",
+        "Francesco Sforza, through being well armed, became, from private status, Duke of Milan.",
+        "The castle of Milan built by Francesco Sforza has given and will give more trouble to the house of Sforza than any other disorder in that state."
+      ],
+      "confidence": 0.875
+    },
+    {
+      "name": "Edward Dacres",
+      "entity_type": "Person",
+      "summary": "The first known translator of Machiavelli's 'The Prince' into English.",
+      "attributes": {
+        "role": "Translator",
+        "work": "The Prince",
+        "publication_year": 1640
+      },
+      "mentions": [
+        "the first English translation is known before that of Edward Dacres in 1640."
+      ],
+      "confidence": 0.9
+    },
+    {
+      "name": "Mario Praz",
+      "entity_type": "Person",
+      "summary": "An author who discussed Machiavelli's influence on Elizabethan drama.",
+      "attributes": {
+        "role": "Scholar",
+        "context": "Illustrated the role of Innocent Gentillet\u2019s work in shaping perceptions of Machiavelli."
+      },
+      "mentions": [
+        "Professor Mario Praz has recently illustrated the important role of Innocent Gentillet\u2019s Contre-Machiavel (1576)"
+      ],
+      "confidence": 0.8
+    },
+    {
+      "name": "Pope Julius",
+      "entity_type": "Person",
+      "summary": "A historical figure mentioned in the context of military conflicts involving the Duke of Ferrara. A Pope who significantly increased the power of the Church and successfully expanded its territories during his papacy.",
+      "attributes": {
+        "role": "Pope",
+        "context": "Involved in military actions against the Duke of Ferrara.",
+        "notable_actions": "Gained Bologna, drove the French from Italy",
+        "successor": "Pope Leo X"
+      },
+      "mentions": [
+        "the assaults of the Venetians in 1484 and of Pope Julius in 1510",
+        "Then came Pope Julius, who found the Church powerful...",
+        "He also found the way open for accumulating wealth in ways never used before the time of Alexander."
+      ],
+      "confidence": 0.8500000000000001
+    },
+    {
+      "name": "Edward Meyer",
+      "entity_type": "Person",
+      "summary": "A scholar who analyzed Machiavelli's influence on Elizabethan drama.",
+      "attributes": {
+        "role": "Scholar",
+        "work": "Machiavelli and the Elizabethan Drama",
+        "publication_year": 1897
+      },
+      "mentions": [
+        "Edward Meyer, Machiavelli and the Elizabethan Drama, Verlag von Emil Felber, Weimar, 1897."
+      ],
+      "confidence": 0.9
+    },
+    {
+      "name": "Luigi Ricci",
+      "entity_type": "Person",
+      "summary": "The translator of Machiavelli's 'The Prince' into English.",
+      "attributes": {
+        "role": "Translator",
+        "work": "The Prince",
+        "first_publication": 1903,
+        "revisions": [
+          "1909",
+          "1921",
+          "1928",
+          "1935"
+        ]
+      },
+      "mentions": [
+        "The translation of Machiavelli\u2019 \u2018Prince\u2019 by Luigi Ricci was first published in \u2018The World\u2019s Classics\u2019 in 1903."
+      ],
+      "confidence": 0.9
+    },
+    {
+      "name": "Duke Ludovico",
+      "entity_type": "Person",
+      "summary": "A historical figure referenced in the context of the loss of Milan by France. A duke referenced in relation to his political actions and decisions during the time of Machiavelli. A Duke of Milan known for his political maneuvers and alliances during the Italian Wars.",
+      "attributes": {
+        "role": "Duke of Milan",
+        "context": "His presence contributed to France losing Milan.",
+        "location": "Milan",
+        "historical_context": "Involved in the power dynamics of Italy"
+      },
+      "mentions": [
+        "the mere appearance of such a person as Duke Ludovico on the frontier was sufficient to cause France to lose Milan",
+        "I find nothing to blame, on the contrary, I feel bound, as I have done, to hold him up as an example to be imitated by all who by fortune and with the arms of others have risen to power."
+      ],
+      "confidence": 0.7
+    },
+    {
+      "name": "Niccolo Machiavelli",
+      "entity_type": "Person",
+      "summary": "The author of 'The Prince', a political treatise on statecraft. An influential political philosopher known for his work 'The Prince', which discusses the acquisition and maintenance of political power. An influential political philosopher known for his work 'The Prince', which discusses the acquisition and maintenance of political power. An Italian diplomat, philosopher, and writer, known for his political treatise 'The Prince', which discusses the nature of power and statecraft. Niccolo Machiavelli is the author of the text, providing insights on military organization and the nature of power. An influential political philosopher known for his work 'The Prince', which discusses the qualities and strategies of effective rulers. An influential political philosopher known for his work 'The Prince', which discusses the nature of power and the qualities of effective rulers. An influential political philosopher known for his work 'The Prince', which discusses the qualities and strategies of effective rulers. An Italian diplomat and philosopher known for his political treatise 'The Prince', which discusses the nature of power and leadership. An influential political philosopher known for his work 'The Prince', which discusses political power and statecraft.",
+      "attributes": {
+        "birth_date": "May 3, 1469",
+        "death_date": "June 22, 1527",
+        "nationality": "Italian",
+        "context": "His work discusses various forms of government and the nature of power.",
+        "role": "Political Philosopher",
+        "notable_work": "The Prince",
+        "work": "The Prince",
+        "time_period": "Renaissance"
+      },
+      "mentions": [
+        "THE PRINCE BY NICCOLO MACHIAVELLI",
+        "the ruler of a foreign province as described, should make himself the leader and defender of his less powerful neighbours",
+        "the Romans in the provinces they took, always followed this policy",
+        "the desire to acquire possessions is a very natural and ordinary thing",
+        "not had those two armies upon him, or else had been in good health, he would have survived every difficulty.",
+        "Whoever, therefore, deems it necessary in his new principality to secure himself against enemies...",
+        "In examining the character of these principalities...",
+        "A prince, therefore, who possesses a strong city and does not make himself hated, cannot be assaulted...",
+        "I do not wish to depart from recent Italian instances, but I cannot omit Hiero of Syracuse, whom I have already mentioned.",
+        "From this arises the question whether it is better to be loved more than feared, or feared more than loved.",
+        "I conclude, therefore, with regard to being feared and loved, that men love at their own free will, but fear at the will of the prince.",
+        "about that those emperors who, by nature or art, had not such a reputation as could keep both parties in check, were invariably ruined...",
+        "Whence it may be seen that hatred is gained as much by good works as by evil...",
+        "nothing causes a prince to be so much esteemed as great enterprises and giving proof of prowess.",
+        "A prince must also show himself a lover of merit, give preferment to the able, and honour those who excel in every art.",
+        "if you regard Italy, which has been the seat of these changes, and who has given the impulse to them...",
+        "I conclude then that fortune varying and men remaining fixed in their ways...",
+        "Machiavelli. Henry). The Prince Ancient"
+      ],
+      "confidence": 0.99921875
+    },
+    {
+      "name": "William Fowler",
+      "entity_type": "Person",
+      "summary": "An author who translated Machiavelli's 'The Prince' into Scots.",
+      "attributes": {
+        "role": "Translator",
+        "context": "His translation is noted for its early familiarity with Machiavelli's work."
+      },
+      "mentions": [
+        "a Scots translation by William Fowler (probably written 1580-159\u00b0)"
+      ],
+      "confidence": 0.8
+    },
+    {
+      "name": "Louis XII",
+      "entity_type": "Person",
+      "summary": "A king of France mentioned in the context of losing Milan. King of France whose actions in Italy are critiqued for failing to maintain power and alliances. Louis XII is mentioned in the context of military organization and the consequences of relying on foreign troops.",
+      "attributes": {
+        "role": "King of France",
+        "context": "Lost Milan due to the discontent of the inhabitants.",
+        "reign": "1498-1515",
+        "notable_actions": "Invited into Italy by the Venetians, made strategic mistakes in maintaining power",
+        "notable_action": "Abolished infantry and began to hire Swiss troops"
+      },
+      "mentions": [
+        "Louis XII of France, though able to occupy Milan without trouble, immediately lost it.",
+        "King Louis was called into Italy by the ambition of the Venetians",
+        "he had made the first mistake, he was obliged to follow it up",
+        "Louis lost Lombardy through not observing any of those conditions",
+        "Charles VII, father of King Louis XI, having through good fortune and bravery liberated France from the English, recognised this necessity of being armed with his own forces.",
+        "The present King of France has carried on so many wars without imposing an extraordinary tax."
+      ],
+      "confidence": 0.825
+    },
+    {
+      "name": "Lorenzo de' Medici",
+      "entity_type": "Person",
+      "summary": "The prince to whom Machiavelli dedicated 'The Prince'.",
+      "attributes": {
+        "role": "Prince",
+        "context": "Recipient of Machiavelli's work."
+      },
+      "mentions": [
+        "NICCOLO MACHIAVELLI TO LORENZO THE MAGNIFICENT"
+      ],
+      "confidence": 0.9
+    },
+    {
+      "name": "E.R.P. Vincent",
+      "entity_type": "Person",
+      "summary": "The individual who revised Luigi Ricci's translation of 'The Prince'.",
+      "attributes": {
+        "role": "Reviser",
+        "context": "Revised the translation of Machiavelli's work."
+      },
+      "mentions": [
+        "the present revised translation was first published in \u2018The World\u2019s Classics\u2019 in 1935."
+      ],
+      "confidence": 0.9
+    },
+    {
+      "name": "Innocent Gentillet",
+      "entity_type": "Person",
+      "summary": "An author whose work contributed to the negative perception of Machiavelli.",
+      "attributes": {
+        "role": "Author",
+        "work": "Contre-Machiavel",
+        "publication_year": 1576
+      },
+      "mentions": [
+        "the important role of Innocent Gentillet\u2019s Contre-Machiavel (1576) in spreading a prejudice originally born of French dislike for the Italian favourites of Catherine de\u2019 Medici."
+      ],
+      "confidence": 0.8
+    },
+    {
+      "name": "Pope Alexander",
+      "entity_type": "Person",
+      "summary": "Pope whose ambitions in Italy are discussed in relation to King Louis XII's strategic failures.",
+      "attributes": {
+        "role": "Pope",
+        "notable_actions": "Occupied the Romagna with the aid of Louis XII"
+      },
+      "mentions": [
+        "by giving aid to Pope Alexander to occupy the Romagna",
+        "the ambition of Alexander and prevent him becoming ruler of Tuscany"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Cesare Borgia",
+      "entity_type": "Person",
+      "summary": "Son of Pope Alexander, known for his political maneuvers in Italy. Commonly known as Duke Valentino, he acquired his state through the influence of his father but struggled to maintain it after that influence waned. Cesare Borgia is cited as an example of a leader who initially relied on auxiliary troops but later shifted to mercenaries and his own forces. A historical figure referenced as an example of a prince whose cruelty brought order and stability.",
+      "attributes": {
+        "role": "Prince",
+        "notable_actions": "Occupied the Romagna",
+        "method_of_acquisition": "by influence of father",
+        "status": "lost state when influence failed",
+        "notable_action": "Brought order to the Romagna"
+      },
+      "mentions": [
+        "Valentine, as Cesare Borgia, son of Pope Alexander, was commonly called",
+        "Cesare Borgia, commonly called Duke Valentino, acquired the state by the influence of his father and lost it when that influence failed.",
+        "I never hesitate to cite the example of Cesare Borgia and his actions.",
+        "This duke entered Romagna with auxiliary troops, leading forces composed entirely of French soldiers.",
+        "Cesare Borgia was considered cruel, but his cruelty had brought order to the Romagna."
+      ],
+      "confidence": 0.9625
+    },
+    {
+      "name": "Alexander VI",
+      "entity_type": "Person",
+      "summary": "The Pope who sought to aggrandize his son, Cesare Borgia, and faced significant challenges in doing so. A pope known for his deceitful nature and ability to manipulate others.",
+      "attributes": {
+        "role": "Pope",
+        "relation": "father of Cesare Borgia",
+        "challenges": "met very great difficulties in aggrandizing his son",
+        "notable_action": "Known for deception and manipulation"
+      },
+      "mentions": [
+        "In wishing to aggrandise the duke his son, Alexander VI had to meet very great difficulties both present and future.",
+        "Of this one could furnish an infinite number of modern examples, and show how many times peace has been broken, and how many promises rendered worthless, by the faithlessness of princes, and those that have been best able to imitate the fox have succeeded best."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Moses",
+      "entity_type": "Concept",
+      "summary": "A historical figure used as an example of a leader who achieved greatness through divine guidance and personal merit.",
+      "attributes": {
+        "role": "Prophet and leader",
+        "method_of_acquisition": "divine guidance",
+        "notable_aspect": "worthy to speak with God"
+      },
+      "mentions": [
+        "I regard as the greatest, Moses, Cyrus, Romulus, Theseus, and their like."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Cyrus",
+      "entity_type": "Concept",
+      "summary": "A historical figure noted for acquiring and founding kingdoms through personal merit.",
+      "attributes": {
+        "role": "King",
+        "method_of_acquisition": "personal merit",
+        "notable_aspect": "worthy of admiration"
+      },
+      "mentions": [
+        "Cyrus and others who have acquired or founded kingdoms, they will all be found worthy of admiration."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Romulus",
+      "entity_type": "Concept",
+      "summary": "The legendary founder of Rome, exemplifying the qualities of a successful leader.",
+      "attributes": {
+        "role": "Founder of Rome",
+        "method_of_acquisition": "personal merit",
+        "notable_aspect": "unable to remain in Alba"
+      },
+      "mentions": [
+        "It was necessary that Romulus should be unable to remain in Alba, and should have been exposed at his birth, in order that he might become King of Rome."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Theseus",
+      "entity_type": "Concept",
+      "summary": "A legendary hero of Athens, used as an example of a leader who capitalized on the circumstances of his time.",
+      "attributes": {
+        "role": "Hero and King of Athens",
+        "method_of_acquisition": "personal merit",
+        "notable_aspect": "showed his abilities when Athenians were dispersed"
+      },
+      "mentions": [
+        "Theseus could not have shown his abilities if he had not found the Athenians dispersed."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Hiero of Syracuse",
+      "entity_type": "Person",
+      "summary": "A historical figure who rose from a private individual to become Prince of Syracuse through ability.",
+      "attributes": {
+        "role": "Prince of Syracuse",
+        "method_of_acquisition": "personal merit",
+        "notable_aspect": "lacked nothing to reign but the kingdom"
+      },
+      "mentions": [
+        "the case of Hiero of Syracuse, who from a private individual became Prince of Syracuse, without other aid from fortune beyond the opportunity."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Pope Julius II",
+      "entity_type": "Person",
+      "summary": "The pope during the time of Machiavelli's writing, noted for his political maneuvers and military campaigns. Pope Julius II is referenced as a leader who relied on auxiliary troops, which ultimately led to his precarious situation during military campaigns. A pope known for his impetuous actions and military campaigns, particularly against Bologna.",
+      "attributes": {
+        "role": "Pope",
+        "papacy_start": "1503",
+        "papacy_end": "1513",
+        "notable_action": "Sought assistance from King Ferrando of Spain",
+        "context": "Ferrara enterprise",
+        "characteristics": "Impetuous, military leader"
+      },
+      "mentions": [
+        "he told me on the day that Pope Julius II was elected...",
+        "the only thing he can be accused of is that in the creation of Julius II he made a bad choice.",
+        "Nothing could be less prudent than the course he adopted; for, wishing to take Ferrara, he put himself entirely into the power of a foreigner.",
+        "Pope Julius II, although he had made use of a reputation for liberality in order to attain the papacy, did not seek to retain it afterwards, so that he might be able to wage war.",
+        "Pope Julius II acted impetuously in everything he did and found the times and conditions so in conformity with that mode of procedure..."
+      ],
+      "confidence": 0.975
+    },
+    {
+      "name": "Oliverotto da Fermo",
+      "entity_type": "Person",
+      "summary": "A historical figure who rose to power through treachery and violence, serving as an example of Machiavelli's principles.",
+      "attributes": {
+        "role": "Prince of Fermo",
+        "method_of_acquisition": "Villainy",
+        "notable_action": "Massacre of Giovanni Fogliani"
+      },
+      "mentions": [
+        "Oliverotto invited Giovanni Fogliani and all the principal men of Fermo to a grand banquet.",
+        "he mounted his horse, rode through the town and besieged the chief magistrate in his palace."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Agathocles",
+      "entity_type": "Person",
+      "summary": "An ancient example of a ruler who rose to power through nefarious means, discussed by Machiavelli as a model of political cunning.",
+      "attributes": {
+        "role": "King of Syracuse",
+        "method_of_acquisition": "Villainy",
+        "notable_action": "Massacre of the Senate"
+      },
+      "mentions": [
+        "Agathocles the Sicilian rose not only from private life but from the lowest and most abject position to be King of Syracuse.",
+        "Nevertheless his barbarous cruelty and inhumanity, together with his countless atrocities, do not permit of his being named among the most famous men."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Pope Leo X",
+      "entity_type": "Person",
+      "summary": "A Pope who inherited a powerful Church and aimed to maintain and enhance its status through his virtues.",
+      "attributes": {
+        "role": "Pope",
+        "context": "Inherits a powerful condition from predecessors"
+      },
+      "mentions": [
+        "His holiness, Pope Leo X, therefore, has found the pontificate in a very powerful condition..."
+      ],
+      "confidence": 0.8
+    },
+    {
+      "name": "King Ferrando",
+      "entity_type": "Person",
+      "summary": "King Ferrando of Spain is referenced as a powerful ally whom Pope Julius II sought assistance from during military campaigns.",
+      "attributes": {
+        "role": "King of Spain",
+        "notable_action": "Provided military assistance to Pope Julius II"
+      },
+      "mentions": [
+        "arranged with Ferrando, King of Spain, that he should help him with his armies."
+      ],
+      "confidence": 0.7
+    },
+    {
+      "name": "Charles VII",
+      "entity_type": "Person",
+      "summary": "Charles VII is noted for liberating France and establishing a military system that emphasized the importance of having one's own troops.",
+      "attributes": {
+        "role": "King of France",
+        "notable_action": "Liberated France from the English and established a military system"
+      },
+      "mentions": [
+        "Charles VII, father of King Louis XI, having through good fortune and bravery liberated France from the English."
+      ],
+      "confidence": 0.7
+    },
+    {
+      "name": "Hannibal",
+      "entity_type": "Person",
+      "summary": "A military commander noted for his cruelty and effectiveness in maintaining the loyalty of his diverse army.",
+      "attributes": {
+        "role": "Military Commander",
+        "notable_action": "Maintained loyalty through cruelty"
+      },
+      "mentions": [
+        "Among the noteworthy actions of Hannibal is numbered this, that although he had an enormous army, composed of men of all nations and fighting in foreign countries, there never arose any dissension either among them or against the prince."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Scipio",
+      "entity_type": "Person",
+      "summary": "A Roman general whose excessive kindness led to rebellion among his troops.",
+      "attributes": {
+        "role": "Roman General",
+        "notable_action": "Allowed excessive kindness leading to rebellion"
+      },
+      "mentions": [
+        "This could not be due to anything but his inhuman cruelty, which together with his infinite other virtues, made him always venerated and terrible in the sight of his soldiers."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Fabius Maximus",
+      "entity_type": "Person",
+      "summary": "A Roman statesman who criticized Scipio for his leniency towards his soldiers.",
+      "attributes": {
+        "role": "Roman Statesman",
+        "notable_action": "Called Scipio a corrupter of the Roman militia"
+      },
+      "mentions": [
+        "He was reproached with this in the senate by Fabius Maximus, who called him a corrupter of the Roman militia."
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "Annibale Bentivogli",
+      "entity_type": "Person",
+      "summary": "A prince of Bologna whose assassination led to a popular uprising against his assassins.",
+      "attributes": {
+        "role": "Prince of Bologna",
+        "notable_action": "Killed by conspirators, leading to a popular uprising"
+      },
+      "mentions": [
+        "Messer Annibale Bentivogli, Prince of Bologna, ancestor of the present Messer Annibale, was killed by the Canneschi, who conspired against him."
+      ],
+      "confidence": 1.0
+    }
+  ],
+  "extracted_at": "2025-11-24T00:46:28.295928+00:00",
+  "metadata": {}
+}
