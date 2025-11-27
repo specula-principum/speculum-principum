@@ -9,6 +9,7 @@ from .github import (
 )
 from .parsing import register_parsing_tools
 from .extraction import register_extraction_tools
+from .discussion_tools import register_all_discussion_tools as register_discussion_tools
 
 __all__ = [
 	"register_github_read_only_tools",
@@ -16,4 +17,5 @@ __all__ = [
 	"register_github_mutation_tools",
 	"register_parsing_tools",
     "register_extraction_tools",
+    "register_discussion_tools",
 ]

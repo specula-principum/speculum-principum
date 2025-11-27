@@ -28,7 +28,7 @@ def test_copilot_client_requires_api_key():
 
 def test_copilot_client_uses_env_token():
     """CopilotClient reads GITHUB_TOKEN from environment."""
-    with patch.dict("os.environ", {"GITHUB_TOKEN": "test_token"}):
+    with patch.dict("os.environ", {"GITHUB_TOKEN": "test_token", "GH_TOKEN": ""}, clear=True):
         client = CopilotClient()
         assert client.api_key == "test_token"
 
