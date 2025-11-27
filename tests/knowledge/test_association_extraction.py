@@ -26,15 +26,19 @@ def test_association_extractor_extracts_associations(mock_client):
     mock_response.choices = [
         Mock(message=Mock(content=json.dumps([
             {
-                "person_name": "Alice Smith",
-                "organization_name": "Acme Corp",
+                "source": "Alice Smith",
+                "target": "Acme Corp",
+                "source_type": "Person",
+                "target_type": "Organization",
                 "relationship": "CEO",
                 "evidence": "Alice Smith is the CEO of Acme Corp.",
                 "confidence": 0.95
             },
             {
-                "person_name": "Bob Jones",
-                "organization_name": "Beta Inc",
+                "source": "Bob Jones",
+                "target": "Beta Inc",
+                "source_type": "Person",
+                "target_type": "Organization",
                 "relationship": "Employee",
                 "evidence": "Bob Jones works at Beta Inc.",
                 "confidence": 0.8
@@ -47,8 +51,8 @@ def test_association_extractor_extracts_associations(mock_client):
     associations = extractor.extract_associations("Some text")
 
     assert len(associations) == 2
-    assert associations[0].person_name == "Alice Smith"
-    assert associations[0].organization_name == "Acme Corp"
+    assert associations[0].source == "Alice Smith"
+    assert associations[0].target == "Acme Corp"
     assert associations[0].relationship == "CEO"
     assert associations[0].evidence == "Alice Smith is the CEO of Acme Corp."
     assert associations[0].confidence == 0.95
@@ -106,8 +110,10 @@ def test_storage_saves_and_retrieves_associations(temp_kb_root):
     checksum = "abc123hash"
     associations = [
         EntityAssociation(
-            person_name="Alice",
-            organization_name="Acme",
+            source="Alice",
+            target="Acme",
+            source_type="Person",
+            target_type="Organization",
             relationship="Lead",
             evidence="Alice leads Acme.",
             confidence=0.9
@@ -120,8 +126,8 @@ def test_storage_saves_and_retrieves_associations(temp_kb_root):
     assert loaded is not None
     assert loaded.source_checksum == checksum
     assert len(loaded.associations) == 1
-    assert loaded.associations[0].person_name == "Alice"
-    assert loaded.associations[0].organization_name == "Acme"
+    assert loaded.associations[0].source == "Alice"
+    assert loaded.associations[0].target == "Acme"
     assert loaded.associations[0].relationship == "Lead"
     assert loaded.associations[0].evidence == "Alice leads Acme."
     assert loaded.associations[0].confidence == 0.9

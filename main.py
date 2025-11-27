@@ -17,6 +17,9 @@ if _env_file.exists():
 from src.cli.commands.agent import (
     register_commands as register_agent_commands,
 )
+from src.cli.commands.discussions import (
+    register_commands as register_discussion_commands,
+)
 from src.cli.commands.extraction import (
     register_commands as register_extraction_commands,
 )
@@ -41,6 +44,7 @@ def _build_command_parser() -> argparse.ArgumentParser:
     register_agent_commands(subparsers)
     register_parse_commands(subparsers)
     register_extraction_commands(subparsers)
+    register_discussion_commands(subparsers)
     return parser
 
 
