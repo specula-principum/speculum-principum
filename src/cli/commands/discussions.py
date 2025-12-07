@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src import paths
 from src.integrations.github import discussions as github_discussions
 from src.knowledge.aggregation import KnowledgeAggregator, build_entity_discussion_content
 from src.knowledge.storage import KnowledgeGraphStorage
@@ -42,7 +43,7 @@ def register_commands(
     )
     parser.add_argument(
         "--knowledge-graph",
-        default="knowledge-graph",
+        default=paths.get_knowledge_graph_root(),
         help="Path to knowledge graph directory (default: knowledge-graph/)",
     )
     parser.add_argument(

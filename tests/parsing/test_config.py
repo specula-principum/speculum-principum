@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src import paths
 from src.parsing.config import ParsingConfig, load_parsing_config
 
 
@@ -8,7 +9,11 @@ def test_load_parsing_config_defaults(monkeypatch, tmp_path) -> None:
     config = load_parsing_config(None)
 
     assert isinstance(config, ParsingConfig)
-    assert config.output_root == (tmp_path / "evidence/parsed").resolve()
+    
+    # Expected root depends on SPECULUM_DATA_DIR
+    expected_root = (paths.get_evidence_root() / "parsed").resolve()
+    assert config.output_root == expected_root
+    
     assert config.scan.suffixes
     assert config.scan.recursive is True
     assert config.scan.include == ()

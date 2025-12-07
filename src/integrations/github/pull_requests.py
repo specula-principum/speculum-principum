@@ -258,3 +258,61 @@ def merge_pull_request(
         ) from exc
     except error.URLError as exc:
         raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+
+def create_pull_request(
+    *,
+    token: str,
+    repository: str,
+    title: str,
+    body: str,
+    head: str,
+    base: str,
+    api_url: str = DEFAULT_API_URL,
+) -> dict[str, Any]:
+    """Create a new pull request.
+
+    Args:
+        token: GitHub API token
+        repository: Repository in "owner/repo" format
+        title: Title of the pull request
+        body: Body/description of the pull request
+        head: The name of the branch where your changes are implemented
+        base: The name of the branch you want the changes pulled into
+        api_url: GitHub API base URL
+
+    Returns:
+        Dictionary containing the created PR details
+
+    Raises:
+        GitHubIssueError: If the API request fails
+    """
+    owner, name = normalize_repository(repository)
+    endpoint = f"{api_url.rstrip('/')}/repos/{owner}/{name}/pulls"
+
+    payload = {
+        "title": title,
+        "body": body,
+        "head": head,
+        "base": base,
+    }
+
+    raw_body = json.dumps(payload).encode("utf-8")
+    req = request.Request(endpoint, data=raw_body, method="POST")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+    req.add_header("Content-Type", "application/json; charset=utf-8")
+
+    try:
+        with request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            return data
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+

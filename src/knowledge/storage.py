@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List
 
+from src import paths
 from src.parsing import utils
 
-_DEFAULT_KB_ROOT = Path("knowledge-graph")
+_DEFAULT_KB_ROOT = paths.get_knowledge_graph_root()
 
 
 @dataclass(slots=True)

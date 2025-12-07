@@ -886,6 +886,62 @@ def register_github_mutation_tools(registry: ToolRegistry) -> None:
         )
     )
 
+    registry.register_tool(
+        ToolDefinition(
+            name="create_pull_request",
+            description="Create a new pull request.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Title of the pull request."},
+                    "body": {"type": "string", "description": "Body/description of the pull request."},
+                    "head": {"type": "string", "description": "The name of the branch where your changes are implemented."},
+                    "base": {"type": "string", "description": "The name of the branch you want the changes pulled into."},
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository name in 'owner/name' format. Defaults to GITHUB_REPOSITORY env var.",
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "GitHub token with write access. Defaults to GITHUB_TOKEN env var.",
+                    },
+                },
+                "required": ["title", "body", "head", "base"],
+                "additionalProperties": False,
+            },
+            handler=_create_pr_handler,
+            risk_level=ActionRisk.DESTRUCTIVE,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
+            name="commit_file",
+            description="Create or update a file in the repository.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to the file."},
+                    "content": {"type": "string", "description": "Content of the file."},
+                    "message": {"type": "string", "description": "Commit message."},
+                    "branch": {"type": "string", "description": "Branch to commit to."},
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository name in 'owner/name' format. Defaults to GITHUB_REPOSITORY env var.",
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "GitHub token with write access. Defaults to GITHUB_TOKEN env var.",
+                    },
+                },
+                "required": ["path", "content", "message", "branch"],
+                "additionalProperties": False,
+            },
+            handler=_commit_file_handler,
+            risk_level=ActionRisk.DESTRUCTIVE,
+        )
+    )
+
 
 # Handler implementations for mutation tools
 
@@ -1231,3 +1287,78 @@ def _merge_pr_handler(args: Mapping[str, Any]) -> ToolResult:
         )
     except github_issues.GitHubIssueError as exc:
         return ToolResult(success=False, output=None, error=str(exc))
+
+
+def _create_pr_handler(args: Mapping[str, Any]) -> ToolResult:
+    from src.integrations.github import pull_requests as github_prs
+    
+    title = args.get("title")
+    body = args.get("body")
+    head = args.get("head")
+    base = args.get("base")
+    
+    if not all([title, body, head, base]):
+        return ToolResult(success=False, output=None, error="title, body, head, and base are required.")
+
+    repository_arg = args.get("repository")
+    token_arg = args.get("token")
+    try:
+        repository = github_issues.resolve_repository(str(repository_arg) if repository_arg else None)
+        token = github_issues.resolve_token(str(token_arg) if token_arg else None)
+    except github_issues.GitHubIssueError as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
+
+    try:
+        result = github_prs.create_pull_request(
+            token=token,
+            repository=repository,
+            title=str(title),
+            body=str(body),
+            head=str(head),
+            base=str(base),
+        )
+        return ToolResult(
+            success=True,
+            output=result,
+            error=None,
+        )
+    except github_issues.GitHubIssueError as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
+
+
+def _commit_file_handler(args: Mapping[str, Any]) -> ToolResult:
+    from src.integrations.github import files as github_files
+    
+    path = args.get("path")
+    content = args.get("content")
+    message = args.get("message")
+    branch = args.get("branch")
+    
+    if not all([path, content, message, branch]):
+        return ToolResult(success=False, output=None, error="path, content, message, and branch are required.")
+
+    repository_arg = args.get("repository")
+    token_arg = args.get("token")
+    try:
+        repository = github_issues.resolve_repository(str(repository_arg) if repository_arg else None)
+        token = github_issues.resolve_token(str(token_arg) if token_arg else None)
+    except github_issues.GitHubIssueError as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
+
+    try:
+        result = github_files.commit_file(
+            token=token,
+            repository=repository,
+            path=str(path),
+            content=str(content),
+            message=str(message),
+            branch=str(branch),
+        )
+        return ToolResult(
+            success=True,
+            output=result,
+            error=None,
+        )
+    except github_issues.GitHubIssueError as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
+
