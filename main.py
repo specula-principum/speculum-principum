@@ -29,6 +29,9 @@ from src.cli.commands.github import (
 from src.cli.commands.parse import (
     register_commands as register_parse_commands,
 )
+from src.cli.commands.setup import (
+    register_commands as register_setup_commands,
+)
 
 
 def _build_command_parser() -> argparse.ArgumentParser:
@@ -45,6 +48,7 @@ def _build_command_parser() -> argparse.ArgumentParser:
     register_parse_commands(subparsers)
     register_extraction_commands(subparsers)
     register_discussion_commands(subparsers)
+    register_setup_commands(subparsers)
     return parser
 
 

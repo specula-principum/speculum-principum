@@ -1,0 +1,42 @@
+# Mission to setup the repository configuration via an interactive issue.
+
+id: setup_repo
+version: 1
+metadata:
+  owner: copilot-orchestrator
+  created_at: 2025-12-06
+  summary_tooling: setup-workflow
+
+goal: |
+  Guide the user through the repository setup process by gathering configuration details
+  (Source URL, Topic, Frequency) via issue comments and creating a Pull Request with the result.
+
+  Actions Required:
+  1. Read the issue comments to extract the user's configuration inputs.
+  2. Validate the provided Source URL using the `validate_url` tool.
+  3. If the URL is invalid, post a comment asking the user to correct it.
+  4. If the configuration is complete and valid:
+     a. Clean the workspace using `clean_workspace`.
+     b. Generate the configuration file using `configure_repository`.
+     c. Commit and push the changes to a new branch using `commit_and_push`.
+     d. Create a Pull Request using `create_pull_request` (base: main, head: <branch_name>).
+
+constraints:
+  - Validate the Source URL before proceeding.
+  - Ensure the Pull Request contains the correct configuration files.
+
+success_criteria:
+  - Configuration details gathered from issue comments.
+  - Source URL validated.
+  - Pull Request created with the generated configuration.
+
+max_steps: 10
+allowed_tools:
+  - get_issue_comments
+  - validate_url
+  - clean_workspace
+  - configure_repository
+  - commit_and_push
+  - create_pull_request
+  - post_comment
+requires_approval: false

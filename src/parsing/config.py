@@ -8,9 +8,10 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+from src import paths
 from . import utils
 
-_DEFAULT_OUTPUT_ROOT = Path("evidence/parsed")
+_DEFAULT_OUTPUT_ROOT = paths.get_evidence_root() / "parsed"
 _DEFAULT_SCAN_SUFFIXES = (".pdf", ".docx", ".html", ".htm", ".xhtml")
 _DEFAULT_CONFIG_PATH = Path("config/parsing.yaml")
 
