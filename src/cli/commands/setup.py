@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from typing import Optional
 
@@ -11,6 +12,7 @@ from src.integrations.github.issues import (
     post_comment,
     resolve_repository,
     resolve_token,
+    get_repository_details,
     GitHubIssueError,
 )
 
@@ -27,6 +29,32 @@ WELCOME_COMMENT = (
     "3. **Frequency**: How often you want to check for updates (e.g., daily, weekly).\n\n"
     "Please reply to this comment with the information above."
 )
+
+
+def _configure_upstream_remote(url: str) -> None:
+    """Configure the upstream remote if it doesn't exist."""
+    try:
+        # Check if upstream exists
+        subprocess.run(
+            ["git", "remote", "get-url", "upstream"],
+            check=True,
+            capture_output=True
+        )
+        print("Upstream remote already exists.")
+    except subprocess.CalledProcessError:
+        # Add upstream
+        print(f"Adding upstream remote: {url}")
+        try:
+            subprocess.run(
+                ["git", "remote", "add", "upstream", url],
+                check=True,
+                capture_output=True
+            )
+            print("Fetching from upstream...")
+            subprocess.run(["git", "fetch", "upstream"], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to configure upstream remote: {e}", file=sys.stderr)
+
 
 def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the setup command."""
@@ -51,6 +79,18 @@ def setup_repo_cli(args: argparse.Namespace) -> int:
         return 1
 
     print(f"Initializing setup for repository: {repo}")
+
+    try:
+        # Check for template and configure upstream
+        details = get_repository_details(token=token, repository=repo)
+        template_repo = details.get("template_repository")
+        if template_repo:
+            template_clone_url = template_repo.get("clone_url")
+            if template_clone_url:
+                print(f"Repository created from template: {template_repo.get('full_name')}")
+                _configure_upstream_remote(template_clone_url)
+    except Exception as e:
+        print(f"Warning: Failed to configure upstream remote: {e}", file=sys.stderr)
 
     try:
         # 1. Create the setup issue
