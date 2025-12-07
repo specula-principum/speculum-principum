@@ -139,6 +139,35 @@ def render_template(template: str, variables: Mapping[str, str] | None = None) -
         raise GitHubIssueError(f"Missing template variables: {missing}") from exc
 
 
+def get_repository_details(
+    *,
+    token: str,
+    repository: str,
+    api_url: str = DEFAULT_API_URL,
+) -> dict[str, object]:
+    """Fetch repository details from GitHub API."""
+    owner, name = normalize_repository(repository)
+    url = f"{api_url.rstrip('/')}/repos/{owner}/{name}"
+
+    req = request.Request(url, method="GET")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", API_VERSION)
+
+    try:
+        with request.urlopen(req) as response:
+            response_bytes = response.read()
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"GitHub API error ({exc.code}): {error_text.strip()}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+    return json.loads(response_bytes.decode("utf-8"))
+
+
 def create_issue(
     *,
     token: str,
