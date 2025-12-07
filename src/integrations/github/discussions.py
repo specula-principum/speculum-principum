@@ -11,6 +11,7 @@ from urllib import error, request
 from urllib.parse import urlparse
 
 DEFAULT_API_URL = "https://api.github.com"
+AGENT_RESPONSE_TAG = "\n\n<!-- agent-response -->"
 
 
 class GitHubDiscussionError(RuntimeError):
@@ -594,6 +595,9 @@ def create_discussion(
     if not title:
         raise GitHubDiscussionError("Title is required to create a discussion.")
 
+    if "<!-- agent-response -->" not in body:
+        body += AGENT_RESPONSE_TAG
+
     repository_id = get_repository_id(
         token=token,
         repository=repository,
@@ -798,6 +802,9 @@ def add_discussion_comment(
         raise GitHubDiscussionError("Discussion ID is required to add a comment.")
     if not body:
         raise GitHubDiscussionError("Comment body is required.")
+
+    if "<!-- agent-response -->" not in body:
+        body += AGENT_RESPONSE_TAG
 
     mutation = """
     mutation($discussionId: ID!, $body: String!) {

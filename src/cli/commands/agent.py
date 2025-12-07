@@ -23,6 +23,9 @@ from src.integrations.github.issues import (
     GitHubIssueError,
     resolve_repository,
     resolve_token,
+    fetch_issue,
+    fetch_issue_comments,
+    AGENT_RESPONSE_TAG,
 )
 from src.integrations.github.search_issues import GitHubIssueSearcher
 
@@ -280,6 +283,34 @@ def _build_mission_evaluator(mission: Mission) -> MissionEvaluator:
     return SimpleEvaluator()
 
 
+def _check_agent_tag(token: str, repository: str, issue_number: int, api_url: str) -> bool:
+    """Check if the last message in the issue has the agent tag."""
+    try:
+        comments = fetch_issue_comments(
+            token=token,
+            repository=repository,
+            issue_number=issue_number,
+            api_url=api_url,
+        )
+        
+        last_body = ""
+        if comments:
+            last_comment = comments[-1]
+            last_body = str(last_comment.get("body", ""))
+        else:
+            issue = fetch_issue(
+                token=token,
+                repository=repository,
+                issue_number=issue_number,
+                api_url=api_url,
+            )
+            last_body = str(issue.get("body", ""))
+        
+        return AGENT_RESPONSE_TAG in last_body
+    except GitHubIssueError:
+        return False
+
+
 def _prepare_agent_inputs(raw_inputs: dict[str, Any]) -> tuple[dict[str, Any], bool, str | None]:
     """Normalize mission inputs and resolve convenience values like 'auto'."""
 
@@ -314,6 +345,22 @@ def _prepare_agent_inputs(raw_inputs: dict[str, Any]) -> tuple[dict[str, Any], b
     if isinstance(value, int):
         if value < 1:
             raise ValueError("issue_number input must be >= 1.")
+
+        # Check for agent response tag
+        try:
+            repository_arg = inputs.get("repository")
+            token_arg = inputs.get("token")
+            api_url_arg = inputs.get("api_url")
+
+            repository = resolve_repository(str(repository_arg) if repository_arg else None)
+            token = resolve_token(str(token_arg) if token_arg else None)
+            api_url = str(api_url_arg) if api_url_arg else DEFAULT_API_URL
+
+            if _check_agent_tag(token, repository, value, api_url):
+                return inputs, True, f"Skipping issue #{value} as the last message was from the agent."
+        except GitHubIssueError:
+            pass
+
         return inputs, False, None
 
     if isinstance(value, str):
@@ -360,6 +407,10 @@ def _prepare_agent_inputs(raw_inputs: dict[str, Any]) -> tuple[dict[str, Any], b
             return inputs, True, message
 
         selection = results[0]
+
+        if _check_agent_tag(token, repository, selection.number, api_url):
+            return inputs, True, f"Skipping auto-selected issue #{selection.number} as the last message was from the agent."
+
         inputs["issue_number"] = selection.number
         inputs["auto_issue_selected"] = True
         inputs.setdefault("auto_issue_url", selection.url)
