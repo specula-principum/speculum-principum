@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 DEFAULT_API_URL = "https://api.github.com"
 API_VERSION = "2022-11-28"
+AGENT_RESPONSE_TAG = "\n\n<!-- agent-response -->"
 
 
 class GitHubIssueError(RuntimeError):
@@ -149,6 +150,9 @@ def create_issue(
     assignees: Sequence[str] | None = None,
 ) -> IssueOutcome:
     """Create a GitHub issue and return the result."""
+
+    if "<!-- agent-response -->" not in body:
+        body += AGENT_RESPONSE_TAG
 
     owner, name = normalize_repository(repository)
     payload: dict[str, object] = {"title": title, "body": body}
@@ -488,6 +492,9 @@ def post_comment(
         raise GitHubIssueError("Issue number must be a positive integer.")
     if not body:
         raise GitHubIssueError("Comment body must be provided.")
+
+    if "<!-- agent-response -->" not in body:
+        body += AGENT_RESPONSE_TAG
 
     owner, name = normalize_repository(repository)
     url = f"{api_url.rstrip('/')}/repos/{owner}/{name}/issues/{issue_number}/comments"
