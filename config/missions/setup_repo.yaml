@@ -9,7 +9,7 @@ metadata:
 
 goal: |
   Guide the user through the repository setup process by gathering configuration details
-  (Source URL, Topic, Frequency) via issue comments and creating a Pull Request with the result.
+  (Source URL, Topic, Frequency, Model) via issue comments and creating a Pull Request with the result.
 
   Actions Required:
   1. Read the issue comments to extract the user's configuration inputs.
@@ -24,6 +24,7 @@ goal: |
 constraints:
   - Validate the Source URL before proceeding.
   - Ensure the Pull Request contains the correct configuration files.
+  - If the user does not specify a model, default to "gpt-4o".
 
 success_criteria:
   - Configuration details gathered from issue comments.

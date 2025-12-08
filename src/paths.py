@@ -26,3 +26,8 @@ def get_knowledge_graph_root() -> Path:
 def get_reports_root() -> Path:
     """Get the root directory for report files."""
     return get_data_root() / "reports"
+
+def get_config_file() -> Path:
+    """Get the path to the project configuration file."""
+    return Path("config/manifest.json")
+

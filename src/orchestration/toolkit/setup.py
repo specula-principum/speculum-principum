@@ -29,11 +29,13 @@ def configure_repository(args: Mapping[str, Any]) -> dict[str, Any]:
     source_url = args.get("source_url")
     topic = args.get("topic")
     frequency = args.get("frequency")
+    model = args.get("model", "gpt-4o")
     
     config = {
         "source_url": source_url,
         "topic": topic,
-        "frequency": frequency
+        "frequency": frequency,
+        "model": model
     }
     
     config_path = Path("config/manifest.json")
@@ -126,7 +128,8 @@ def register_setup_tools(registry: ToolRegistry) -> None:
                 "properties": {
                     "source_url": {"type": "string"},
                     "topic": {"type": "string"},
-                    "frequency": {"type": "string"}
+                    "frequency": {"type": "string"},
+                    "model": {"type": "string", "description": "LLM model to use (default: gpt-4o)"}
                 },
                 "required": ["source_url", "topic", "frequency"],
             },

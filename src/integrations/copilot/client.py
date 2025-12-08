@@ -78,7 +78,7 @@ class CopilotClient:
     """
 
     DEFAULT_API_URL = "https://models.inference.ai.azure.com"
-    DEFAULT_MODEL = "gpt-4o-mini"  # GitHub Copilot tuned GPT-4o variant with 128k context
+    DEFAULT_MODEL = "gpt-4o"  # GitHub Copilot tuned GPT-4o variant with 128k context
     DEFAULT_MAX_OUTPUT_TOKENS = 4000  # Max completion tokens
     DEFAULT_TEMPERATURE = 0.7
 
