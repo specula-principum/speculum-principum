@@ -47,6 +47,35 @@ def register_github_read_only_tools(registry: ToolRegistry) -> None:
 
     registry.register_tool(
         ToolDefinition(
+            name="get_issue_comments",
+            description="Fetch all comments for a specific GitHub issue.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "issue_number": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Numeric identifier of the issue.",
+                    },
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository name in 'owner/name' format. Defaults to GITHUB_REPOSITORY env var.",
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "GitHub token with read access. Defaults to GITHUB_TOKEN env var.",
+                    },
+                },
+                "required": ["issue_number"],
+                "additionalProperties": False,
+            },
+            handler=_get_issue_comments_handler,
+            risk_level=ActionRisk.SAFE,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
             name="search_issues_by_label",
             description="List open issues that match a specific label.",
             parameters={
@@ -205,6 +234,28 @@ def _get_issue_details_handler(args: Mapping[str, Any]) -> ToolResult:
     normalized = _normalize_issue_payload(raw_issue)
     normalized["comments"] = [_normalize_comment_payload(c) for c in raw_comments]
     return ToolResult(success=True, output=normalized, error=None)
+
+
+def _get_issue_comments_handler(args: Mapping[str, Any]) -> ToolResult:
+    issue_number = _parse_issue_number(args.get("issue_number"))
+    if issue_number is None:
+        return ToolResult(success=False, output=None, error="issue_number must be an integer >= 1.")
+
+    repository_arg = args.get("repository")
+    token_arg = args.get("token")
+    try:
+        repository = github_issues.resolve_repository(str(repository_arg) if repository_arg else None)
+        token = github_issues.resolve_token(str(token_arg) if token_arg else None)
+    except github_issues.GitHubIssueError as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
+
+    try:
+        raw_comments = github_issues.fetch_issue_comments(token=token, repository=repository, issue_number=issue_number)
+    except github_issues.GitHubIssueError as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
+
+    comments = [_normalize_comment_payload(c) for c in raw_comments]
+    return ToolResult(success=True, output=comments, error=None)
 
 
 def _search_issues_by_label_handler(args: Mapping[str, Any]) -> ToolResult:
