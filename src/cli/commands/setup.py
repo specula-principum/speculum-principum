@@ -26,7 +26,8 @@ WELCOME_COMMENT = (
     "I will help you configure your project. Please provide the following details:\n\n"
     "1. **Source URL**: The URL of the data source you want to track.\n"
     "2. **Topic**: The main topic or category for this data.\n"
-    "3. **Frequency**: How often you want to check for updates (e.g., daily, weekly).\n\n"
+    "3. **Frequency**: How often you want to check for updates (e.g., daily, weekly).\n"
+    "4. **Model**: The LLM model to use for operations (default: gpt-4o).\n\n"
     "Please reply to this comment with the information above."
 )
 

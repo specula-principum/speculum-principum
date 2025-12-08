@@ -97,7 +97,7 @@ def _register_run_command(subparsers: argparse._SubParsersAction[argparse.Argume
     )
     parser.add_argument(
         "--model",
-        help="LLM model to use (default: grok-3-mini)",
+        help="LLM model to use (default: gpt-4o)",
     )
     parser.add_argument(
         "--output",
@@ -517,8 +517,14 @@ def run_mission_cli(args: argparse.Namespace) -> int:
     planner_type = args.planner
     planner_model = args.model
     
+    # If model not specified in args, try to load from config
+    if not planner_model:
+        from src.config import get_config
+        planner_model = get_config().model
+        print(f"Using configured model: {planner_model}")
+
     try:
-        copilot_client = CopilotClient(model=args.model)
+        copilot_client = CopilotClient(model=planner_model)
         planner = LLMPlanner(
             copilot_client=copilot_client,
             tool_registry=registry,
