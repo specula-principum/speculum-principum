@@ -33,4 +33,5 @@ jobs:
           python -m main agent run \
             --mission setup_repo \
             --input issue_number=${{ github.event.issue.number }} \
-            --input repository=${{ github.repository }}
+            --input repository=${{ github.repository }} \
+            --input comment_body="${{ github.event.comment.body }}"

@@ -8,36 +8,37 @@ metadata:
   summary_tooling: setup-workflow
 
 goal: |
-  Guide the user through the repository setup process by gathering configuration details
-  (Source URL, Topic, Frequency, Model) via issue comments and creating a Pull Request with the result.
+  Review the provided issue comment (input `comment_body`) to extract repository configuration details
+  (Source URL, Topic, Frequency, Model).
 
   Actions Required:
-  1. Read the issue comments to extract the user's configuration inputs.
-  2. Validate the provided Source URL using the `validate_url` tool.
-  3. If the URL is invalid, post a comment asking the user to correct it.
-  4. If the configuration is complete and valid:
-     a. Clean the workspace using `clean_workspace`.
-     b. Generate the configuration file using `configure_repository`.
-     c. Commit and push the changes to a new branch using `commit_and_push`.
-     d. Create a Pull Request using `create_pull_request` (base: main, head: <branch_name>).
+  1. Analyze the `comment_body` input for configuration details.
+  2. If the Source URL is present, validate it using `validate_url`.
+  3. If information is missing or the URL is invalid:
+     - Post a comment asking the user to provide the missing details or correct the URL.
+  4. If all information is present and valid:
+     - Post a comment instructing GitHub Copilot to:
+       "Configure the repository with Source URL: [URL], Topic: [Topic], Frequency: [Freq], Model: [Model].
+       1. Create `config/manifest.json` with the following JSON structure:
+          { \"source_url\": \"[URL]\", \"topic\": \"[Topic]\", \"frequency\": \"[Freq]\", \"model\": \"[Model]\" }
+       2. Clean the `evidence/`, `knowledge-graph/`, and `reports/` directories (delete all files but keep `.gitkeep`).
+       3. Create a new branch `setup-config`.
+       4. Commit the changes.
+       5. Create a Pull Request."
+     - Assign the issue to Copilot using `assign_issue_to_copilot`.
 
 constraints:
-  - Validate the Source URL before proceeding.
-  - Ensure the Pull Request contains the correct configuration files.
+  - Do NOT perform the setup actions (cleaning, configuring, committing) yourself. Delegate to Copilot.
+  - Only assign to Copilot if the configuration is complete and valid.
   - If the user does not specify a model, default to "gpt-4o".
 
 success_criteria:
-  - Configuration details gathered from issue comments.
-  - Source URL validated.
-  - Pull Request created with the generated configuration.
+  - Configuration details extracted and validated.
+  - User requested for more info OR Copilot instructed and assigned.
 
-max_steps: 10
+max_steps: 5
 allowed_tools:
-  - get_issue_comments
   - validate_url
-  - clean_workspace
-  - configure_repository
-  - commit_and_push
-  - create_pull_request
   - post_comment
+  - assign_issue_to_copilot
 requires_approval: false
