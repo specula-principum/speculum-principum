@@ -29,8 +29,10 @@ jobs:
       - name: Run Setup Mission
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           python -m main agent run \
             --mission setup_repo \
             --input issue_number=${{ github.event.issue.number }} \
-            --input repository=${{ github.repository }}
+            --input repository=${{ github.repository }} \
+            --input comment_body="$COMMENT_BODY"
