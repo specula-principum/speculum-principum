@@ -8,15 +8,16 @@ metadata:
   summary_tooling: setup-workflow
 
 goal: |
-  Review the provided issue comment (input `comment_body`) to extract repository configuration details
+  Review the issue conversation to extract repository configuration details
   (Source URL, Topic, Frequency, Model).
 
   Actions Required:
-  1. Analyze the `comment_body` input for configuration details.
-  2. If the Source URL is present, validate it using `validate_url`.
-  3. If information is missing or the URL is invalid:
+  1. Fetch the full conversation history using `get_issue_comments` with the provided `issue_number`.
+  2. Analyze the conversation for configuration details.
+  3. If the Source URL is present, validate it using `validate_url`.
+  4. If information is missing or the URL is invalid:
      - Post a comment asking the user to provide the missing details or correct the URL.
-  4. If all information is present and valid:
+  5. If all information is present and valid:
      - Post a comment instructing GitHub Copilot to:
        "Configure the repository with Source URL: [URL], Topic: [Topic], Frequency: [Freq], Model: [Model].
        1. Create `config/manifest.json` with the following JSON structure:
@@ -41,4 +42,5 @@ allowed_tools:
   - validate_url
   - post_comment
   - assign_issue_to_copilot
+  - get_issue_comments
 requires_approval: false
