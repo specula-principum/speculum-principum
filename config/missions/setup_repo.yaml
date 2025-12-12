@@ -18,7 +18,7 @@ goal: |
   4. If information is missing or the URL is invalid:
      - Post a comment asking the user to provide the missing details or correct the URL.
   5. If all information is present and valid:
-     - Call `configure_upstream_remote` to add the template repository as an upstream remote.
+     - Call `configure_upstream` to set the UPSTREAM_REPO repository variable (enables automatic code sync from template).
      - Post a comment instructing GitHub Copilot to:
        "Configure the repository with Source URL: [URL], Topic: [Topic], Frequency: [Freq], Model: [Model].
        1. Remove all files and subdirectories from `dev_data/` directory (but preserve the `dev_data/` directory itself).
@@ -42,5 +42,5 @@ allowed_tools:
   - post_comment
   - assign_issue_to_copilot
   - get_issue_comments
-  - configure_upstream_remote
+  - configure_upstream
 requires_approval: false

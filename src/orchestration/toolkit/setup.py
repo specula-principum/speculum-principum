@@ -78,11 +78,20 @@ def clean_workspace(_: Mapping[str, Any]) -> dict[str, Any]:
         
     return {"success": True, "cleaned": cleaned}
 
-def configure_upstream_remote(args: Mapping[str, Any]) -> dict[str, Any]:
-    """Configure the upstream repository variable for sync workflow.
+def configure_upstream(args: Mapping[str, Any]) -> dict[str, Any]:
+    """Set the UPSTREAM_REPO repository variable for the sync workflow.
     
-    Uses the GitHub API to set UPSTREAM_REPO variable, which is used by
-    the sync-from-upstream workflow. Auto-detects from template if possible.
+    This tool uses the GitHub API to set a repository variable (not a git remote).
+    The UPSTREAM_REPO variable is read by the sync-from-upstream.yml workflow to
+    know which repository to pull code updates from.
+    
+    If upstream_repo is not provided, auto-detects from the template repository
+    that this repo was created from.
+    
+    Related:
+    - Workflow: .github/workflows/sync-from-upstream.yml
+    - Guide: docs/guides/upstream-sync.md
+    - API function: src/integrations/github/sync.py::configure_upstream_variable()
     """
     from src.integrations.github.issues import resolve_token, resolve_repository
     from src.integrations.github.sync import configure_upstream_variable
@@ -185,18 +194,18 @@ def register_setup_tools(registry: ToolRegistry) -> None:
     )
     registry.register_tool(
         ToolDefinition(
-            name="configure_upstream_remote",
-            description="Configure the UPSTREAM_REPO variable for the sync workflow. Auto-detects from template if not specified.",
+            name="configure_upstream",
+            description="Set the UPSTREAM_REPO repository variable via GitHub API. This variable is used by the sync-from-upstream workflow to pull code updates from the template repository. Auto-detects the upstream from the template if not specified.",
             parameters={
                 "type": "object",
                 "properties": {
                     "repository": {"type": "string", "description": "Repository name in format owner/repo. Defaults to GITHUB_REPOSITORY env var."},
                     "token": {"type": "string", "description": "GitHub token for API access. Defaults to GITHUB_TOKEN env var."},
-                    "upstream_repo": {"type": "string", "description": "Explicit upstream repository in owner/repo format. If not provided, auto-detects from template."}
+                    "upstream_repo": {"type": "string", "description": "Explicit upstream repository in owner/repo format. If not provided, auto-detects from the template repository."}
                 },
                 "required": [],
             },
-            handler=configure_upstream_remote,
+            handler=configure_upstream,
             risk_level=ActionRisk.SAFE
         )
     )
