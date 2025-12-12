@@ -79,8 +79,13 @@ def clean_workspace(_: Mapping[str, Any]) -> dict[str, Any]:
     return {"success": True, "cleaned": cleaned}
 
 def configure_upstream_remote(args: Mapping[str, Any]) -> dict[str, Any]:
-    """Configure the upstream remote for pulling template updates."""
+    """Configure the upstream repository variable for sync workflow.
+    
+    Uses the GitHub API to set UPSTREAM_REPO variable, which is used by
+    the sync-from-upstream workflow. Auto-detects from template if possible.
+    """
     from src.integrations.github.issues import resolve_token, resolve_repository
+    from src.integrations.github.sync import configure_upstream_variable
     
     # Get repository and token, defaulting to environment variables
     try:
@@ -92,46 +97,16 @@ def configure_upstream_remote(args: Mapping[str, Any]) -> dict[str, Any]:
     except Exception as e:
         return {"success": False, "error": f"Failed to resolve credentials: {str(e)}"}
     
+    # Get optional explicit upstream
+    upstream_repo = args.get("upstream_repo")
+    
     try:
-        from src.integrations.github.issues import get_repository_details
-        
-        # Get template repository info
-        details = get_repository_details(token=token, repository=repository)
-        template_repo = details.get("template_repository")
-        
-        if not template_repo:
-            return {"success": False, "error": "Repository was not created from a template"}
-        
-        template_clone_url = template_repo.get("clone_url")
-        if not template_clone_url:
-            return {"success": False, "error": "Template repository has no clone URL"}
-        
-        # Check if upstream already exists
-        try:
-            subprocess.run(
-                ["git", "remote", "get-url", "upstream"],
-                check=True,
-                capture_output=True
-            )
-            return {"success": True, "message": "Upstream remote already exists", "exists": True}
-        except subprocess.CalledProcessError:
-            # Add upstream remote
-            subprocess.run(
-                ["git", "remote", "add", "upstream", template_clone_url],
-                check=True,
-                capture_output=True
-            )
-            subprocess.run(["git", "fetch", "upstream"], check=True, capture_output=True)
-            
-            return {
-                "success": True,
-                "message": f"Added upstream remote: {template_repo.get('full_name')}",
-                "template": template_repo.get('full_name'),
-                "url": template_clone_url,
-                "exists": False
-            }
-    except subprocess.CalledProcessError as e:
-        return {"success": False, "error": f"Git command failed: {str(e)}"}
+        result = configure_upstream_variable(
+            repository=repository,
+            token=token,
+            upstream_repo=upstream_repo,
+        )
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -211,12 +186,13 @@ def register_setup_tools(registry: ToolRegistry) -> None:
     registry.register_tool(
         ToolDefinition(
             name="configure_upstream_remote",
-            description="Configure the upstream remote for pulling template repository updates.",
+            description="Configure the UPSTREAM_REPO variable for the sync workflow. Auto-detects from template if not specified.",
             parameters={
                 "type": "object",
                 "properties": {
                     "repository": {"type": "string", "description": "Repository name in format owner/repo. Defaults to GITHUB_REPOSITORY env var."},
-                    "token": {"type": "string", "description": "GitHub token for API access. Defaults to GITHUB_TOKEN env var."}
+                    "token": {"type": "string", "description": "GitHub token for API access. Defaults to GITHUB_TOKEN env var."},
+                    "upstream_repo": {"type": "string", "description": "Explicit upstream repository in owner/repo format. If not provided, auto-detects from template."}
                 },
                 "required": [],
             },
