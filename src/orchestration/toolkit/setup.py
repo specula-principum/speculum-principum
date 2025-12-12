@@ -80,11 +80,17 @@ def clean_workspace(_: Mapping[str, Any]) -> dict[str, Any]:
 
 def configure_upstream_remote(args: Mapping[str, Any]) -> dict[str, Any]:
     """Configure the upstream remote for pulling template updates."""
-    repository = args.get("repository")
-    token = args.get("token")
+    from src.integrations.github.issues import resolve_token, resolve_repository
     
-    if not repository or not token:
-        return {"success": False, "error": "Repository and token are required"}
+    # Get repository and token, defaulting to environment variables
+    try:
+        repository = args.get("repository")
+        repository = resolve_repository(str(repository) if repository else None)
+        
+        token = args.get("token")
+        token = resolve_token(str(token) if token else None)
+    except Exception as e:
+        return {"success": False, "error": f"Failed to resolve credentials: {str(e)}"}
     
     try:
         from src.integrations.github.issues import get_repository_details
@@ -124,6 +130,8 @@ def configure_upstream_remote(args: Mapping[str, Any]) -> dict[str, Any]:
                 "url": template_clone_url,
                 "exists": False
             }
+    except subprocess.CalledProcessError as e:
+        return {"success": False, "error": f"Git command failed: {str(e)}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -207,10 +215,10 @@ def register_setup_tools(registry: ToolRegistry) -> None:
             parameters={
                 "type": "object",
                 "properties": {
-                    "repository": {"type": "string", "description": "Repository name in format owner/repo"},
-                    "token": {"type": "string", "description": "GitHub token for API access"}
+                    "repository": {"type": "string", "description": "Repository name in format owner/repo. Defaults to GITHUB_REPOSITORY env var."},
+                    "token": {"type": "string", "description": "GitHub token for API access. Defaults to GITHUB_TOKEN env var."}
                 },
-                "required": ["repository", "token"],
+                "required": [],
             },
             handler=configure_upstream_remote,
             risk_level=ActionRisk.SAFE
