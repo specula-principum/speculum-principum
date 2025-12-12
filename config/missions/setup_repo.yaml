@@ -18,15 +18,13 @@ goal: |
   4. If information is missing or the URL is invalid:
      - Post a comment asking the user to provide the missing details or correct the URL.
   5. If all information is present and valid:
+     - Call `configure_upstream_remote` to add the template repository as an upstream remote.
      - Post a comment instructing GitHub Copilot to:
        "Configure the repository with Source URL: [URL], Topic: [Topic], Frequency: [Freq], Model: [Model].
-       1. Create `config/manifest.json` with the following JSON structure:
+       1. Remove all files and subdirectories from `dev_data/` directory (but preserve the `dev_data/` directory itself).
+       2. Create `config/manifest.json` with the following JSON structure:
           { \"source_url\": \"[URL]\", \"topic\": \"[Topic]\", \"frequency\": \"[Freq]\", \"model\": \"[Model]\" }
-       2. Clean the `evidence/`, `knowledge-graph/`, and `reports/` directories (delete all files but keep `.gitkeep`).
-       3. Create a new branch `setup-config`.
-       4. Commit the changes.
-       5. Call `configure_upstream_remote` to add the template repository as an upstream remote.
-       6. Create a Pull Request."
+       3. Clean the `evidence/`, `knowledge-graph/`, and `reports/` directories (delete all files but keep `.gitkeep`)."
      - Assign the issue to Copilot using `assign_issue_to_copilot`.
 
 constraints:
