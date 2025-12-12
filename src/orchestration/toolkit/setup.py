@@ -78,6 +78,56 @@ def clean_workspace(_: Mapping[str, Any]) -> dict[str, Any]:
         
     return {"success": True, "cleaned": cleaned}
 
+def configure_upstream_remote(args: Mapping[str, Any]) -> dict[str, Any]:
+    """Configure the upstream remote for pulling template updates."""
+    repository = args.get("repository")
+    token = args.get("token")
+    
+    if not repository or not token:
+        return {"success": False, "error": "Repository and token are required"}
+    
+    try:
+        from src.integrations.github.issues import get_repository_details
+        
+        # Get template repository info
+        details = get_repository_details(token=token, repository=repository)
+        template_repo = details.get("template_repository")
+        
+        if not template_repo:
+            return {"success": False, "error": "Repository was not created from a template"}
+        
+        template_clone_url = template_repo.get("clone_url")
+        if not template_clone_url:
+            return {"success": False, "error": "Template repository has no clone URL"}
+        
+        # Check if upstream already exists
+        try:
+            subprocess.run(
+                ["git", "remote", "get-url", "upstream"],
+                check=True,
+                capture_output=True
+            )
+            return {"success": True, "message": "Upstream remote already exists", "exists": True}
+        except subprocess.CalledProcessError:
+            # Add upstream remote
+            subprocess.run(
+                ["git", "remote", "add", "upstream", template_clone_url],
+                check=True,
+                capture_output=True
+            )
+            subprocess.run(["git", "fetch", "upstream"], check=True, capture_output=True)
+            
+            return {
+                "success": True,
+                "message": f"Added upstream remote: {template_repo.get('full_name')}",
+                "template": template_repo.get('full_name'),
+                "url": template_clone_url,
+                "exists": False
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def commit_and_push(args: Mapping[str, Any]) -> dict[str, Any]:
     branch = args.get("branch", "setup-config")
     message = args.get("message", "Setup repository configuration")
@@ -148,6 +198,22 @@ def register_setup_tools(registry: ToolRegistry) -> None:
             },
             handler=clean_workspace,
             risk_level=ActionRisk.DESTRUCTIVE
+        )
+    )
+    registry.register_tool(
+        ToolDefinition(
+            name="configure_upstream_remote",
+            description="Configure the upstream remote for pulling template repository updates.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "repository": {"type": "string", "description": "Repository name in format owner/repo"},
+                    "token": {"type": "string", "description": "GitHub token for API access"}
+                },
+                "required": ["repository", "token"],
+            },
+            handler=configure_upstream_remote,
+            risk_level=ActionRisk.SAFE
         )
     )
     registry.register_tool(

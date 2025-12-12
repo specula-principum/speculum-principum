@@ -25,7 +25,8 @@ goal: |
        2. Clean the `evidence/`, `knowledge-graph/`, and `reports/` directories (delete all files but keep `.gitkeep`).
        3. Create a new branch `setup-config`.
        4. Commit the changes.
-       5. Create a Pull Request."
+       5. Call `configure_upstream_remote` to add the template repository as an upstream remote.
+       6. Create a Pull Request."
      - Assign the issue to Copilot using `assign_issue_to_copilot`.
 
 constraints:
@@ -43,4 +44,5 @@ allowed_tools:
   - post_comment
   - assign_issue_to_copilot
   - get_issue_comments
+  - configure_upstream_remote
 requires_approval: false
