@@ -1,0 +1,187 @@
+name: Sync from Upstream
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_repo:
+        description: 'Upstream repository (owner/repo format)'
+        required: true
+        type: string
+      upstream_branch:
+        description: 'Upstream branch to sync from (leave empty for default)'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Dry run - only report changes without applying'
+        required: false
+        type: boolean
+        default: false
+      force_sync:
+        description: 'Force sync - overwrite local modifications without validation'
+        required: false
+        type: boolean
+        default: false
+
+  repository_dispatch:
+    types: [upstream-sync]
+
+  schedule:
+    # Run weekly on Sundays at 00:00 UTC
+    - cron: '0 0 * * 0'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Determine upstream repository
+        id: upstream
+        run: |
+          # Priority: workflow input > dispatch payload > repository variable > error
+          if [ -n "${{ github.event.inputs.upstream_repo }}" ]; then
+            echo "repo=${{ github.event.inputs.upstream_repo }}" >> $GITHUB_OUTPUT
+            echo "Using upstream from workflow input: ${{ github.event.inputs.upstream_repo }}"
+          elif [ -n "${{ github.event.client_payload.upstream_repo }}" ]; then
+            echo "repo=${{ github.event.client_payload.upstream_repo }}" >> $GITHUB_OUTPUT
+            echo "Using upstream from dispatch payload: ${{ github.event.client_payload.upstream_repo }}"
+          elif [ -n "${{ vars.UPSTREAM_REPO }}" ]; then
+            echo "repo=${{ vars.UPSTREAM_REPO }}" >> $GITHUB_OUTPUT
+            echo "Using upstream from repository variable: ${{ vars.UPSTREAM_REPO }}"
+          else
+            echo "::error::No upstream repository specified. Set UPSTREAM_REPO variable or provide as input."
+            exit 1
+          fi
+
+      - name: Determine sync options
+        id: options
+        run: |
+          # Determine branch
+          if [ -n "${{ github.event.inputs.upstream_branch }}" ]; then
+            echo "branch=${{ github.event.inputs.upstream_branch }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.client_payload.upstream_branch }}" ]; then
+            echo "branch=${{ github.event.client_payload.upstream_branch }}" >> $GITHUB_OUTPUT
+          else
+            echo "branch=" >> $GITHUB_OUTPUT
+          fi
+          
+          # Determine dry run mode
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "dry_run=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.client_payload.dry_run }}" == "true" ]; then
+            echo "dry_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "dry_run=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Determine force sync mode
+          if [ "${{ github.event.inputs.force_sync }}" == "true" ]; then
+            echo "force_sync=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.client_payload.force_sync }}" == "true" ]; then
+            echo "force_sync=true" >> $GITHUB_OUTPUT
+          else
+            echo "force_sync=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run sync
+        id: sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          python -c "
+          import os
+          import sys
+          sys.path.insert(0, '.')
+          
+          from src.integrations.github.sync import sync_from_upstream
+          
+          downstream_repo = '${{ github.repository }}'
+          upstream_repo = '${{ steps.upstream.outputs.repo }}'
+          upstream_branch = '${{ steps.options.outputs.branch }}' or None
+          dry_run = '${{ steps.options.outputs.dry_run }}' == 'true'
+          force_sync = '${{ steps.options.outputs.force_sync }}' == 'true'
+          
+          # Use UPSTREAM_TOKEN if available (for private upstream), otherwise GITHUB_TOKEN
+          upstream_token = os.environ.get('UPSTREAM_TOKEN') or os.environ.get('GITHUB_TOKEN')
+          downstream_token = os.environ.get('GITHUB_TOKEN')
+          
+          print(f'Syncing from {upstream_repo} to {downstream_repo}')
+          print(f'Upstream branch: {upstream_branch or \"(default)\"}')
+          print(f'Dry run: {dry_run}')
+          print(f'Force sync: {force_sync}')
+          print()
+          
+          result = sync_from_upstream(
+              downstream_repo=downstream_repo,
+              upstream_repo=upstream_repo,
+              downstream_token=downstream_token,
+              upstream_token=upstream_token,
+              upstream_branch=upstream_branch,
+              dry_run=dry_run,
+              force_sync=force_sync,
+          )
+          
+          print(result.summary())
+          print()
+          
+          if result.error:
+              print(f'Error: {result.error}')
+              sys.exit(1)
+          
+          if result.pr_url:
+              print(f'Created PR: {result.pr_url}')
+              # Set output for job summary
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write(f'pr_url={result.pr_url}\n')
+                  f.write(f'pr_number={result.pr_number}\n')
+                  f.write(f'changes_count={len(result.changes)}\n')
+          elif dry_run:
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write(f'changes_count={len(result.changes)}\n')
+          else:
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write('changes_count=0\n')
+          "
+
+      - name: Create job summary
+        run: |
+          echo "## 🔄 Upstream Sync Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Upstream Repository:** ${{ steps.upstream.outputs.repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Dry Run:** ${{ steps.options.outputs.dry_run }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Changes Found:** ${{ steps.sync.outputs.changes_count || 0 }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ steps.sync.outputs.pr_url }}" ]; then
+            echo "### ✅ Pull Request Created" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "[${{ steps.sync.outputs.pr_url }}](${{ steps.sync.outputs.pr_url }})" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.options.outputs.dry_run }}" == "true" ]; then
+            echo "### ℹ️ Dry Run Complete" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No changes were applied. Run without dry_run to create a PR." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ No Changes Needed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Repository is already in sync with upstream." >> $GITHUB_STEP_SUMMARY
+          fi

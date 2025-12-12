@@ -67,6 +67,34 @@ Each parsing run streams status lines to stdout indicating the parser, output
 artifact path, and warnings. Non-zero exit codes signal at least one failed
 parse.
 
+## Using as a Template
+
+This repository is designed to be used as a **template** for research projects. Clone it to create topic-specific research repositories that can receive code updates from this base.
+
+### Quick Start
+
+1. Click **"Use this template"** on GitHub to create your research repository
+2. Run the **Initialize Repository** workflow to configure your research topic
+3. Add research materials to `evidence/`, build knowledge in `knowledge-graph/`
+
+### Syncing with Upstream
+
+Cloned repositories can receive code updates (bug fixes, new features) while preserving research content:
+
+```bash
+# Via GitHub Actions UI:
+# Go to Actions → Sync from Upstream → Run workflow
+```
+
+**What gets synced:**
+- Code: `src/`, `tests/`, `.github/`, `config/missions/`, `docs/`
+- Root files: `main.py`, `requirements.txt`, `pytest.ini`
+
+**What stays local:**
+- Research: `evidence/`, `knowledge-graph/`, `reports/`, `dev_data/`
+
+The sync creates a Pull Request for review. See [docs/guides/upstream-sync.md](docs/guides/upstream-sync.md) for detailed setup and usage instructions.
+
 ## Information Architecture
 
 Coming soon...
