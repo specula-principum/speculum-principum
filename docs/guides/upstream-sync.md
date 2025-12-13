@@ -144,7 +144,10 @@ GitHub Actions workflows in `.github/workflows/` are synced but may require manu
 
 When releasing updates, notify downstream repositories:
 
-1. Create a `config/downstream-repos.json` file:
+1. Configure the `DOWNSTREAM_REPOS` repository variable:
+   - Go to **Settings → Secrets and variables → Actions → Variables**
+   - Create a new variable named `DOWNSTREAM_REPOS`
+   - Set value as a JSON array:
    ```json
    ["owner/research-repo-1", "owner/research-repo-2"]
    ```
@@ -152,6 +155,8 @@ When releasing updates, notify downstream repositories:
 2. Add a PAT secret named `DOWNSTREAM_TOKEN` with write access to downstream repos
 
 3. The **Notify Downstream Repos** workflow runs automatically on releases
+
+> **Why a variable?** Using repository variables keeps the list upstream-only and prevents it from being cloned with template repos.
 
 ### Best Practices
 
