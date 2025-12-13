@@ -36,7 +36,7 @@ jobs:
       - name: Notify downstream repositories
         env:
           DOWNSTREAM_REPOS: ${{ vars.DOWNSTREAM_REPOS }}
-          DOWNSTREAM_TOKEN: ${{ secrets.DOWNSTREAM_TOKEN }}
+          DOWNSTREAM_TOKEN: ${{ secrets.GH_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: |
           python -c "
