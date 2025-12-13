@@ -94,7 +94,10 @@ jobs:
           fi
           
           # Determine force sync mode
+          # Default to true for repository_dispatch (upstream notifications) and scheduled runs
           if [ "${{ github.event.inputs.force_sync }}" == "true" ]; then
+            echo "force_sync=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "repository_dispatch" ] || [ "${{ github.event_name }}" == "schedule" ]; then
             echo "force_sync=true" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.client_payload.force_sync }}" == "true" ]; then
             echo "force_sync=true" >> $GITHUB_OUTPUT
