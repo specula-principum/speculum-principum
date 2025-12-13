@@ -25,6 +25,7 @@ goal: |
        2. Create `config/manifest.json` with the following JSON structure:
           { \"source_url\": \"[URL]\", \"topic\": \"[Topic]\", \"frequency\": \"[Freq]\", \"model\": \"[Model]\" }
        3. Clean the `evidence/`, `knowledge-graph/`, and `reports/` directories (delete all files but keep `.gitkeep`)."
+       4. Re-write README.md to reflect the research goals defined in the manifest. This is no longer a template repo.
      - Assign the issue to Copilot using `assign_issue_to_copilot`.
 
 constraints:
