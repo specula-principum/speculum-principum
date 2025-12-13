@@ -93,9 +93,17 @@ If your repository is already in sync, no PR is created.
 
 ### Validation Failed
 
-If the sync detects **local modifications** in code directories (files changed differently from upstream), it will fail with a warning. This protects against accidentally overwriting custom changes.
+If the sync detects **file differences** in code directories, it will fail with a warning to protect against data loss.
 
-To proceed anyway, run with `force_sync=true`.
+**Common causes:**
+1. **Outdated files** (upstream has new changes) - This is normal on first sync or after upstream updates
+2. **Local modifications** (you edited code files) - Rare in template workflows
+
+**To proceed:**
+- **First sync or receiving upstream updates**: Use `force_sync=true` - this is safe when you haven't edited code files
+- **You made intentional code changes**: Review carefully before using `force_sync=true` or merge conflicts manually
+
+> **Note**: The validation can't distinguish between outdated files and local modifications. If you know you haven't modified code directories, it's safe to force sync.
 
 ## Directory Classification
 
