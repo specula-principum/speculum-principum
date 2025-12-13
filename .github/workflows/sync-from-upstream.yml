@@ -108,8 +108,7 @@ jobs:
       - name: Run sync
         id: sync
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UPSTREAM_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           python -c "
           import os
@@ -124,9 +123,14 @@ jobs:
           dry_run = '${{ steps.options.outputs.dry_run }}' == 'true'
           force_sync = '${{ steps.options.outputs.force_sync }}' == 'true'
           
-          # Use UPSTREAM_TOKEN if available (for private upstream), otherwise GITHUB_TOKEN
-          upstream_token = os.environ.get('UPSTREAM_TOKEN') or os.environ.get('GITHUB_TOKEN')
-          downstream_token = os.environ.get('GITHUB_TOKEN')
+          token = os.environ.get('GITHUB_TOKEN')
+          if not token:
+              print('Error: No authentication token available')
+              print('Please create a SYNC_TOKEN secret with repo permissions')
+              sys.exit(1)
+          
+          upstream_token = token
+          downstream_token = token
           
           print(f'Syncing from {upstream_repo} to {downstream_repo}')
           print(f'Upstream branch: {upstream_branch or \"(default)\"}')

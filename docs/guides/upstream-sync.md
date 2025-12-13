@@ -35,15 +35,29 @@ Set the `UPSTREAM_REPO` repository variable manually:
 3. Name: `UPSTREAM_REPO`
 4. Value: `owner/speculum-principum` (your template repo)
 
-### Step 2: Set Up Authentication (Optional)
+### Step 2: Set Up Authentication
 
-If your upstream repository is **private**, you need to provide a Personal Access Token:
+The sync workflow needs a Personal Access Token (PAT) to create branches and pull requests:
 
-1. Create a PAT with `repo` scope
-2. Go to **Settings** → **Secrets and variables** → **Actions** → **Secrets**
-3. Add secret named `UPSTREAM_TOKEN` with your PAT
+1. Create a [fine-grained PAT](https://github.com/settings/tokens?type=beta) with:
+   - **Repository access**: Only select repositories → choose your cloned repo
+   - **Permissions**: 
+     - Contents: Read and write
+     - Pull requests: Read and write
+     - Metadata: Read-only (automatic)
 
-For **public** upstream repos, no extra authentication is needed.
+2. Go to your cloned repo's **Settings → Secrets and variables → Actions → Secrets**
+3. Add secret named `SYNC_TOKEN` with your PAT
+
+> **Why?** The default `GITHUB_TOKEN` has restrictions on git tree operations. A PAT is required for the sync to create commits and PRs.
+
+#### Optional: Private Upstream Authentication
+
+If your upstream repository is **private**, you also need to provide access to it:
+
+1. Create another PAT with read access to the upstream repo
+
+For **public** upstream repos, only `SYNC_TOKEN` is needed.
 
 ## Running a Sync
 
