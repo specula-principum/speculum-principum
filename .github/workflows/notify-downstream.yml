@@ -33,22 +33,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Read downstream registry
-        id: registry
-        run: |
-          # Read from repository variable (not propagated to clones)
-          REPOS='${{ vars.DOWNSTREAM_REPOS }}'
-          if [ -n "$REPOS" ]; then
-            echo "Found downstream registry in repository variables"
-            echo "repos=$REPOS" >> $GITHUB_OUTPUT
-          else
-            echo "No DOWNSTREAM_REPOS variable configured"
-            echo "repos=[]" >> $GITHUB_OUTPUT
-          fi
-
       - name: Notify downstream repositories
-        if: steps.registry.outputs.repos != '[]'
         env:
+          DOWNSTREAM_REPOS: ${{ vars.DOWNSTREAM_REPOS }}
           DOWNSTREAM_TOKEN: ${{ secrets.DOWNSTREAM_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: |
@@ -58,7 +45,7 @@ jobs:
           import sys
           from urllib import request, error
           
-          repos_json = '''${{ steps.registry.outputs.repos }}'''
+          repos_json = os.environ.get('DOWNSTREAM_REPOS', '')
           repos = json.loads(repos_json) if repos_json else []
           
           if not repos:
@@ -142,7 +129,7 @@ jobs:
           
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ "${{ steps.registry.outputs.repos }}" == "[]" ]; then
+          if [ -z "${{ vars.DOWNSTREAM_REPOS }}" ]; then
             echo "No downstream repositories registered." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "To register downstream repos, add a repository variable:" >> $GITHUB_STEP_SUMMARY
