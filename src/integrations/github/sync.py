@@ -544,8 +544,8 @@ def commit_files(
 ) -> str:
     """Commit file changes to a branch.
     
-    Creates a single commit with all file changes using the Git Data API
-    for efficiency.
+    Uses the Contents API to commit files one by one, which works with
+    standard PATs and doesn't require fine-grained permissions.
     
     Args:
         repository: Downstream repository in "owner/repo" format
@@ -558,40 +558,46 @@ def commit_files(
         api_url: GitHub API base URL
         
     Returns:
-        SHA of the new commit
+        SHA of the last commit
     """
     owner, name = normalize_repository(repository)
     
     print(f"Starting commit process for {len(changes)} changes to {repository}/{branch}")
     
-    # Get current commit and tree
-    ref_endpoint = f"{api_url}/repos/{owner}/{name}/git/ref/heads/{branch}"
-    ref_data = _make_request(ref_endpoint, token)
-    current_commit_sha = ref_data["object"]["sha"]
-    print(f"  Current commit: {current_commit_sha[:8]}")
-    
-    commit_endpoint = f"{api_url}/repos/{owner}/{name}/git/commits/{current_commit_sha}"
-    commit_data = _make_request(commit_endpoint, token)
-    base_tree_sha = commit_data["tree"]["sha"]
-    print(f"  Base tree: {base_tree_sha[:8]}")
-    
-    # Build tree entries for new commit
-    tree_entries = []
-    print("  Building tree entries...")
+    last_commit_sha = None
     
     for idx, change in enumerate(changes, 1):
         print(f"  [{idx}/{len(changes)}] Processing {change.action}: {change.path}")
         
+        contents_endpoint = f"{api_url}/repos/{owner}/{name}/contents/{change.path}"
+        commit_message = f"Sync: {change.action} {change.path}"
+        
         if change.action == "delete":
-            # To delete, we need to create tree without this file
-            # This is handled by not including it in the new tree
-            tree_entries.append({
-                "path": change.path,
-                "mode": "100644",
-                "type": "blob",
-                "sha": None,  # null SHA deletes the file
-            })
+            # Get current file SHA for deletion
+            try:
+                file_data = _make_request(
+                    f"{contents_endpoint}?ref={branch}",
+                    token,
+                )
+                file_sha = file_data["sha"]
+                
+                # Delete the file
+                delete_data = {
+                    "message": commit_message,
+                    "sha": file_sha,
+                    "branch": branch,
+                }
+                result = _make_request(contents_endpoint, token, method="DELETE", data=delete_data)
+                last_commit_sha = result["commit"]["sha"]
+                print(f"      Deleted (commit: {last_commit_sha[:8]})")
+            except SyncError as e:
+                # File might already be deleted
+                if "404" in str(e):
+                    print(f"      Already deleted, skipping")
+                else:
+                    raise
         else:
+            # Add or update file
             # Get content from upstream
             content = get_file_content(
                 upstream_repo,
@@ -601,72 +607,36 @@ def commit_files(
                 api_url,
             )
             
-            # Create blob
-            blob_endpoint = f"{api_url}/repos/{owner}/{name}/git/blobs"
-            blob_data = {
-                "content": content,
-                "encoding": "base64",
-            }
-            blob_result = _make_request(blob_endpoint, token, method="POST", data=blob_data)
-            blob_sha = blob_result["sha"]
-            print(f"      Created blob: {blob_sha[:8]}")
+            # Get current file SHA if it exists (for updates)
+            file_sha = None
+            try:
+                file_data = _make_request(
+                    f"{contents_endpoint}?ref={branch}",
+                    token,
+                )
+                file_sha = file_data["sha"]
+            except SyncError as e:
+                # File doesn't exist yet (add operation)
+                if "404" not in str(e):
+                    raise
             
-            tree_entries.append({
-                "path": change.path,
-                "mode": "100644",
-                "type": "blob",
-                "sha": blob_sha,
-            })
+            # Create or update the file
+            update_data = {
+                "message": commit_message,
+                "content": content,
+                "branch": branch,
+            }
+            if file_sha:
+                update_data["sha"] = file_sha
+            
+            result = _make_request(contents_endpoint, token, method="PUT", data=update_data)
+            last_commit_sha = result["commit"]["sha"]
+            print(f"      Committed (commit: {last_commit_sha[:8]})")
     
-    # Create new tree
-    print(f"  Creating tree with {len(tree_entries)} entries")
-    tree_endpoint = f"{api_url}/repos/{owner}/{name}/git/trees"
-    tree_data = {
-        "base_tree": base_tree_sha,
-        "tree": tree_entries,
-    }
+    print(f"  All changes committed successfully")
+    print(f"  Final commit: {last_commit_sha[:8] if last_commit_sha else 'none'}")
     
-    # Log tree data size for debugging
-    tree_json = json.dumps(tree_data)
-    print(f"  Tree payload size: {len(tree_json)} bytes")
-    
-    try:
-        tree_result = _make_request(tree_endpoint, token, method="POST", data=tree_data)
-        new_tree_sha = tree_result["sha"]
-        print(f"  New tree created: {new_tree_sha[:8]}")
-    except SyncError as e:
-        # Add more context for tree creation failures
-        error_msg = str(e)
-        error_msg += f"\nFailed while creating tree with {len(tree_entries)} entries"
-        error_msg += f"\nBase tree: {base_tree_sha}"
-        error_msg += f"\nAffected files: {', '.join([entry['path'] for entry in tree_entries[:5]])}"
-        if len(tree_entries) > 5:
-            error_msg += f" (and {len(tree_entries) - 5} more)"
-        raise SyncError(error_msg) from e
-    
-    # Create commit
-    print("  Creating commit...")
-    new_commit_endpoint = f"{api_url}/repos/{owner}/{name}/git/commits"
-    commit_message = f"Sync code from upstream {upstream_repo}\n\n"
-    commit_message += f"Synced {len(changes)} file(s) from {upstream_repo}@{upstream_branch}"
-    
-    new_commit_data = {
-        "message": commit_message,
-        "tree": new_tree_sha,
-        "parents": [current_commit_sha],
-    }
-    new_commit_result = _make_request(new_commit_endpoint, token, method="POST", data=new_commit_data)
-    new_commit_sha = new_commit_result["sha"]
-    print(f"  Commit created: {new_commit_sha[:8]}")
-    
-    # Update branch reference
-    print(f"  Updating branch ref: {branch}")
-    update_ref_endpoint = f"{api_url}/repos/{owner}/{name}/git/refs/heads/{branch}"
-    update_ref_data = {"sha": new_commit_sha}
-    _make_request(update_ref_endpoint, token, method="PATCH", data=update_ref_data)
-    print("  Branch updated successfully")
-    
-    return new_commit_sha
+    return last_commit_sha or ""
 
 
 def create_sync_pull_request(

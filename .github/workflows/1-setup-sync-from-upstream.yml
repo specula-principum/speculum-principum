@@ -126,7 +126,7 @@ jobs:
           token = os.environ.get('GITHUB_TOKEN')
           if not token:
               print('Error: No authentication token available')
-              print('Please create a SYNC_TOKEN secret with repo permissions')
+              print('Please create a GH_TOKEN secret with repo permissions')
               sys.exit(1)
           
           upstream_token = token
