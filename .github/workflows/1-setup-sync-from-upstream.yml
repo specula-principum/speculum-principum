@@ -1,4 +1,4 @@
-name: Sync from Upstream
+name: "1. Setup: Sync from Upstream"
 
 on:
   workflow_dispatch:
