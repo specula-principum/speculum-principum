@@ -40,6 +40,49 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Block forks
+        if: github.event.repository.fork == true
+        run: |
+          echo "::error::This workflow cannot run on forked repositories"
+          exit 1
+
+      - name: Verify dispatch signature
+        if: github.event_name == 'repository_dispatch'
+        env:
+          SYNC_SIGNATURE_SECRET: ${{ secrets.SYNC_SIGNATURE_SECRET }}
+        run: |
+          # Verify upstream repo matches allowed upstream
+          PAYLOAD_UPSTREAM="${{ github.event.client_payload.upstream_repo }}"
+          ALLOWED_UPSTREAM="${{ vars.UPSTREAM_REPO }}"
+          
+          if [ -z "$ALLOWED_UPSTREAM" ]; then
+            echo "::error::UPSTREAM_REPO variable not configured"
+            exit 1
+          fi
+          
+          if [ "$PAYLOAD_UPSTREAM" != "$ALLOWED_UPSTREAM" ]; then
+            echo "::error::Upstream repo mismatch: got $PAYLOAD_UPSTREAM, expected $ALLOWED_UPSTREAM"
+            exit 1
+          fi
+          
+          # Verify HMAC signature using CLI
+          if [ -z "$SYNC_SIGNATURE_SECRET" ]; then
+            echo "::error::SYNC_SIGNATURE_SECRET not configured"
+            exit 1
+          fi
+          
+          PAYLOAD_SIGNATURE="${{ github.event.client_payload.signature }}"
+          if [ -z "$PAYLOAD_SIGNATURE" ]; then
+            echo "::error::No signature provided in dispatch payload"
+            exit 1
+          fi
+          
+          python -m main verify-dispatch \
+            --upstream-repo "${{ github.event.client_payload.upstream_repo }}" \
+            --upstream-branch "${{ github.event.client_payload.upstream_branch }}" \
+            --timestamp "${{ github.event.client_payload.timestamp }}" \
+            --signature "$PAYLOAD_SIGNATURE"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -110,61 +153,50 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          python -c "
-          import os
-          import sys
-          sys.path.insert(0, '.')
-          
-          from src.integrations.github.sync import sync_from_upstream
-          
-          downstream_repo = '${{ github.repository }}'
-          upstream_repo = '${{ steps.upstream.outputs.repo }}'
-          upstream_branch = '${{ steps.options.outputs.branch }}' or None
-          dry_run = '${{ steps.options.outputs.dry_run }}' == 'true'
-          force_sync = '${{ steps.options.outputs.force_sync }}' == 'true'
-          
-          token = os.environ.get('GITHUB_TOKEN')
-          if not token:
-              print('Error: No authentication token available')
-              print('Please create a GH_TOKEN secret with repo permissions')
-              sys.exit(1)
-          
-          upstream_token = token
-          downstream_token = token
-          
-          print(f'Syncing from {upstream_repo} to {downstream_repo}')
-          print(f'Upstream branch: {upstream_branch or \"(default)\"}')
-          print(f'Dry run: {dry_run}')
-          print(f'Force sync: {force_sync}')
-          print()
-          
-          result = sync_from_upstream(
-              downstream_repo=downstream_repo,
-              upstream_repo=upstream_repo,
-              downstream_token=downstream_token,
-              upstream_token=upstream_token,
-              upstream_branch=upstream_branch,
-              dry_run=dry_run,
-              force_sync=force_sync,
+          # Build command arguments
+          ARGS=(
+            "--downstream-repo" "${{ github.repository }}"
+            "--upstream-repo" "${{ steps.upstream.outputs.repo }}"
+            "--json"
           )
           
-          print(result.summary())
-          print()
+          # Add optional upstream branch
+          if [ -n "${{ steps.options.outputs.branch }}" ]; then
+            ARGS+=("--upstream-branch" "${{ steps.options.outputs.branch }}")
+          fi
           
-          if result.error:
-              print(f'Error: {result.error}')
-              sys.exit(1)
+          # Add dry-run flag if enabled
+          if [ "${{ steps.options.outputs.dry_run }}" == "true" ]; then
+            ARGS+=("--dry-run")
+          fi
           
-          if result.pr_url:
-              print(f'Created PR: {result.pr_url}')
-              # Set output for job summary
-              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write(f'pr_url={result.pr_url}\n')
-                  f.write(f'pr_number={result.pr_number}\n')
-                  f.write(f'changes_count={len(result.changes)}\n')
-          elif dry_run:
-              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write(f'changes_count={len(result.changes)}\n')
+          # Add force flag if enabled
+          if [ "${{ steps.options.outputs.force_sync }}" == "true" ]; then
+            ARGS+=("--force")
+          fi
+          
+          # Run sync and capture output
+          python -m main sync-upstream "${ARGS[@]}" > /tmp/sync_result.json
+          
+          # Parse results and set outputs
+          cat /tmp/sync_result.json
+          echo ""
+          
+          if [ -f /tmp/sync_result.json ]; then
+            PR_URL=$(jq -r '.pr_url // ""' /tmp/sync_result.json)
+            PR_NUMBER=$(jq -r '.pr_number // ""' /tmp/sync_result.json)
+            CHANGES_COUNT=$(jq -r '.changes_count // 0' /tmp/sync_result.json)
+            ERROR=$(jq -r '.error // ""' /tmp/sync_result.json)
+            
+            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "changes_count=$CHANGES_COUNT" >> $GITHUB_OUTPUT
+            
+            if [ -n "$ERROR" ] && [ "$ERROR" != "null" ]; then
+              echo "Error: $ERROR"
+              exit 1
+            fi
+          fi
           else:
               with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
                   f.write('changes_count=0\n')

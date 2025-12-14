@@ -28,3 +28,53 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           python -m main setup --repo ${{ github.repository }}
+
+      - name: Validate Setup Configuration
+        id: validate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          python -m main validate-setup \
+            --repo "${{ github.repository }}" \
+            --json > /tmp/validation.json
+          
+          HAS_ISSUES=$(jq -r '.valid | if . then "false" else "true" end' /tmp/validation.json)
+          HAS_WARNINGS=$(jq -r 'if .warnings | length > 0 then "true" else "false" end' /tmp/validation.json)
+          
+          echo "has_issues=$HAS_ISSUES" >> $GITHUB_OUTPUT
+          echo "has_warnings=$HAS_WARNINGS" >> $GITHUB_OUTPUT
+          
+          # Display results
+          cat /tmp/validation.json
+
+      - name: Create job summary
+        if: always()
+        run: |
+          echo "## 🔧 Repository Setup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.validate.outputs.has_issues }}" == "true" ]; then
+            echo "### ⚠️ Setup Complete with Issues" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Some configuration issues were detected. Please review the validation output above." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.validate.outputs.has_warnings }}" == "true" ]; then
+            echo "### ✅ Setup Complete with Warnings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Setup completed successfully with some warnings. Check validation output for details." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ Setup Complete" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All setup and validation checks passed successfully!" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. Ensure **GH_TOKEN** secret is configured with repo permissions" >> $GITHUB_STEP_SUMMARY
+          echo "2. Set **UPSTREAM_REPO** variable (e.g., \`owner/template-repo\`)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Set **SYNC_SIGNATURE_SECRET** for secure dispatch verification" >> $GITHUB_STEP_SUMMARY
+          echo "4. Add **speculum-downstream** topic to this repository" >> $GITHUB_STEP_SUMMARY
+          echo "5. Run the upstream sync workflow to pull latest changes" >> $GITHUB_STEP_SUMMARY
+

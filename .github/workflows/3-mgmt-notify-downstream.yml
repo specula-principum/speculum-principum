@@ -11,6 +11,10 @@ on:
         required: false
         type: boolean
         default: false
+      org:
+        description: 'Organization to search (defaults to current repo org)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -18,7 +22,6 @@ permissions:
 jobs:
   notify:
     runs-on: ubuntu-latest
-    if: vars.DOWNSTREAM_REPOS != ''  # Only run in upstream template repo
     
     steps:
       - uses: actions/checkout@v4
@@ -35,85 +38,29 @@ jobs:
 
       - name: Notify downstream repositories
         env:
-          DOWNSTREAM_REPOS: ${{ vars.DOWNSTREAM_REPOS }}
-          DOWNSTREAM_TOKEN: ${{ secrets.GH_TOKEN }}
-          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          SYNC_SIGNATURE_SECRET: ${{ secrets.SYNC_SIGNATURE_SECRET }}
         run: |
-          python -c "
-          import os
-          import json
-          import sys
-          from urllib import request, error
+          # Build command arguments
+          ARGS=(
+            "--upstream-repo" "${{ github.repository }}"
+            "--upstream-branch" "${{ github.event.release.target_commitish || 'main' }}"
+            "--release-tag" "${{ github.event.release.tag_name || 'manual' }}"
+            "--json"
+          )
           
-          repos_json = os.environ.get('DOWNSTREAM_REPOS', '')
-          repos = json.loads(repos_json) if repos_json else []
+          # Add target org if specified
+          if [ -n "${{ github.event.inputs.org }}" ]; then
+            ARGS+=("--org" "${{ github.event.inputs.org }}")
+          fi
           
-          if not repos:
-              print('No downstream repositories to notify')
-              sys.exit(0)
+          # Add dry-run flag if enabled
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            ARGS+=("--dry-run")
+          fi
           
-          dry_run = os.environ.get('DRY_RUN', 'false').lower() == 'true'
-          token = os.environ.get('DOWNSTREAM_TOKEN')
-          upstream_repo = '${{ github.repository }}'
-          upstream_branch = '${{ github.event.release.target_commitish }}' or 'main'
-          release_tag = '${{ github.event.release.tag_name }}' or 'manual'
-          
-          print(f'Upstream: {upstream_repo}')
-          print(f'Branch: {upstream_branch}')
-          print(f'Release: {release_tag}')
-          print(f'Dry run: {dry_run}')
-          print()
-          
-          if not token and not dry_run:
-              print('Error: DOWNSTREAM_TOKEN secret not set')
-              sys.exit(1)
-          
-          success_count = 0
-          fail_count = 0
-          
-          for repo in repos:
-              repo_name = repo if isinstance(repo, str) else repo.get('repo', repo.get('name'))
-              print(f'Notifying: {repo_name}')
-              
-              if dry_run:
-                  print('  [DRY RUN] Would send repository_dispatch')
-                  success_count += 1
-                  continue
-              
-              try:
-                  endpoint = f'https://api.github.com/repos/{repo_name}/dispatches'
-                  payload = {
-                      'event_type': 'upstream-sync',
-                      'client_payload': {
-                          'upstream_repo': upstream_repo,
-                          'upstream_branch': upstream_branch,
-                          'release_tag': release_tag,
-                      }
-                  }
-                  
-                  data = json.dumps(payload).encode('utf-8')
-                  req = request.Request(endpoint, data=data, method='POST')
-                  req.add_header('Authorization', f'Bearer {token}')
-                  req.add_header('Accept', 'application/vnd.github+json')
-                  req.add_header('X-GitHub-Api-Version', '2022-11-28')
-                  req.add_header('Content-Type', 'application/json')
-                  
-                  with request.urlopen(req, timeout=30) as response:
-                      print(f'  ✓ Notified successfully')
-                      success_count += 1
-              except error.HTTPError as e:
-                  print(f'  ✗ Failed: {e.code} - {e.read().decode()}')
-                  fail_count += 1
-              except Exception as e:
-                  print(f'  ✗ Failed: {e}')
-                  fail_count += 1
-          
-          print()
-          print(f'Results: {success_count} succeeded, {fail_count} failed')
-          
-          if fail_count > 0:
-              sys.exit(1)
-          "
+          # Run notify command
+          python -m main notify-downstream "${ARGS[@]}"
 
       - name: Create job summary
         if: always()
@@ -128,14 +75,13 @@ jobs:
           fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -z "${{ vars.DOWNSTREAM_REPOS }}" ]; then
-            echo "No downstream repositories registered." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "To register downstream repos, add a repository variable:" >> $GITHUB_STEP_SUMMARY
-            echo "1. Go to **Settings → Secrets and variables → Actions → Variables**" >> $GITHUB_STEP_SUMMARY
-            echo "2. Create \`DOWNSTREAM_REPOS\` with JSON array:" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            echo '["owner/repo1", "owner/repo2"]' >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "**Discovery Method:** Topic-based (\`speculum-downstream\`)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See workflow logs for detailed results." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Setup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Downstream repositories are automatically discovered if they:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Have the \`speculum-downstream\` topic" >> $GITHUB_STEP_SUMMARY
+          echo "2. Were created from this template" >> $GITHUB_STEP_SUMMARY
+          echo "3. Are not forks" >> $GITHUB_STEP_SUMMARY
