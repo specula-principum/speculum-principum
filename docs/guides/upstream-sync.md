@@ -1,4 +1,5 @@
 # Upstream Sync Guide
+> Test sync: 2025-12-14
 
 This guide explains how to keep your cloned research repository in sync with the upstream template repository (speculum-principum).
 

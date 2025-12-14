@@ -1,4 +1,5 @@
 name: "1. Setup: Sync from Upstream"
+# Test sync: 2025-12-14
 
 on:
   workflow_dispatch:
