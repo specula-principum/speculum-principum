@@ -1,4 +1,4 @@
-name: 2. Op: Setup Agent
+name: "2. Op: Setup Agent"
 
 on:
   issue_comment:

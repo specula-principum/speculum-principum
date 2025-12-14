@@ -1,4 +1,4 @@
-name: 2. Op: Generate Plan
+name: "2. Op: Generate Plan"
 
 on:
   issues:
