@@ -1,5 +1,4 @@
 # Mission to sync knowledge graph entities to GitHub Discussions.
-# Test sync: 2025-12-14
 
 id: sync_discussions
 version: 1

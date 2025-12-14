@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# Test sync: 2025-12-14
 
 from __future__ import annotations
 
