@@ -39,7 +39,12 @@ Set the `UPSTREAM_REPO` repository variable manually:
 
 The sync workflow needs a Personal Access Token (PAT) to create branches and pull requests:
 
-1. Create a [fine-grained PAT](https://github.com/settings/tokens?type=beta) with:
+1. Create a **classic** or **fine-grained** PAT:
+   
+   **Classic PAT** ([create here](https://github.com/settings/tokens/new)):
+   - Select scopes: `repo` (full control of private repositories)
+   
+   **Fine-grained PAT** ([create here](https://github.com/settings/tokens?type=beta)):
    - **Repository access**: Only select repositories → choose your cloned repo
    - **Permissions**: 
      - Contents: Read and write
@@ -47,17 +52,18 @@ The sync workflow needs a Personal Access Token (PAT) to create branches and pul
      - Metadata: Read-only (automatic)
 
 2. Go to your cloned repo's **Settings → Secrets and variables → Actions → Secrets**
-3. Add secret named `SYNC_TOKEN` with your PAT
+3. Add secret named `GH_TOKEN` with your PAT
 
-> **Why?** The default `GITHUB_TOKEN` has restrictions on git tree operations. A PAT is required for the sync to create commits and PRs.
+> **Note:** The sync now uses the Contents API which works with both classic and fine-grained PATs. Classic PATs with `repo` scope or fine-grained PATs with Contents/PR write permissions are both supported.
 
 #### Optional: Private Upstream Authentication
 
 If your upstream repository is **private**, you also need to provide access to it:
 
 1. Create another PAT with read access to the upstream repo
+2. Add it as a secret named `GH_TOKEN`
 
-For **public** upstream repos, only `SYNC_TOKEN` is needed.
+For **public** upstream repos, only `GH_TOKEN` is needed.
 
 ## Running a Sync
 
@@ -148,6 +154,18 @@ Set the `UPSTREAM_REPO` repository variable or provide it as a workflow input.
 Your code directories have changes not present in upstream. Either:
 1. Commit your changes to a separate branch first
 2. Run with `force_sync=true` to overwrite (⚠️ data loss risk)
+
+### "Resource not accessible by personal access token" (403 error)
+
+This error occurred in older versions that used the Git Data API. The sync has been updated to use the Contents API which works with standard PATs.
+
+**If you're still seeing this error:**
+1. Make sure you're using the latest version of the sync code
+2. Verify your `GH_TOKEN` has the required permissions:
+   - Classic PAT: `repo` scope
+   - Fine-grained PAT: Contents (write) + Pull requests (write)
+3. Check that the token hasn't expired
+4. Ensure the token has access to the target repository
 
 ### "Failed to reach GitHub API"
 
