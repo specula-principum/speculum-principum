@@ -1,4 +1,4 @@
-name: Sync Discussions
+name: 2. Op: Sync Discussions
 
 on:
   workflow_dispatch:
