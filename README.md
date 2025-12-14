@@ -1,4 +1,4 @@
-# Speculum Principum
+### Speculum Principum
 
 `main.py` exposes a single CLI entry point that helps you triage GitHub work and
 convert source documents into Markdown artifacts. All commands follow the
