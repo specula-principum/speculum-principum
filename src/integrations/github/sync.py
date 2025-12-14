@@ -140,9 +140,20 @@ def _make_request(
             return json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:
         error_text = exc.read().decode("utf-8", errors="replace")
-        raise SyncError(f"GitHub API error ({exc.code}): {error_text}") from exc
+        # Extract useful context for debugging
+        operation = f"{method} {endpoint}"
+        error_msg = f"GitHub API error ({exc.code}): {error_text}"
+        error_msg += f"\nOperation: {operation}"
+        if data:
+            # Include data summary for debugging, but redact sensitive info
+            data_summary = {k: f"<{len(str(v))} chars>" if k in ['content', 'token'] else v 
+                          for k, v in (data.items() if isinstance(data, dict) else {})}
+            error_msg += f"\nRequest data keys: {list(data_summary.keys())}"
+            if 'tree' in data_summary:
+                error_msg += f"\nTree entries count: {len(data.get('tree', []))}"
+        raise SyncError(error_msg) from exc
     except error.URLError as exc:
-        raise SyncError(f"Failed to reach GitHub API: {exc.reason}") from exc
+        raise SyncError(f"Failed to reach GitHub API: {exc.reason}\nEndpoint: {endpoint}") from exc
 
 
 def get_template_repository(
@@ -551,19 +562,26 @@ def commit_files(
     """
     owner, name = normalize_repository(repository)
     
+    print(f"Starting commit process for {len(changes)} changes to {repository}/{branch}")
+    
     # Get current commit and tree
     ref_endpoint = f"{api_url}/repos/{owner}/{name}/git/ref/heads/{branch}"
     ref_data = _make_request(ref_endpoint, token)
     current_commit_sha = ref_data["object"]["sha"]
+    print(f"  Current commit: {current_commit_sha[:8]}")
     
     commit_endpoint = f"{api_url}/repos/{owner}/{name}/git/commits/{current_commit_sha}"
     commit_data = _make_request(commit_endpoint, token)
     base_tree_sha = commit_data["tree"]["sha"]
+    print(f"  Base tree: {base_tree_sha[:8]}")
     
     # Build tree entries for new commit
     tree_entries = []
+    print("  Building tree entries...")
     
-    for change in changes:
+    for idx, change in enumerate(changes, 1):
+        print(f"  [{idx}/{len(changes)}] Processing {change.action}: {change.path}")
+        
         if change.action == "delete":
             # To delete, we need to create tree without this file
             # This is handled by not including it in the new tree
@@ -590,24 +608,44 @@ def commit_files(
                 "encoding": "base64",
             }
             blob_result = _make_request(blob_endpoint, token, method="POST", data=blob_data)
+            blob_sha = blob_result["sha"]
+            print(f"      Created blob: {blob_sha[:8]}")
             
             tree_entries.append({
                 "path": change.path,
                 "mode": "100644",
                 "type": "blob",
-                "sha": blob_result["sha"],
+                "sha": blob_sha,
             })
     
     # Create new tree
+    print(f"  Creating tree with {len(tree_entries)} entries")
     tree_endpoint = f"{api_url}/repos/{owner}/{name}/git/trees"
     tree_data = {
         "base_tree": base_tree_sha,
         "tree": tree_entries,
     }
-    tree_result = _make_request(tree_endpoint, token, method="POST", data=tree_data)
-    new_tree_sha = tree_result["sha"]
+    
+    # Log tree data size for debugging
+    tree_json = json.dumps(tree_data)
+    print(f"  Tree payload size: {len(tree_json)} bytes")
+    
+    try:
+        tree_result = _make_request(tree_endpoint, token, method="POST", data=tree_data)
+        new_tree_sha = tree_result["sha"]
+        print(f"  New tree created: {new_tree_sha[:8]}")
+    except SyncError as e:
+        # Add more context for tree creation failures
+        error_msg = str(e)
+        error_msg += f"\nFailed while creating tree with {len(tree_entries)} entries"
+        error_msg += f"\nBase tree: {base_tree_sha}"
+        error_msg += f"\nAffected files: {', '.join([entry['path'] for entry in tree_entries[:5]])}"
+        if len(tree_entries) > 5:
+            error_msg += f" (and {len(tree_entries) - 5} more)"
+        raise SyncError(error_msg) from e
     
     # Create commit
+    print("  Creating commit...")
     new_commit_endpoint = f"{api_url}/repos/{owner}/{name}/git/commits"
     commit_message = f"Sync code from upstream {upstream_repo}\n\n"
     commit_message += f"Synced {len(changes)} file(s) from {upstream_repo}@{upstream_branch}"
@@ -619,11 +657,14 @@ def commit_files(
     }
     new_commit_result = _make_request(new_commit_endpoint, token, method="POST", data=new_commit_data)
     new_commit_sha = new_commit_result["sha"]
+    print(f"  Commit created: {new_commit_sha[:8]}")
     
     # Update branch reference
+    print(f"  Updating branch ref: {branch}")
     update_ref_endpoint = f"{api_url}/repos/{owner}/{name}/git/refs/heads/{branch}"
     update_ref_data = {"sha": new_commit_sha}
     _make_request(update_ref_endpoint, token, method="PATCH", data=update_ref_data)
+    print("  Branch updated successfully")
     
     return new_commit_sha
 
@@ -662,7 +703,7 @@ def create_sync_pull_request(
     body_lines = [
         f"## Upstream Sync from {upstream_repo}",
         "",
-        f"This PR syncs code changes from the upstream template repository.",
+        "This PR syncs code changes from the upstream template repository.",
         "",
         "### Changes Summary",
         f"- **Added:** {len(adds)} file(s)",
@@ -732,13 +773,17 @@ def sync_from_upstream(
     
     try:
         # Get default branches if not specified
+        print("Resolving branches...")
         if not upstream_branch:
             upstream_branch = get_default_branch(upstream_repo, upstream_token, api_url)
+            print(f"  Upstream branch: {upstream_branch}")
         if not downstream_branch:
             downstream_branch = get_default_branch(downstream_repo, downstream_token, api_url)
+            print(f"  Downstream branch: {downstream_branch}")
         
         # Pre-sync validation (unless force_sync or dry_run)
         if not force_sync and not dry_run:
+            print("Running pre-sync validation...")
             validation = validate_pre_sync(
                 downstream_repo=downstream_repo,
                 upstream_repo=upstream_repo,
@@ -750,28 +795,40 @@ def sync_from_upstream(
             )
             if not validation.valid:
                 result.error = validation.summary()
+                print(f"  Validation failed: {result.error}")
                 return result
+            print("  Validation passed")
+        elif force_sync:
+            print("Skipping validation (force_sync=True)")
         
         # Get file trees
+        print("Fetching repository trees...")
         upstream_files = get_repository_tree(
             upstream_repo, upstream_branch, upstream_token, api_url
         )
+        print(f"  Upstream: {len(upstream_files)} files")
         downstream_files = get_repository_tree(
             downstream_repo, downstream_branch, downstream_token, api_url
         )
+        print(f"  Downstream: {len(downstream_files)} files")
         
         # Filter to syncable files
         upstream_syncable = filter_syncable_files(upstream_files)
         downstream_syncable = filter_syncable_files(downstream_files)
+        print(f"  Syncable files - Upstream: {len(upstream_syncable)}, Downstream: {len(downstream_syncable)}")
         
         # Compare files
+        print("Comparing files...")
         changes = compare_files(upstream_syncable, downstream_syncable)
         result.changes = changes
+        print(f"  Found {len(changes)} changes")
         
         if not changes:
+            print("No changes detected")
             return result
         
         if dry_run:
+            print("Dry run mode - not applying changes")
             return result
         
         # Create sync branch
@@ -779,6 +836,7 @@ def sync_from_upstream(
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         sync_branch = f"sync/upstream-{timestamp}"
         
+        print(f"Creating sync branch: {sync_branch}")
         create_branch(
             downstream_repo,
             sync_branch,
@@ -787,8 +845,10 @@ def sync_from_upstream(
             api_url,
         )
         result.branch_name = sync_branch
+        print("  Branch created")
         
         # Commit changes
+        print(f"Committing changes to {sync_branch}...")
         commit_files(
             downstream_repo,
             sync_branch,
@@ -799,8 +859,10 @@ def sync_from_upstream(
             upstream_token,
             api_url,
         )
+        print("  Changes committed")
         
         # Create PR
+        print("Creating pull request...")
         pr_number, pr_url = create_sync_pull_request(
             downstream_repo,
             sync_branch,
@@ -812,6 +874,7 @@ def sync_from_upstream(
         )
         result.pr_number = pr_number
         result.pr_url = pr_url
+        print(f"  PR created: #{pr_number}")
         
         # Update sync status tracking
         if track_status:
