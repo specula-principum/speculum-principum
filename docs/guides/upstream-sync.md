@@ -1,5 +1,4 @@
 # Upstream Sync Guide
-> Test sync: 2025-12-14
 
 This guide explains how to keep your cloned research repository in sync with the upstream template repository (speculum-principum).
 
@@ -43,13 +42,16 @@ The sync workflow needs a Personal Access Token (PAT) to create branches and pul
 1. Create a **classic** or **fine-grained** PAT:
    
    **Classic PAT** ([create here](https://github.com/settings/tokens/new)):
-   - Select scopes: `repo` (full control of private repositories)
+   - Select scopes: 
+     - `repo` (full control of private repositories)
+     - `workflow` (update GitHub Actions workflows) - **Required for syncing workflow files**
    
    **Fine-grained PAT** ([create here](https://github.com/settings/tokens?type=beta)):
    - **Repository access**: Only select repositories → choose your cloned repo
    - **Permissions**: 
      - Contents: Read and write
      - Pull requests: Read and write
+     - Workflows: Read and write - **Required for syncing workflow files**
      - Metadata: Read-only (automatic)
 
 2. Go to your cloned repo's **Settings → Secrets and variables → Actions → Secrets**
@@ -158,15 +160,26 @@ Your code directories have changes not present in upstream. Either:
 
 ### "Resource not accessible by personal access token" (403 error)
 
-This error occurred in older versions that used the Git Data API. The sync has been updated to use the Contents API which works with standard PATs.
+This error typically occurs when your PAT lacks the required permissions, especially for workflow files in `.github/workflows/`.
 
-**If you're still seeing this error:**
-1. Make sure you're using the latest version of the sync code
-2. Verify your `GH_TOKEN` has the required permissions:
-   - Classic PAT: `repo` scope
-   - Fine-grained PAT: Contents (write) + Pull requests (write)
-3. Check that the token hasn't expired
-4. Ensure the token has access to the target repository
+**Solution:**
+
+Update your `GH_TOKEN` secret with a PAT that has workflow permissions:
+
+**Classic PAT:**
+- Required scopes: `repo` + `workflow`
+
+**Fine-grained PAT:**
+- Required permissions:
+  - Contents: Read and write
+  - Pull requests: Read and write
+  - Workflows: Read and write ← **Critical for workflow files**
+  - Metadata: Read-only
+
+**Other checks:**
+1. Verify your token hasn't expired
+2. Ensure the token has access to the target repository
+3. For organization repos, check that PATs are allowed by organization policies
 
 ### "Failed to reach GitHub API"
 
