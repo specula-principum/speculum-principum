@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 from dataclasses import dataclass, field
 from typing import Any
 from urllib import error, request
 
 from .issues import API_VERSION, DEFAULT_API_URL, GitHubIssueError, normalize_repository
+from .pull_requests import fetch_pull_request_files
 
 
 # Directories to sync from upstream (code directories)
@@ -1068,3 +1070,342 @@ def update_sync_status(
     
     if pr_number:
         set_repository_variable(repository, "SYNC_LAST_PR", str(pr_number), token, api_url)
+
+
+def verify_dispatch_signature(
+    upstream_repo: str,
+    upstream_branch: str,
+    timestamp: str,
+    signature: str,
+    secret: str,
+) -> bool:
+    """Verify HMAC-SHA256 signature for repository dispatch payload.
+    
+    Args:
+        upstream_repo: Upstream repository in "owner/repo" format
+        upstream_branch: Upstream branch name
+        timestamp: Timestamp string from payload
+        signature: HMAC signature to verify
+        secret: Shared secret for HMAC computation
+        
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    # Reconstruct payload data in same format as signing
+    payload_data = f"{upstream_repo}|{upstream_branch}|{timestamp}"
+    
+    # Compute expected signature using HMAC-SHA256
+    expected_signature = hmac.new(
+        secret.encode('utf-8'),
+        payload_data.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    
+    return signature == expected_signature
+
+
+def discover_downstream_repos(
+    org: str,
+    token: str,
+    topic: str = "speculum-downstream",
+    api_url: str = DEFAULT_API_URL,
+) -> list[str]:
+    """Discover downstream repositories by topic via GitHub Search API.
+    
+    Args:
+        org: Organization name to search within
+        token: GitHub API token
+        topic: Topic to search for (default: "speculum-downstream")
+        api_url: GitHub API base URL
+        
+    Returns:
+        List of repository names in "owner/repo" format
+    """
+    # Build search query: topic + org
+    query = f"topic:{topic} org:{org}"
+    
+    # GitHub Search API endpoint
+    endpoint = f"{api_url}/search/repositories"
+    params = f"?q={query.replace(' ', '+')}"
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": API_VERSION,
+    }
+    
+    req = request.Request(f"{endpoint}{params}", headers=headers)
+    
+    try:
+        with request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode())
+            repos = []
+            for item in data.get("items", []):
+                full_name = item.get("full_name")
+                if full_name:
+                    repos.append(full_name)
+            return repos
+    except error.HTTPError as e:
+        error_body = e.read().decode()
+        raise SyncError(f"Failed to discover downstream repos: {e.code} - {error_body}")
+    except Exception as e:
+        raise SyncError(f"Failed to discover downstream repos: {e}")
+
+
+def verify_satellite_trust(
+    repo: str,
+    expected_template: str,
+    token: str,
+    api_url: str = DEFAULT_API_URL,
+) -> tuple[bool, str]:
+    """Verify that a repository is a trusted downstream satellite.
+    
+    Checks:
+    - Repository is not a fork
+    - Repository was created from expected template
+    - Repository has the speculum-downstream topic
+    
+    Args:
+        repo: Repository to verify in "owner/repo" format
+        expected_template: Expected template repository in "owner/repo" format
+        token: GitHub API token
+        api_url: GitHub API base URL
+        
+    Returns:
+        Tuple of (is_trusted, reason)
+    """
+    endpoint = f"{api_url}/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": API_VERSION,
+    }
+    
+    req = request.Request(endpoint, headers=headers)
+    
+    try:
+        with request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode())
+            
+            # Check 1: Not a fork
+            if data.get("fork", False):
+                return (False, "Repository is a fork")
+            
+            # Check 2: Created from expected template
+            template_repo = data.get("template_repository")
+            if not template_repo:
+                return (False, "Repository not created from template")
+            
+            template_full_name = template_repo.get("full_name")
+            if template_full_name != expected_template:
+                return (False, f"Template mismatch: {template_full_name} != {expected_template}")
+            
+            # Check 3: Has speculum-downstream topic
+            topics = data.get("topics", [])
+            if "speculum-downstream" not in topics:
+                return (False, "Missing speculum-downstream topic")
+            
+            return (True, "All trust checks passed")
+            
+    except error.HTTPError as e:
+        error_body = e.read().decode()
+        return (False, f"API error: {e.code} - {error_body}")
+    except Exception as e:
+        return (False, f"Verification error: {e}")
+
+
+def notify_downstream_repos(
+    upstream_repo: str,
+    upstream_branch: str,
+    secret: str,
+    token: str,
+    org: str | None = None,
+    release_tag: str | None = None,
+    dry_run: bool = False,
+    api_url: str = DEFAULT_API_URL,
+) -> dict[str, Any]:
+    """Notify downstream repositories of upstream changes via repository_dispatch.
+    
+    Discovers downstream repos via topic search, verifies trust, and sends
+    signed dispatch events.
+    
+    Args:
+        upstream_repo: Upstream repository in "owner/repo" format
+        upstream_branch: Upstream branch name
+        secret: Shared secret for HMAC signing
+        token: GitHub API token with repo:write access
+        org: Organization to search for downstream repos (default: upstream org)
+        release_tag: Optional release tag to include
+        dry_run: If True, only report what would be done
+        api_url: GitHub API base URL
+        
+    Returns:
+        Dictionary with results: {success: int, failed: int, repos: [list]}
+    """
+    import datetime
+    
+    # Determine organization to search
+    if not org:
+        org = upstream_repo.split('/')[0]
+    
+    # Discover downstream repositories
+    print(f"Discovering downstream repositories in {org}...")
+    downstream_repos = discover_downstream_repos(org, token, api_url=api_url)
+    
+    if not downstream_repos:
+        print("No downstream repositories found")
+        return {"success": 0, "failed": 0, "repos": []}
+    
+    print(f"Found {len(downstream_repos)} repositories with speculum-downstream topic")
+    
+    # Generate timestamp for signature
+    timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+    
+    # Compute HMAC-SHA256 signature
+    payload_data = f"{upstream_repo}|{upstream_branch}|{timestamp}"
+    signature = hmac.new(
+        secret.encode('utf-8'),
+        payload_data.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    
+    results = {
+        "success": 0,
+        "failed": 0,
+        "repos": []
+    }
+    
+    # Notify each downstream repo
+    for repo in downstream_repos:
+        print(f"\nProcessing: {repo}")
+        
+        # Verify trust
+        trusted, reason = verify_satellite_trust(repo, upstream_repo, token, api_url)
+        if not trusted:
+            print(f"  ⚠️  Skipped: {reason}")
+            results["failed"] += 1
+            results["repos"].append({"repo": repo, "status": "untrusted", "reason": reason})
+            continue
+        
+        print(f"  ✓ Trust verified")
+        
+        if dry_run:
+            print(f"  [DRY RUN] Would send repository_dispatch")
+            results["success"] += 1
+            results["repos"].append({"repo": repo, "status": "would_notify"})
+            continue
+        
+        # Send repository_dispatch event
+        try:
+            endpoint = f"{api_url}/repos/{repo}/dispatches"
+            payload = {
+                "event_type": "upstream-sync",
+                "client_payload": {
+                    "upstream_repo": upstream_repo,
+                    "upstream_branch": upstream_branch,
+                    "timestamp": timestamp,
+                    "signature": signature,
+                    "release_tag": release_tag,
+                }
+            }
+            
+            data = json.dumps(payload).encode('utf-8')
+            req = request.Request(endpoint, data=data, method='POST')
+            req.add_header('Authorization', f'Bearer {token}')
+            req.add_header('Accept', 'application/vnd.github+json')
+            req.add_header('X-GitHub-Api-Version', API_VERSION)
+            req.add_header('Content-Type', 'application/json')
+            
+            with request.urlopen(req, timeout=30) as response:
+                print(f"  ✓ Notified successfully")
+                results["success"] += 1
+                results["repos"].append({"repo": repo, "status": "notified"})
+                
+        except error.HTTPError as e:
+            error_body = e.read().decode()
+            print(f"  ✗ Failed: {e.code} - {error_body}")
+            results["failed"] += 1
+            results["repos"].append({
+                "repo": repo,
+                "status": "failed",
+                "error": f"{e.code} - {error_body}"
+            })
+        except Exception as e:
+            print(f"  ✗ Failed: {e}")
+            results["failed"] += 1
+            results["repos"].append({"repo": repo, "status": "failed", "error": str(e)})
+    
+    return results
+
+
+def validate_pr_file_scope(
+    repo: str,
+    pr_number: int,
+    token: str,
+    api_url: str = DEFAULT_API_URL,
+) -> tuple[bool, str]:
+    """Validate that a PR only modifies files within allowed code directories.
+    
+    Checks that all changed files are within CODE_DIRECTORIES or CODE_FILES,
+    and none are in PROTECTED_DIRECTORIES.
+    
+    Args:
+        repo: Repository in "owner/repo" format
+        pr_number: Pull request number
+        token: GitHub API token
+        api_url: GitHub API base URL
+        
+    Returns:
+        Tuple of (is_valid, reason)
+    """
+    try:
+        # Fetch PR files
+        files = fetch_pull_request_files(
+            token=token,
+            repository=repo,
+            pr_number=pr_number,
+            api_url=api_url
+        )
+        
+        if not files:
+            return (True, "No files changed")
+        
+        invalid_files = []
+        protected_files = []
+        
+        for file_data in files:
+            filename = file_data.get("filename", "")
+            
+            # Check if in protected directories
+            if any(filename.startswith(pdir) for pdir in PROTECTED_DIRECTORIES):
+                protected_files.append(filename)
+                continue
+            
+            # Check if in code directories or is a code file
+            is_valid = (
+                any(filename.startswith(cdir) for cdir in CODE_DIRECTORIES) or
+                filename in CODE_FILES
+            )
+            
+            if not is_valid:
+                invalid_files.append(filename)
+        
+        # Build result message
+        if protected_files:
+            files_list = ", ".join(protected_files[:5])
+            if len(protected_files) > 5:
+                files_list += f" (and {len(protected_files) - 5} more)"
+            return (False, f"PR modifies protected directories: {files_list}")
+        
+        if invalid_files:
+            files_list = ", ".join(invalid_files[:5])
+            if len(invalid_files) > 5:
+                files_list += f" (and {len(invalid_files) - 5} more)"
+            return (False, f"PR modifies files outside code directories: {files_list}")
+        
+        return (True, f"All {len(files)} file(s) within allowed scope")
+        
+    except Exception as e:
+        return (False, f"Validation error: {e}")
+
+

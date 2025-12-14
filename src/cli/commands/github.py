@@ -40,6 +40,7 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
     """Add GitHub-focused subcommands to the main CLI parser."""
     register_create_command(subparsers)
     register_search_command(subparsers)
+    register_pr_commands(subparsers)
 
 
 # ========================
@@ -276,4 +277,176 @@ def search_issues_cli(args: argparse.Namespace) -> int:
     return 0
 
 
+# ========================
+# PR COMMANDS
+# ========================
+
+def register_pr_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register pull request management commands."""
+    
+    # Validate PR file scope
+    validate_pr_parser = subparsers.add_parser(
+        "validate-pr",
+        help="Validate PR file scope against sync boundaries.",
+    )
+    validate_pr_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Target repository in owner/repo form.",
+    )
+    validate_pr_parser.add_argument(
+        "--pr",
+        required=True,
+        type=int,
+        help="Pull request number.",
+    )
+    validate_pr_parser.add_argument(
+        "--token",
+        help="GitHub token. Defaults to $GITHUB_TOKEN.",
+    )
+    validate_pr_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON.",
+    )
+    validate_pr_parser.set_defaults(func=validate_pr_cli)
+    
+    # Enable auto-merge on PR
+    auto_merge_parser = subparsers.add_parser(
+        "enable-auto-merge",
+        help="Enable auto-merge on a pull request.",
+    )
+    auto_merge_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Target repository in owner/repo form.",
+    )
+    auto_merge_parser.add_argument(
+        "--pr",
+        required=True,
+        type=int,
+        help="Pull request number.",
+    )
+    auto_merge_parser.add_argument(
+        "--token",
+        help="GitHub token. Defaults to $GITHUB_TOKEN.",
+    )
+    auto_merge_parser.add_argument(
+        "--merge-method",
+        choices=["MERGE", "SQUASH", "REBASE"],
+        default="SQUASH",
+        help="Merge method to use.",
+    )
+    auto_merge_parser.set_defaults(func=enable_auto_merge_cli)
+    
+    # Approve PR
+    approve_pr_parser = subparsers.add_parser(
+        "approve-pr",
+        help="Approve a pull request.",
+    )
+    approve_pr_parser.add_argument(
+        "--repo",
+        required=True,
+        help="Target repository in owner/repo form.",
+    )
+    approve_pr_parser.add_argument(
+        "--pr",
+        required=True,
+        type=int,
+        help="Pull request number.",
+    )
+    approve_pr_parser.add_argument(
+        "--token",
+        help="GitHub token. Defaults to $GITHUB_TOKEN.",
+    )
+    approve_pr_parser.add_argument(
+        "--body",
+        help="Review comment body.",
+    )
+    approve_pr_parser.set_defaults(func=approve_pr_cli)
+
+
+def validate_pr_cli(args: argparse.Namespace) -> int:
+    """Handler for validate-pr command."""
+    from src.integrations.github.sync import validate_pr_file_scope
+    
+    token = resolve_token(args.token)
+    
+    try:
+        is_valid, reason = validate_pr_file_scope(args.repo, args.pr, token)
+        
+        if args.json:
+            result = {
+                "valid": is_valid,
+                "reason": reason,
+                "pr_number": args.pr,
+            }
+            print(json.dumps(result, indent=2))
+        else:
+            print(reason)
+        
+        return 0 if is_valid else 1
+    
+    except Exception as err:
+        print(f"Error validating PR: {err}", file=sys.stderr)
+        return 1
+
+
+def enable_auto_merge_cli(args: argparse.Namespace) -> int:
+    """Handler for enable-auto-merge command."""
+    from src.integrations.github.pull_requests import (
+        enable_pull_request_auto_merge,
+        fetch_pull_request,
+    )
+    
+    token = resolve_token(args.token)
+    
+    try:
+        # First fetch the PR to get its node_id
+        pr_data = fetch_pull_request(
+            token=token,
+            repository=args.repo,
+            pr_number=args.pr,
+        )
+        
+        node_id = pr_data.get("node_id")
+        if not node_id:
+            print("Error: Could not get PR node_id", file=sys.stderr)
+            return 1
+        
+        # Enable auto-merge
+        result = enable_pull_request_auto_merge(
+            token=token,
+            pr_node_id=node_id,
+            merge_method=args.merge_method,
+        )
+        
+        print(f"✅ Auto-merge enabled on PR #{args.pr}")
+        return 0
+    
+    except Exception as err:
+        print(f"Error enabling auto-merge: {err}", file=sys.stderr)
+        return 1
+
+
+def approve_pr_cli(args: argparse.Namespace) -> int:
+    """Handler for approve-pr command."""
+    from src.integrations.github.pull_requests import approve_pull_request
+    
+    token = resolve_token(args.token)
+    
+    try:
+        approve_pull_request(
+            token=token,
+            repository=args.repo,
+            pr_number=args.pr,
+            body=args.body,
+        )
+        
+        print(f"✅ Approved PR #{args.pr}")
+        return 0
+    
+    except Exception as err:
+        print(f"Error approving PR: {err}", file=sys.stderr)
+        return 1
 

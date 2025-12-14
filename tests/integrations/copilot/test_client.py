@@ -42,7 +42,7 @@ def test_copilot_client_explicit_token():
 def test_copilot_client_defaults():
     """CopilotClient sets appropriate defaults."""
     client = CopilotClient(api_key="test")
-    assert client.model == "gpt-4o-mini"
+    assert client.model == "gpt-4o"
     assert client.max_tokens == 4000
     assert client.temperature == 0.7
     assert client.timeout == 60

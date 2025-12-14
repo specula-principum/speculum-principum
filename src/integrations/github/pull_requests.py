@@ -316,3 +316,118 @@ def create_pull_request(
     except error.URLError as exc:
         raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
 
+
+def enable_pull_request_auto_merge(
+    *,
+    token: str,
+    pr_node_id: str,
+    merge_method: str = "SQUASH",
+) -> dict[str, Any]:
+    """Enable auto-merge on a pull request using GraphQL API.
+
+    Args:
+        token: GitHub API token
+        pr_node_id: Pull request node ID (GraphQL ID)
+        merge_method: Merge method - MERGE, SQUASH, or REBASE
+
+    Returns:
+        Dictionary with auto-merge enablement result
+
+    Raises:
+        GitHubIssueError: If the GraphQL request fails
+    """
+    valid_methods = {"MERGE", "SQUASH", "REBASE"}
+    if merge_method not in valid_methods:
+        raise GitHubIssueError(
+            f"Merge method must be one of: {', '.join(valid_methods)}"
+        )
+
+    query = """
+    mutation EnableAutoMerge($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+      enablePullRequestAutoMerge(input: {
+        pullRequestId: $pullRequestId,
+        mergeMethod: $mergeMethod
+      }) {
+        pullRequest {
+          autoMergeRequest {
+            enabledAt
+            enabledBy {
+              login
+            }
+          }
+        }
+      }
+    }
+    """
+
+    variables = {
+        "pullRequestId": pr_node_id,
+        "mergeMethod": merge_method,
+    }
+
+    payload = {
+        "query": query,
+        "variables": variables,
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    req = request.Request(
+        "https://api.github.com/graphql",
+        data=data,
+        method="POST"
+    )
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("Content-Type", "application/json")
+
+    try:
+        with request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode())
+
+            if "errors" in result:
+                raise GitHubIssueError(
+                    f"GraphQL errors: {result['errors']}"
+                )
+
+            return result
+    except error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        raise GitHubIssueError(
+            f"Failed to enable auto-merge: {exc.code} - {error_text}"
+        ) from exc
+    except error.URLError as exc:
+        raise GitHubIssueError(f"Failed to reach GitHub API: {exc.reason}") from exc
+
+
+def approve_pull_request(
+    *,
+    token: str,
+    repository: str,
+    pr_number: int,
+    body: str | None = None,
+    api_url: str = DEFAULT_API_URL,
+) -> dict[str, Any]:
+    """Approve a pull request.
+
+    Args:
+        token: GitHub API token
+        repository: Repository in "owner/repo" format
+        pr_number: Pull request number
+        body: Optional review comment body
+        api_url: GitHub API base URL
+
+    Returns:
+        Dictionary with approval details
+
+    Raises:
+        GitHubIssueError: If the API request fails
+    """
+    return create_pr_review(
+        token=token,
+        repository=repository,
+        pr_number=pr_number,
+        event="APPROVE",
+        body=body or "✅ Approved",
+        api_url=api_url,
+    )
+

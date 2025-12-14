@@ -20,6 +20,7 @@ from src.integrations.github.sync import (
     ValidationResult,
     compare_files,
     configure_upstream_variable,
+    discover_downstream_repos,
     filter_syncable_files,
     get_default_branch,
     get_repository_tree,
@@ -27,9 +28,13 @@ from src.integrations.github.sync import (
     get_sync_status,
     get_template_repository,
     get_tree_sha,
+    notify_downstream_repos,
     set_repository_variable,
     update_sync_status,
     validate_pre_sync,
+    validate_pr_file_scope,
+    verify_dispatch_signature,
+    verify_satellite_trust,
 )
 
 
@@ -799,3 +804,585 @@ class TestUpdateSyncStatus:
                 calls = [call[0] for call in mock_set.call_args_list]
                 count_call = [c for c in calls if c[1] == "SYNC_COUNT"][0]
                 assert count_call[2] == "6"  # 5 + 1
+
+
+# =============================================================================
+# Auto-Approval Feature Tests
+# =============================================================================
+
+
+class TestNotifyDownstreamRepos:
+    """Tests for notifying downstream repositories."""
+    
+    @patch('src.integrations.github.sync.verify_satellite_trust')
+    @patch('src.integrations.github.sync.discover_downstream_repos')
+    @patch('src.integrations.github.sync.request.urlopen')
+    @patch('builtins.print')
+    def test_successful_notification(
+        self, mock_print, mock_urlopen, mock_discover, mock_verify, mock_token
+    ):
+        """Should successfully notify trusted downstream repos."""
+        from src.integrations.github.sync import notify_downstream_repos
+        
+        # Mock discovery
+        mock_discover.return_value = ["org/satellite-1", "org/satellite-2"]
+        
+        # Mock trust verification
+        mock_verify.return_value = (True, "All checks passed")
+        
+        # Mock dispatch API success
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        result = notify_downstream_repos(
+            upstream_repo="org/upstream",
+            upstream_branch="main",
+            secret="test-secret",
+            token=mock_token,
+        )
+        
+        assert result["success"] == 2
+        assert result["failed"] == 0
+        assert len(result["repos"]) == 2
+        assert all(r["status"] == "notified" for r in result["repos"])
+        
+        # Verify dispatch was sent with signature
+        assert mock_urlopen.call_count == 2
+        call_args = mock_urlopen.call_args_list[0][0][0]
+        assert "signature" in call_args.data.decode()
+    
+    @patch('src.integrations.github.sync.verify_satellite_trust')
+    @patch('src.integrations.github.sync.discover_downstream_repos')
+    @patch('builtins.print')
+    def test_no_downstream_repos(self, mock_print, mock_discover, mock_verify, mock_token):
+        """Should handle case with no downstream repos."""
+        from src.integrations.github.sync import notify_downstream_repos
+        
+        # Mock empty discovery
+        mock_discover.return_value = []
+        
+        result = notify_downstream_repos(
+            upstream_repo="org/upstream",
+            upstream_branch="main",
+            secret="test-secret",
+            token=mock_token,
+        )
+        
+        assert result["success"] == 0
+        assert result["failed"] == 0
+        assert len(result["repos"]) == 0
+    
+    @patch('src.integrations.github.sync.verify_satellite_trust')
+    @patch('src.integrations.github.sync.discover_downstream_repos')
+    @patch('builtins.print')
+    def test_untrusted_repo_skipped(
+        self, mock_print, mock_discover, mock_verify, mock_token
+    ):
+        """Should skip untrusted repositories."""
+        from src.integrations.github.sync import notify_downstream_repos
+        
+        # Mock discovery
+        mock_discover.return_value = ["org/untrusted-repo"]
+        
+        # Mock trust verification failure
+        mock_verify.return_value = (False, "Repository is a fork")
+        
+        result = notify_downstream_repos(
+            upstream_repo="org/upstream",
+            upstream_branch="main",
+            secret="test-secret",
+            token=mock_token,
+        )
+        
+        assert result["success"] == 0
+        assert result["failed"] == 1
+        assert result["repos"][0]["status"] == "untrusted"
+    
+    @patch('src.integrations.github.sync.verify_satellite_trust')
+    @patch('src.integrations.github.sync.discover_downstream_repos')
+    @patch('builtins.print')
+    def test_dry_run_mode(self, mock_print, mock_discover, mock_verify, mock_token):
+        """Should not send notifications in dry run mode."""
+        from src.integrations.github.sync import notify_downstream_repos
+        
+        # Mock discovery
+        mock_discover.return_value = ["org/satellite-1"]
+        
+        # Mock trust verification
+        mock_verify.return_value = (True, "All checks passed")
+        
+        result = notify_downstream_repos(
+            upstream_repo="org/upstream",
+            upstream_branch="main",
+            secret="test-secret",
+            token=mock_token,
+            dry_run=True,
+        )
+        
+        assert result["success"] == 1
+        assert result["repos"][0]["status"] == "would_notify"
+    
+    @patch('src.integrations.github.sync.verify_satellite_trust')
+    @patch('src.integrations.github.sync.discover_downstream_repos')
+    @patch('src.integrations.github.sync.request.urlopen')
+    @patch('builtins.print')
+    def test_dispatch_api_error(
+        self, mock_print, mock_urlopen, mock_discover, mock_verify, mock_token
+    ):
+        """Should handle API errors gracefully."""
+        from src.integrations.github.sync import notify_downstream_repos
+        from urllib import error as urllib_error
+        
+        # Mock discovery
+        mock_discover.return_value = ["org/satellite-1"]
+        
+        # Mock trust verification
+        mock_verify.return_value = (True, "All checks passed")
+        
+        # Mock API error
+        mock_error = urllib_error.HTTPError(
+            url="https://api.github.com/repos/org/satellite-1/dispatches",
+            code=403,
+            msg="Forbidden",
+            hdrs={},
+            fp=MagicMock(read=lambda: b"Insufficient permissions")
+        )
+        mock_urlopen.side_effect = mock_error
+        
+        result = notify_downstream_repos(
+            upstream_repo="org/upstream",
+            upstream_branch="main",
+            secret="test-secret",
+            token=mock_token,
+        )
+        
+        assert result["success"] == 0
+        assert result["failed"] == 1
+        assert result["repos"][0]["status"] == "failed"
+    
+    @patch('src.integrations.github.sync.verify_satellite_trust')
+    @patch('src.integrations.github.sync.discover_downstream_repos')
+    @patch('builtins.print')
+    def test_custom_org(self, mock_print, mock_discover, mock_verify, mock_token):
+        """Should search custom org when specified."""
+        from src.integrations.github.sync import notify_downstream_repos
+        
+        # Mock discovery
+        mock_discover.return_value = []
+        
+        notify_downstream_repos(
+            upstream_repo="org/upstream",
+            upstream_branch="main",
+            secret="test-secret",
+            token=mock_token,
+            org="custom-org",
+        )
+        
+        # Verify discovery was called with custom org
+        mock_discover.assert_called_once()
+        assert mock_discover.call_args[0][0] == "custom-org"
+    
+    @patch('src.integrations.github.sync.verify_satellite_trust')
+    @patch('src.integrations.github.sync.discover_downstream_repos')
+    @patch('src.integrations.github.sync.request.urlopen')
+    @patch('builtins.print')
+    def test_includes_release_tag(
+        self, mock_print, mock_urlopen, mock_discover, mock_verify, mock_token
+    ):
+        """Should include release tag in dispatch payload."""
+        from src.integrations.github.sync import notify_downstream_repos
+        
+        # Mock discovery
+        mock_discover.return_value = ["org/satellite-1"]
+        
+        # Mock trust verification
+        mock_verify.return_value = (True, "All checks passed")
+        
+        # Mock dispatch API success
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        notify_downstream_repos(
+            upstream_repo="org/upstream",
+            upstream_branch="main",
+            secret="test-secret",
+            token=mock_token,
+            release_tag="v1.2.3",
+        )
+        
+        # Verify release tag was included
+        call_args = mock_urlopen.call_args[0][0]
+        payload_data = call_args.data.decode()
+        assert "v1.2.3" in payload_data
+
+
+class TestVerifyDispatchSignature:
+    """Tests for HMAC signature verification."""
+    
+    def test_valid_signature(self):
+        """Valid HMAC signature should be verified."""
+        from src.integrations.github.sync import verify_dispatch_signature
+        import hmac
+        import hashlib
+        
+        upstream_repo = "org/upstream-repo"
+        upstream_branch = "main"
+        timestamp = "2024-01-15T12:00:00Z"
+        secret = "test-secret-key"
+        
+        # Create valid signature
+        payload_data = f"{upstream_repo}|{upstream_branch}|{timestamp}"
+        valid_signature = hmac.new(
+            secret.encode('utf-8'),
+            payload_data.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        result = verify_dispatch_signature(
+            upstream_repo, upstream_branch, timestamp, valid_signature, secret
+        )
+        
+        assert result is True
+    
+    def test_invalid_signature(self):
+        """Invalid HMAC signature should be rejected."""
+        from src.integrations.github.sync import verify_dispatch_signature
+        
+        upstream_repo = "org/upstream-repo"
+        upstream_branch = "main"
+        timestamp = "2024-01-15T12:00:00Z"
+        secret = "test-secret-key"
+        invalid_signature = "wrong_signature_12345"
+        
+        result = verify_dispatch_signature(
+            upstream_repo, upstream_branch, timestamp, invalid_signature, secret
+        )
+        
+        assert result is False
+    
+    def test_tampered_payload(self):
+        """Signature should fail if payload is tampered."""
+        from src.integrations.github.sync import verify_dispatch_signature
+        import hmac
+        import hashlib
+        
+        upstream_repo = "org/upstream-repo"
+        upstream_branch = "main"
+        timestamp = "2024-01-15T12:00:00Z"
+        secret = "test-secret-key"
+        
+        # Create signature with original payload
+        payload_data = f"{upstream_repo}|{upstream_branch}|{timestamp}"
+        signature = hmac.new(
+            secret.encode('utf-8'),
+            payload_data.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        # Verify with tampered upstream_repo
+        result = verify_dispatch_signature(
+            "org/different-repo", upstream_branch, timestamp, signature, secret
+        )
+        
+        assert result is False
+
+
+class TestDiscoverDownstreamRepos:
+    """Tests for topic-based repository discovery."""
+    
+    @patch('src.integrations.github.sync.request.urlopen')
+    def test_discovers_repos_with_topic(self, mock_urlopen, mock_token):
+        """Should discover repos with specified topic in org."""
+        from src.integrations.github.sync import discover_downstream_repos
+        
+        # Mock search API response
+        search_response = {
+            "total_count": 2,
+            "items": [
+                {"full_name": "test-org/satellite-1", "id": 1},
+                {"full_name": "test-org/satellite-2", "id": 2},
+            ]
+        }
+        
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(search_response).encode()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        repos = discover_downstream_repos("test-org", mock_token)
+        
+        assert len(repos) == 2
+        assert "test-org/satellite-1" in repos
+        assert "test-org/satellite-2" in repos
+        
+        # Verify search query was constructed correctly
+        call_args = mock_urlopen.call_args[0][0]
+        assert "topic:speculum-downstream" in call_args.full_url
+        assert "org:test-org" in call_args.full_url
+    
+    @patch('src.integrations.github.sync.request.urlopen')
+    def test_custom_topic(self, mock_urlopen, mock_token):
+        """Should search for custom topic."""
+        from src.integrations.github.sync import discover_downstream_repos
+        
+        search_response = {"total_count": 0, "items": []}
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(search_response).encode()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        repos = discover_downstream_repos("test-org", mock_token, topic="custom-topic")
+        
+        assert repos == []
+        call_args = mock_urlopen.call_args[0][0]
+        assert "topic:custom-topic" in call_args.full_url
+    
+    @patch('src.integrations.github.sync.request.urlopen')
+    def test_api_error(self, mock_urlopen, mock_token):
+        """Should raise SyncError on API failure."""
+        from src.integrations.github.sync import discover_downstream_repos, SyncError
+        from urllib import error as urllib_error
+        
+        mock_error = urllib_error.HTTPError(
+            url="https://api.github.com/search/repositories",
+            code=404,
+            msg="Not Found",
+            hdrs={},
+            fp=MagicMock(read=lambda: b"Not found")
+        )
+        mock_urlopen.side_effect = mock_error
+        
+        with pytest.raises(SyncError, match="Failed to discover downstream repos"):
+            discover_downstream_repos("test-org", mock_token)
+
+
+class TestVerifySatelliteTrust:
+    """Tests for satellite repository trust verification."""
+    
+    @patch('src.integrations.github.sync.request.urlopen')
+    def test_trusted_repo(self, mock_urlopen, mock_token):
+        """Should verify valid satellite repo."""
+        from src.integrations.github.sync import verify_satellite_trust
+        
+        # Mock repo API response for valid satellite
+        repo_response = {
+            "fork": False,
+            "template_repository": {
+                "full_name": "org/upstream-template"
+            },
+            "topics": ["speculum-downstream", "research"]
+        }
+        
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(repo_response).encode()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        is_trusted, reason = verify_satellite_trust(
+            "org/satellite", "org/upstream-template", mock_token
+        )
+        
+        assert is_trusted is True
+        assert "passed" in reason.lower()
+    
+    @patch('src.integrations.github.sync.request.urlopen')
+    def test_fork_rejected(self, mock_urlopen, mock_token):
+        """Should reject repositories that are forks."""
+        from src.integrations.github.sync import verify_satellite_trust
+        
+        repo_response = {
+            "fork": True,
+            "template_repository": {"full_name": "org/upstream-template"},
+            "topics": ["speculum-downstream"]
+        }
+        
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(repo_response).encode()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        is_trusted, reason = verify_satellite_trust(
+            "org/satellite", "org/upstream-template", mock_token
+        )
+        
+        assert is_trusted is False
+        assert "fork" in reason.lower()
+    
+    @patch('src.integrations.github.sync.request.urlopen')
+    def test_template_mismatch_rejected(self, mock_urlopen, mock_token):
+        """Should reject repos with wrong template."""
+        from src.integrations.github.sync import verify_satellite_trust
+        
+        repo_response = {
+            "fork": False,
+            "template_repository": {"full_name": "org/different-template"},
+            "topics": ["speculum-downstream"]
+        }
+        
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(repo_response).encode()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        is_trusted, reason = verify_satellite_trust(
+            "org/satellite", "org/upstream-template", mock_token
+        )
+        
+        assert is_trusted is False
+        assert "mismatch" in reason.lower()
+    
+    @patch('src.integrations.github.sync.request.urlopen')
+    def test_missing_topic_rejected(self, mock_urlopen, mock_token):
+        """Should reject repos without required topic."""
+        from src.integrations.github.sync import verify_satellite_trust
+        
+        repo_response = {
+            "fork": False,
+            "template_repository": {"full_name": "org/upstream-template"},
+            "topics": ["other-topic"]
+        }
+        
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(repo_response).encode()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        is_trusted, reason = verify_satellite_trust(
+            "org/satellite", "org/upstream-template", mock_token
+        )
+        
+        assert is_trusted is False
+        assert "topic" in reason.lower()
+    
+    @patch('src.integrations.github.sync.request.urlopen')
+    def test_no_template_rejected(self, mock_urlopen, mock_token):
+        """Should reject repos not created from template."""
+        from src.integrations.github.sync import verify_satellite_trust
+        
+        repo_response = {
+            "fork": False,
+            "template_repository": None,
+            "topics": ["speculum-downstream"]
+        }
+        
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(repo_response).encode()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+        
+        is_trusted, reason = verify_satellite_trust(
+            "org/satellite", "org/upstream-template", mock_token
+        )
+        
+        assert is_trusted is False
+        assert "template" in reason.lower()
+
+
+class TestValidatePRFileScope:
+    """Tests for PR file scope validation."""
+    
+    @patch('src.integrations.github.sync.fetch_pull_request_files')
+    def test_valid_code_files(self, mock_fetch, mock_repository, mock_token):
+        """Should accept PR with only code files."""
+        from src.integrations.github.sync import validate_pr_file_scope
+        
+        # Mock PR files - only code changes
+        mock_fetch.return_value = [
+            {"filename": "src/config.py"},
+            {"filename": "tests/test_feature.py"},
+            {"filename": "main.py"},
+        ]
+        
+        is_valid, reason = validate_pr_file_scope(
+            mock_repository, 123, mock_token
+        )
+        
+        assert is_valid is True
+        assert "3 file(s)" in reason
+    
+    @patch('src.integrations.github.sync.fetch_pull_request_files')
+    def test_rejects_protected_dirs(self, mock_fetch, mock_repository, mock_token):
+        """Should reject PR modifying protected directories."""
+        from src.integrations.github.sync import validate_pr_file_scope
+        
+        # Mock PR files - includes protected directory
+        mock_fetch.return_value = [
+            {"filename": "src/config.py"},
+            {"filename": "evidence/new-doc.pdf"},
+        ]
+        
+        is_valid, reason = validate_pr_file_scope(
+            mock_repository, 123, mock_token
+        )
+        
+        assert is_valid is False
+        assert "protected" in reason.lower()
+        assert "evidence/" in reason
+    
+    @patch('src.integrations.github.sync.fetch_pull_request_files')
+    def test_rejects_non_code_files(self, mock_fetch, mock_repository, mock_token):
+        """Should reject PR with files outside code directories."""
+        from src.integrations.github.sync import validate_pr_file_scope
+        
+        # Mock PR files - includes random file
+        mock_fetch.return_value = [
+            {"filename": "src/config.py"},
+            {"filename": "random_file.txt"},
+        ]
+        
+        is_valid, reason = validate_pr_file_scope(
+            mock_repository, 123, mock_token
+        )
+        
+        assert is_valid is False
+        assert "outside code directories" in reason.lower()
+        assert "random_file.txt" in reason
+    
+    @patch('src.integrations.github.sync.fetch_pull_request_files')
+    def test_empty_pr(self, mock_fetch, mock_repository, mock_token):
+        """Should accept PR with no files."""
+        from src.integrations.github.sync import validate_pr_file_scope
+        
+        mock_fetch.return_value = []
+        
+        is_valid, reason = validate_pr_file_scope(
+            mock_repository, 123, mock_token
+        )
+        
+        assert is_valid is True
+        assert "no files" in reason.lower()
+    
+    @patch('src.integrations.github.sync.fetch_pull_request_files')
+    def test_multiple_protected_files(self, mock_fetch, mock_repository, mock_token):
+        """Should report multiple protected files."""
+        from src.integrations.github.sync import validate_pr_file_scope
+        
+        # Mock PR with multiple protected files
+        mock_fetch.return_value = [
+            {"filename": "evidence/doc1.pdf"},
+            {"filename": "knowledge-graph/entity.yaml"},
+            {"filename": "reports/analysis.md"},
+        ]
+        
+        is_valid, reason = validate_pr_file_scope(
+            mock_repository, 123, mock_token
+        )
+        
+        assert is_valid is False
+        assert "protected" in reason.lower()
+    
+    @patch('src.integrations.github.sync.fetch_pull_request_files')
+    def test_handles_api_error(self, mock_fetch, mock_repository, mock_token):
+        """Should handle API errors gracefully."""
+        from src.integrations.github.sync import validate_pr_file_scope
+        
+        mock_fetch.side_effect = Exception("API Error")
+        
+        is_valid, reason = validate_pr_file_scope(
+            mock_repository, 123, mock_token
+        )
+        
+        assert is_valid is False
+        assert "error" in reason.lower()
