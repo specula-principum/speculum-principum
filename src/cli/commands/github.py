@@ -370,7 +370,19 @@ def validate_pr_cli(args: argparse.Namespace) -> int:
     """Handler for validate-pr command."""
     from src.integrations.github.sync import validate_pr_file_scope
     
-    token = resolve_token(args.token)
+    try:
+        token = resolve_token(args.token)
+    except GitHubIssueError as err:
+        if args.json:
+            result = {
+                "valid": False,
+                "reason": f"Authentication error: {err}",
+                "pr_number": args.pr,
+            }
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return 1
     
     try:
         is_valid, reason = validate_pr_file_scope(args.repo, args.pr, token)
@@ -388,7 +400,15 @@ def validate_pr_cli(args: argparse.Namespace) -> int:
         return 0 if is_valid else 1
     
     except Exception as err:
-        print(f"Error validating PR: {err}", file=sys.stderr)
+        if args.json:
+            result = {
+                "valid": False,
+                "reason": f"Validation error: {err}",
+                "pr_number": args.pr,
+            }
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"Error validating PR: {err}", file=sys.stderr)
         return 1
 
 

@@ -38,19 +38,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          # Run validation and capture output
           python -m main validate-pr \
             --repo "${{ github.repository }}" \
             --pr ${{ github.event.pull_request.number }} \
-            --json > /tmp/validation.json
+            --json > /tmp/validation.json 2>&1 || true
           
-          VALID=$(jq -r '.valid' /tmp/validation.json)
-          REASON=$(jq -r '.reason' /tmp/validation.json)
+          # Check if validation.json exists and has content
+          if [ ! -s /tmp/validation.json ]; then
+            echo "::error::Validation command failed to produce output"
+            echo "Command output:"
+            cat /tmp/validation.json 2>/dev/null || echo "(no output file)"
+            exit 1
+          fi
+          
+          # Display the validation result for debugging
+          echo "Validation result:"
+          cat /tmp/validation.json
+          echo ""
+          
+          # Parse JSON results
+          VALID=$(jq -r '.valid' /tmp/validation.json 2>&1)
+          REASON=$(jq -r '.reason // "Unknown error"' /tmp/validation.json 2>&1)
+          
+          if [ $? -ne 0 ]; then
+            echo "::error::Failed to parse validation JSON"
+            echo "Raw content:"
+            cat /tmp/validation.json
+            exit 1
+          fi
           
           echo "valid=$VALID" >> $GITHUB_OUTPUT
           echo "reason=$REASON" >> $GITHUB_OUTPUT
           
           if [ "$VALID" != "true" ]; then
-            echo "❌ PR validation failed: $REASON"
+            echo "::error::PR validation failed: $REASON"
             exit 1
           fi
           

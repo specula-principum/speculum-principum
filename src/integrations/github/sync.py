@@ -543,6 +543,7 @@ def commit_files(
     token: str,
     upstream_token: str | None = None,
     api_url: str = DEFAULT_API_URL,
+    verbose: bool = True,
 ) -> str:
     """Commit file changes to a branch.
     
@@ -558,18 +559,21 @@ def commit_files(
         token: GitHub API token for downstream repo
         upstream_token: GitHub API token for upstream repo (if private)
         api_url: GitHub API base URL
+        verbose: If True, print progress messages
         
     Returns:
         SHA of the last commit
     """
     owner, name = normalize_repository(repository)
     
-    print(f"Starting commit process for {len(changes)} changes to {repository}/{branch}")
+    if verbose:
+        print(f"Starting commit process for {len(changes)} changes to {repository}/{branch}")
     
     last_commit_sha = None
     
     for idx, change in enumerate(changes, 1):
-        print(f"  [{idx}/{len(changes)}] Processing {change.action}: {change.path}")
+        if verbose:
+            print(f"  [{idx}/{len(changes)}] Processing {change.action}: {change.path}")
         
         contents_endpoint = f"{api_url}/repos/{owner}/{name}/contents/{change.path}"
         commit_message = f"Sync: {change.action} {change.path}"
@@ -591,11 +595,13 @@ def commit_files(
                 }
                 result = _make_request(contents_endpoint, token, method="DELETE", data=delete_data)
                 last_commit_sha = result["commit"]["sha"]
-                print(f"      Deleted (commit: {last_commit_sha[:8]})")
+                if verbose:
+                    print(f"      Deleted (commit: {last_commit_sha[:8]})")
             except SyncError as e:
                 # File might already be deleted
                 if "404" in str(e):
-                    print(f"      Already deleted, skipping")
+                    if verbose:
+                        print(f"      Already deleted, skipping")
                 else:
                     raise
         else:
@@ -633,10 +639,12 @@ def commit_files(
             
             result = _make_request(contents_endpoint, token, method="PUT", data=update_data)
             last_commit_sha = result["commit"]["sha"]
-            print(f"      Committed (commit: {last_commit_sha[:8]})")
+            if verbose:
+                print(f"      Committed (commit: {last_commit_sha[:8]})")
     
-    print(f"  All changes committed successfully")
-    print(f"  Final commit: {last_commit_sha[:8] if last_commit_sha else 'none'}")
+    if verbose:
+        print(f"  All changes committed successfully")
+        print(f"  Final commit: {last_commit_sha[:8] if last_commit_sha else 'none'}")
     
     return last_commit_sha or ""
 
@@ -720,6 +728,7 @@ def sync_from_upstream(
     force_sync: bool = False,
     track_status: bool = True,
     api_url: str = DEFAULT_API_URL,
+    verbose: bool = True,
 ) -> SyncResult:
     """Perform a full sync from upstream repository.
     
@@ -737,6 +746,7 @@ def sync_from_upstream(
         force_sync: If True, skip validation and overwrite local modifications
         track_status: If True, update sync status variables after successful sync
         api_url: GitHub API base URL
+        verbose: If True, print progress messages to stdout
         
     Returns:
         SyncResult with details of the sync operation
@@ -745,17 +755,21 @@ def sync_from_upstream(
     
     try:
         # Get default branches if not specified
-        print("Resolving branches...")
+        if verbose:
+            print("Resolving branches...")
         if not upstream_branch:
             upstream_branch = get_default_branch(upstream_repo, upstream_token, api_url)
-            print(f"  Upstream branch: {upstream_branch}")
+            if verbose:
+                print(f"  Upstream branch: {upstream_branch}")
         if not downstream_branch:
             downstream_branch = get_default_branch(downstream_repo, downstream_token, api_url)
-            print(f"  Downstream branch: {downstream_branch}")
+            if verbose:
+                print(f"  Downstream branch: {downstream_branch}")
         
         # Pre-sync validation (unless force_sync or dry_run)
         if not force_sync and not dry_run:
-            print("Running pre-sync validation...")
+            if verbose:
+                print("Running pre-sync validation...")
             validation = validate_pre_sync(
                 downstream_repo=downstream_repo,
                 upstream_repo=upstream_repo,
@@ -767,40 +781,50 @@ def sync_from_upstream(
             )
             if not validation.valid:
                 result.error = validation.summary()
-                print(f"  Validation failed: {result.error}")
+                if verbose:
+                    print(f"  Validation failed: {result.error}")
                 return result
-            print("  Validation passed")
-        elif force_sync:
+            if verbose:
+                print("  Validation passed")
+        elif force_sync and verbose:
             print("Skipping validation (force_sync=True)")
         
         # Get file trees
-        print("Fetching repository trees...")
+        if verbose:
+            print("Fetching repository trees...")
         upstream_files = get_repository_tree(
             upstream_repo, upstream_branch, upstream_token, api_url
         )
-        print(f"  Upstream: {len(upstream_files)} files")
+        if verbose:
+            print(f"  Upstream: {len(upstream_files)} files")
         downstream_files = get_repository_tree(
             downstream_repo, downstream_branch, downstream_token, api_url
         )
-        print(f"  Downstream: {len(downstream_files)} files")
+        if verbose:
+            print(f"  Downstream: {len(downstream_files)} files")
         
         # Filter to syncable files
         upstream_syncable = filter_syncable_files(upstream_files)
         downstream_syncable = filter_syncable_files(downstream_files)
-        print(f"  Syncable files - Upstream: {len(upstream_syncable)}, Downstream: {len(downstream_syncable)}")
+        if verbose:
+            print(f"  Syncable files - Upstream: {len(upstream_syncable)}, Downstream: {len(downstream_syncable)}")
         
         # Compare files
-        print("Comparing files...")
+        if verbose:
+            print("Comparing files...")
         changes = compare_files(upstream_syncable, downstream_syncable)
         result.changes = changes
-        print(f"  Found {len(changes)} changes")
+        if verbose:
+            print(f"  Found {len(changes)} changes")
         
         if not changes:
-            print("No changes detected")
+            if verbose:
+                print("No changes detected")
             return result
         
         if dry_run:
-            print("Dry run mode - not applying changes")
+            if verbose:
+                print("Dry run mode - not applying changes")
             return result
         
         # Create sync branch
@@ -808,7 +832,8 @@ def sync_from_upstream(
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         sync_branch = f"sync/upstream-{timestamp}"
         
-        print(f"Creating sync branch: {sync_branch}")
+        if verbose:
+            print(f"Creating sync branch: {sync_branch}")
         create_branch(
             downstream_repo,
             sync_branch,
@@ -817,10 +842,12 @@ def sync_from_upstream(
             api_url,
         )
         result.branch_name = sync_branch
-        print("  Branch created")
+        if verbose:
+            print("  Branch created")
         
         # Commit changes
-        print(f"Committing changes to {sync_branch}...")
+        if verbose:
+            print(f"Committing changes to {sync_branch}...")
         commit_files(
             downstream_repo,
             sync_branch,
@@ -830,11 +857,14 @@ def sync_from_upstream(
             downstream_token,
             upstream_token,
             api_url,
+            verbose,
         )
-        print("  Changes committed")
+        if verbose:
+            print("  Changes committed")
         
         # Create PR
-        print("Creating pull request...")
+        if verbose:
+            print("Creating pull request...")
         pr_number, pr_url = create_sync_pull_request(
             downstream_repo,
             sync_branch,
@@ -846,7 +876,8 @@ def sync_from_upstream(
         )
         result.pr_number = pr_number
         result.pr_url = pr_url
-        print(f"  PR created: #{pr_number}")
+        if verbose:
+            print(f"  PR created: #{pr_number}")
         
         # Update sync status tracking
         if track_status:

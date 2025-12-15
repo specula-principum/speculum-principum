@@ -130,6 +130,7 @@ def sync_upstream_cli(args: argparse.Namespace) -> int:
             upstream_branch=upstream_branch,
             dry_run=dry_run,
             force_sync=force_sync,
+            verbose=not args.json,
         )
         
         if args.json:
