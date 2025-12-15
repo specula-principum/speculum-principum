@@ -144,8 +144,8 @@ def setup_repo_cli(args: argparse.Namespace) -> int:
         else:
             validation_comment += "⚠️ **Some issues need attention:**\n\n"
             validation_comment += "### Critical Issues\n"
-            for issue in validation_result["issues"]:
-                validation_comment += f"- ❌ {issue}\n"
+            for validation_issue in validation_result["issues"]:
+                validation_comment += f"- ❌ {validation_issue}\n"
             validation_comment += "\n"
         
         if validation_result["warnings"]:
@@ -155,7 +155,7 @@ def setup_repo_cli(args: argparse.Namespace) -> int:
             validation_comment += "\n"
         
         validation_comment += "### Setup Checklist\n\n"
-        validation_comment += "- [ ] Configure `GH_TOKEN` secret with repo permissions\n"
+        validation_comment += "- [ ] Configure `GH_TOKEN` secret (Classic: `repo`+`workflow` | Fine-grained: Variables read permission)\n"
         validation_comment += "- [ ] Set `UPSTREAM_REPO` variable (e.g., `owner/template-repo`)\n"
         validation_comment += "- [ ] Set `SYNC_SIGNATURE_SECRET` for dispatch verification\n"
         validation_comment += "- [ ] Add `speculum-downstream` topic to repository\n"
@@ -180,11 +180,12 @@ def validate_setup(
     repo: str,
     token: str,
     api_url: str = "https://api.github.com",
+    quiet: bool = False,
 ) -> dict[str, any]:
     """Validate repository setup configuration.
     
     Checks:
-    - GH_TOKEN secret exists and has required scopes
+    - GH_TOKEN secret exists and has required scopes (Classic: repo+workflow, Fine-grained: Variables permission)
     - UPSTREAM_REPO variable is set
     - SYNC_SIGNATURE_SECRET exists
     - Repository has speculum-downstream topic
@@ -195,8 +196,9 @@ def validate_setup(
         repo: Repository in "owner/repo" format
         token: GitHub API token
         api_url: GitHub API base URL
+        quiet: If True, suppress all print output
         
-    Returns:
+        Returns:
         Dictionary with validation results: {
             "valid": bool,
             "issues": [list of critical issues],
@@ -206,26 +208,32 @@ def validate_setup(
     issues = []
     warnings = []
     
-    print("\n=== Setup Validation ====================\n")
+    if not quiet:
+        print("\n=== Setup Validation ====================\n")
     
     # Check 1: GH_TOKEN (we can only verify it exists since we're using it)
-    print("✓ GH_TOKEN secret exists")
+    if not quiet:
+        print("✓ GH_TOKEN secret exists")
     
     # Check 2: UPSTREAM_REPO variable
     try:
         upstream_repo = get_repository_variable(repo, "UPSTREAM_REPO", token, api_url)
         if not upstream_repo:
             issues.append("UPSTREAM_REPO variable not set")
-            print("❌ UPSTREAM_REPO variable not set")
+            if not quiet:
+                print("❌ UPSTREAM_REPO variable not set")
         else:
-            print(f"✓ UPSTREAM_REPO: {upstream_repo}")
+            if not quiet:
+                print(f"✓ UPSTREAM_REPO: {upstream_repo}")
     except Exception as e:
         issues.append(f"Could not verify UPSTREAM_REPO: {e}")
-        print(f"❌ Could not verify UPSTREAM_REPO: {e}")
+        if not quiet:
+            print(f"❌ Could not verify UPSTREAM_REPO: {e}")
     
     # Check 3: SYNC_SIGNATURE_SECRET (can't directly check secrets, but can document requirement)
     # This would need to be checked in the workflow itself
-    print("ℹ️  SYNC_SIGNATURE_SECRET should be configured (verified in workflow)")
+    if not quiet:
+        print("ℹ️  SYNC_SIGNATURE_SECRET should be configured (verified in workflow)")
     
     # Check 4: Repository is not a fork
     try:
@@ -233,26 +241,32 @@ def validate_setup(
         
         if repo_data.get("fork", False):
             issues.append("Repository is a fork (must be created from template)")
-            print("❌ Repository is a fork")
+            if not quiet:
+                print("❌ Repository is a fork")
         else:
-            print("✓ Repository is not a fork")
+            if not quiet:
+                print("✓ Repository is not a fork")
         
         # Check 5: Repository has speculum-downstream topic
         topics = repo_data.get("topics", [])
         if "speculum-downstream" not in topics:
             warnings.append("Repository missing speculum-downstream topic")
-            print("⚠️  Missing speculum-downstream topic")
+            if not quiet:
+                print("⚠️  Missing speculum-downstream topic")
         else:
-            print("✓ Repository has speculum-downstream topic")
+            if not quiet:
+                print("✓ Repository has speculum-downstream topic")
         
         # Check 6: Repository was created from template
         template_repo = repo_data.get("template_repository")
         if not template_repo:
             warnings.append("Repository not created from template")
-            print("⚠️  Not created from template")
+            if not quiet:
+                print("⚠️  Not created from template")
         else:
             template_name = template_repo.get("full_name")
-            print(f"✓ Created from template: {template_name}")
+            if not quiet:
+                print(f"✓ Created from template: {template_name}")
             
             # Verify template matches UPSTREAM_REPO
             try:
@@ -261,30 +275,34 @@ def validate_setup(
                     warnings.append(
                         f"Template ({template_name}) differs from UPSTREAM_REPO ({upstream_repo})"
                     )
-                    print(f"⚠️  Template mismatch")
+                    if not quiet:
+                        print(f"⚠️  Template mismatch")
             except:
                 pass
         
     except Exception as e:
         warnings.append(f"Could not verify repository details: {e}")
-        print(f"⚠️  Verification error: {e}")
+        if not quiet:
+            print(f"⚠️  Verification error: {e}")
     
-    print("\n=========================================\n")
+    if not quiet:
+        print("\n=========================================\n")
     
     # Summary
-    if issues:
-        print("\n🚨 Critical Issues Found:\n")
-        for issue in issues:
-            print(f"  ❌ {issue}")
-        print("\nPlease resolve these issues before syncing.")
-    
-    if warnings:
-        print("\n⚠️  Warnings:\n")
-        for warning in warnings:
-            print(f"  ⚠️  {warning}")
-    
-    if not issues and not warnings:
-        print("✅ All setup validation checks passed!")
+    if not quiet:
+        if issues:
+            print("\n🚨 Critical Issues Found:\n")
+            for issue in issues:
+                print(f"  ❌ {issue}")
+            print("\nPlease resolve these issues before syncing.")
+        
+        if warnings:
+            print("\n⚠️  Warnings:\n")
+            for warning in warnings:
+                print(f"  ⚠️  {warning}")
+        
+        if not issues and not warnings:
+            print("✅ All setup validation checks passed!")
     
     return {
         "valid": len(issues) == 0,
@@ -303,7 +321,7 @@ def validate_setup_cli(args: argparse.Namespace) -> int:
         return 1
     
     try:
-        result = validate_setup(repo, token)
+        result = validate_setup(repo, token, quiet=args.json)
         
         if args.json:
             print(json.dumps(result, indent=2))
