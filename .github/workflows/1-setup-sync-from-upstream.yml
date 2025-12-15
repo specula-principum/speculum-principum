@@ -46,10 +46,8 @@ jobs:
           echo "::error::This workflow cannot run on forked repositories"
           exit 1
 
-      - name: Verify dispatch signature
+      - name: Verify upstream repo matches (dispatch only)
         if: github.event_name == 'repository_dispatch'
-        env:
-          SYNC_SIGNATURE_SECRET: ${{ secrets.SYNC_SIGNATURE_SECRET }}
         run: |
           # Verify upstream repo matches allowed upstream
           PAYLOAD_UPSTREAM="${{ github.event.client_payload.upstream_repo }}"
@@ -64,7 +62,26 @@ jobs:
             echo "::error::Upstream repo mismatch: got $PAYLOAD_UPSTREAM, expected $ALLOWED_UPSTREAM"
             exit 1
           fi
-          
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify dispatch signature
+        if: github.event_name == 'repository_dispatch'
+        env:
+          SYNC_SIGNATURE_SECRET: ${{ secrets.SYNC_SIGNATURE_SECRET }}
+        run: |
           # Verify HMAC signature using CLI
           if [ -z "$SYNC_SIGNATURE_SECRET" ]; then
             echo "::error::SYNC_SIGNATURE_SECRET not configured"
@@ -82,20 +99,6 @@ jobs:
             --upstream-branch "${{ github.event.client_payload.upstream_branch }}" \
             --timestamp "${{ github.event.client_payload.timestamp }}" \
             --signature "$PAYLOAD_SIGNATURE"
-
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
 
       - name: Determine upstream repository
         id: upstream
@@ -197,10 +200,6 @@ jobs:
               exit 1
             fi
           fi
-          else:
-              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write('changes_count=0\n')
-          "
 
       - name: Create job summary
         run: |

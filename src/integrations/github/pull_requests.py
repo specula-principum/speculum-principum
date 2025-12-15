@@ -32,7 +32,8 @@ def fetch_pull_request(
     """
 
     normalized_repo = normalize_repository(repository)
-    endpoint = f"{api_url}/repos/{normalized_repo}/pulls/{pr_number}"
+    owner, name = normalized_repo
+    endpoint = f"{api_url}/repos/{owner}/{name}/pulls/{pr_number}"
 
     req = request.Request(endpoint)
     req.add_header("Accept", "application/vnd.github+json")
@@ -72,7 +73,8 @@ def fetch_pull_request_files(
     """
 
     normalized_repo = normalize_repository(repository)
-    endpoint = f"{api_url}/repos/{normalized_repo}/pulls/{pr_number}/files"
+    owner, name = normalized_repo
+    endpoint = f"{api_url}/repos/{owner}/{name}/pulls/{pr_number}/files"
 
     req = request.Request(endpoint)
     req.add_header("Accept", "application/vnd.github+json")

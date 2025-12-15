@@ -71,6 +71,175 @@ python -m main validate-setup --repo owner/repo
 # Returns: formatted validation output with emojis
 ```
 
+---
+
+### ⚠️ Important Update: Sync Workflow Step Ordering Fixed
+
+**Issue:** Downstream sync workflow failed with "No module named main" error during signature verification:
+```
+Run # Verify upstream repo matches allowed upstream
+/usr/bin/python: No module named main
+Error: Process completed with exit code 1.
+```
+
+**Root Cause:** The sync workflow was attempting to run `python -m main verify-dispatch` BEFORE checking out the repository code and installing dependencies. The workflow steps were in wrong order:
+1. Block forks ✓
+2. Verify dispatch signature ❌ (tried to run Python CLI without code)
+3. Checkout code
+4. Setup Python
+5. Install dependencies
+
+**Fix Applied:**
+- Reordered steps in [.github/workflows/1-setup-sync-from-upstream.yml](.github/workflows/1-setup-sync-from-upstream.yml)
+- Split verification into two steps:
+  1. "Verify upstream repo matches" - bash-only checks (no dependencies needed)
+  2. "Verify dispatch signature" - Python CLI verification (runs after checkout + dependencies)
+- New order:
+  1. Block forks ✓
+  2. Verify upstream repo matches (bash only) ✓
+  3. Checkout code ✓
+  4. Setup Python ✓
+  5. Install dependencies ✓
+  6. Verify dispatch signature (Python CLI) ✓
+
+**Impact:** Signature verification now works correctly in downstream repos receiving repository_dispatch events.
+
+---
+
+### ⚠️ Important Update: Malformed Bash Script Fixed
+
+**Issue:** Downstream sync workflow failed with jq parse error after successfully syncing:
+```
+jq: parse error: Invalid numeric literal at line 1, column 10
+```
+
+**Root Cause:** The "Run sync" step in the workflow had malformed Python code mixed into the bash script (lines 207-211). The script contained:
+```yaml
+else:
+    with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+        f.write('changes_count=0\n')
+"
+```
+This Python code was invalid in the bash context and caused the workflow to fail after the sync completed successfully.
+
+**Fix Applied:**
+- Removed the malformed Python code block from [.github/workflows/1-setup-sync-from-upstream.yml](.github/workflows/1-setup-sync-from-upstream.yml#L188-L202)
+- The bash script now properly ends after the `fi` statement that closes the JSON parsing logic
+- Workflow YAML syntax validated successfully
+
+**Impact:** Sync workflow now completes successfully after creating pull requests in downstream repositories.
+
+---
+
+### ⚠️ Important Update: JSON Output Mixed with Progress Messages
+
+**Issue:** Sync workflow continued to fail with jq parse error even after removing malformed Python code:
+```
+jq: parse error: Invalid numeric literal at line 1, column 10
+Error: Process completed with exit code 5.
+```
+
+**Root Cause:** The `sync-upstream` command was outputting progress messages ("Resolving branches...", "Fetching repository trees...", etc.) to stdout along with the JSON output. When redirected to a file with `> /tmp/sync_result.json`, the file contained:
+```
+Resolving branches...
+  Upstream branch: main
+...
+{
+  "changes_count": 1,
+  ...
+}
+```
+jq could not parse this mixed content as valid JSON.
+
+**Fix Applied:**
+- Added `verbose` parameter to `sync_from_upstream()` function in [src/integrations/github/sync.py](src/integrations/github/sync.py)
+- Added `verbose` parameter to `commit_files()` helper function
+- Wrapped all progress print statements with `if verbose:` checks (28 print statements total)
+- CLI handler in [src/cli/commands/sync.py](src/cli/commands/sync.py) now passes `verbose=not args.json`
+- When `--json` flag is used, all text output is suppressed, only JSON is printed
+- All 85 sync-related tests pass
+
+**Verification:**
+```bash
+# Clean JSON output
+python -m main sync-upstream --downstream-repo owner/downstream \
+  --upstream-repo owner/upstream --json | jq -r '.changes_count'
+# Returns: 1 (no mixed output)
+
+# Text output still works
+python -m main sync-upstream --downstream-repo owner/downstream \
+  --upstream-repo owner/upstream
+# Returns: formatted progress messages + summary
+```
+
+**Impact:** Sync workflow now outputs clean JSON parseable by jq, fixing the repository_dispatch workflow execution.
+
+---
+
+### ⚠️ Important Update: PR Validation Errors Fixed
+
+**Issue:** Auto-merge workflow failed on "Validate PR file scope" step with no error information:
+```
+Run python -m main validate-pr \
+Error: Process completed with exit code 1.
+```
+
+**Root Causes:**
+1. **URL Construction Bug:** The `fetch_pull_request_files()` function was incorrectly formatting the repository name in the API URL. It used `f"{api_url}/repos/{normalized_repo}/..."` where `normalized_repo` is a tuple `('owner', 'name')`, resulting in malformed URLs like `/repos/('owner', 'name')/...` with control characters.
+
+2. **Error Handling:** When exceptions occurred, the `validate-pr` command with `--json` flag would fail without outputting valid JSON, causing jq to fail silently.
+
+3. **Workflow Error Visibility:** The workflow wasn't displaying validation output or jq parsing errors, making debugging difficult.
+
+**Fixes Applied:**
+
+1. **Fixed URL Construction** in [src/integrations/github/pull_requests.py](src/integrations/github/pull_requests.py):
+   ```python
+   # Before
+   normalized_repo = normalize_repository(repository)
+   endpoint = f"{api_url}/repos/{normalized_repo}/pulls/{pr_number}/files"
+   
+   # After  
+   normalized_repo = normalize_repository(repository)
+   owner, name = normalized_repo
+   endpoint = f"{api_url}/repos/{owner}/{name}/pulls/{pr_number}/files"
+   ```
+   Applied to both `fetch_pull_request()` and `fetch_pull_request_files()`
+
+2. **Improved Error Handling** in [src/cli/commands/github.py](src/cli/commands/github.py):
+   - Always output valid JSON even when exceptions occur
+   - Separate error handling for authentication vs validation failures
+   - Include error messages in JSON response
+
+3. **Enhanced Workflow Debugging** in [.github/workflows/4-auto-merge-sync-prs.yml](.github/workflows/4-auto-merge-sync-prs.yml):
+   - Display validation JSON output before parsing
+   - Check if validation file exists and has content
+   - Show clear error messages for jq parsing failures
+   - Use `2>&1 || true` to capture all output including errors
+
+**Verification:**
+```bash
+# Command now works correctly
+python -m main validate-pr --repo owner/repo --pr 4 --json
+# Returns:
+{
+  "valid": true,
+  "reason": "All 1 file(s) within allowed scope",
+  "pr_number": 4
+}
+
+# Error handling also outputs valid JSON
+python -m main validate-pr --repo invalid --pr 999 --json
+# Returns:
+{
+  "valid": false,
+  "reason": "Validation error: ...",
+  "pr_number": 999
+}
+```
+
+**Impact:** PR validation now works correctly and provides clear error messages when validation fails.
+
 ### Prerequisites
 - [ ] Access to upstream repo (template repository)
 - [ ] Access to at least 2 downstream satellite repos
