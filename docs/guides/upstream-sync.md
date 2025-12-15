@@ -113,7 +113,7 @@ Complete the automated setup:
 After setup, verify your configuration:
 
 - ✅ Repository was created from template (not forked)
-- ✅ `GH_TOKEN` secret configured with repo + workflow permissions
+- ✅ `GH_TOKEN` secret configured with `repo` + `workflow` scopes (Classic) OR Variables permission (Fine-grained)
 - ✅ `SYNC_SIGNATURE_SECRET` secret configured (random 32+ char string)
 - ✅ `UPSTREAM_REPO` variable set to template repository
 - ✅ `speculum-downstream` topic added to repository
@@ -292,6 +292,7 @@ Update your `GH_TOKEN` secret with a PAT that has workflow permissions:
   - Contents: Read and write
   - Pull requests: Read and write
   - Workflows: Read and write ← **Critical for workflow files**
+  - Variables: Read-only ← **Required for reading repository variables**
   - Metadata: Read-only
 
 **Other checks:**
