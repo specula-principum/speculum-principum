@@ -103,15 +103,22 @@ jobs:
           echo "auto_merge=true" >> $GITHUB_OUTPUT
           echo "✅ All verification checks passed"
 
-      - name: Approve PR
+      - name: Approve PR (if possible)
         if: steps.verify.outputs.auto_merge == 'true'
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          python -m main approve-pr \
+          # Attempt to approve PR, but don't fail if user can't approve their own PR
+          if python -m main approve-pr \
             --repo "${{ github.repository }}" \
             --pr ${{ github.event.pull_request.number }} \
-            --body "✅ Automated approval: Upstream sync PR passed all validation checks"
+            --body "✅ Automated approval: Upstream sync PR passed all validation checks"; then
+            echo "✅ PR approved successfully"
+          else
+            echo "⚠️ Could not approve PR (may be self-approval or lacking permissions)"
+            echo "Auto-merge will proceed without explicit approval"
+          fi
 
       - name: Wait for PR to stabilize
         if: steps.verify.outputs.auto_merge == 'true'
