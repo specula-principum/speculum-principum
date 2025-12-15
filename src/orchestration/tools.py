@@ -1,4 +1,9 @@
-"""Tool registry for the Copilot agent runtime."""
+"""Tool registry for the Copilot agent runtime.
+
+This module provides a centralized registry for registering and executing
+tools available to the agent. Tools are validated against JSON schemas
+before execution to ensure parameter correctness.
+"""
 
 from __future__ import annotations
 
