@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Mapping
 
+from src.knowledge.storage import SourceEntry, SourceRegistry
 from src.orchestration.tools import ToolDefinition, ToolRegistry, ActionRisk
 
 def validate_url(args: Mapping[str, Any]) -> dict[str, Any]:
@@ -26,6 +28,15 @@ def validate_url(args: Mapping[str, Any]) -> dict[str, Any]:
         return {"valid": False, "error": str(e)}
 
 def configure_repository(args: Mapping[str, Any]) -> dict[str, Any]:
+    """Configure repository and register primary source.
+    
+    This function:
+    1. Writes the manifest.json configuration file
+    2. Registers the source_url as the primary source in the source registry
+    
+    The primary source is automatically set to 'active' status and does not
+    require an approval_issue since it comes from the manifest.
+    """
     source_url = args.get("source_url")
     topic = args.get("topic")
     frequency = args.get("frequency")
@@ -43,8 +54,93 @@ def configure_repository(args: Mapping[str, Any]) -> dict[str, Any]:
     
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
+    
+    # Register the primary source in the source registry
+    primary_source_registered = False
+    primary_source_error = None
+    
+    if source_url:
+        try:
+            from src import paths
+            registry = SourceRegistry(root=paths.get_knowledge_graph_root())
+            
+            # Check if source already exists
+            if not registry.source_exists(source_url):
+                now = datetime.now(timezone.utc)
+                
+                # Derive name from topic or URL
+                source_name = f"{topic} - Primary Source" if topic else "Primary Source"
+                
+                # Calculate credibility score based on domain
+                score = _calculate_primary_source_score(source_url)
+                is_official = _is_official_domain(source_url)
+                
+                source_entry = SourceEntry(
+                    url=source_url,
+                    name=source_name,
+                    source_type="primary",
+                    status="active",
+                    last_verified=now,
+                    added_at=now,
+                    added_by="system",
+                    approval_issue=None,  # Primary sources don't need approval
+                    credibility_score=score,
+                    is_official=is_official,
+                    requires_auth=False,
+                    discovered_from=None,
+                    parent_source_url=None,
+                    content_type="webpage",
+                    update_frequency=frequency,
+                    topics=[topic] if topic else [],
+                    notes="Primary source from manifest.json",
+                )
+                registry.save_source(source_entry)
+                primary_source_registered = True
+            else:
+                primary_source_registered = True  # Already exists
+        except Exception as e:
+            primary_source_error = str(e)
         
-    return {"success": True, "path": str(config_path)}
+    return {
+        "success": True,
+        "path": str(config_path),
+        "primary_source_registered": primary_source_registered,
+        "primary_source_error": primary_source_error,
+    }
+
+
+def _calculate_primary_source_score(url: str) -> float:
+    """Calculate credibility score for a primary source URL."""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        
+        # Government and education domains get high scores
+        if domain.endswith('.gov') or domain.endswith('.gov.uk'):
+            return 0.95
+        elif domain.endswith('.edu'):
+            return 0.90
+        elif domain.endswith('.org'):
+            return 0.80
+        else:
+            return 0.70  # Default for primary sources
+    except Exception:
+        return 0.70
+
+
+def _is_official_domain(url: str) -> bool:
+    """Determine if URL is from an official/authoritative domain."""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        return (
+            domain.endswith('.gov') or
+            domain.endswith('.gov.uk') or
+            domain.endswith('.edu') or
+            domain.endswith('.mil')
+        )
+    except Exception:
+        return False
 
 def clean_workspace(_: Mapping[str, Any]) -> dict[str, Any]:
     """Clean up workspace directories, preserving .gitkeep."""

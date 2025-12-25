@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -372,4 +373,214 @@ class ExtractedProfiles:
             extracted_at=extracted_at,
             metadata=payload.get("metadata", {}),
         )
+
+
+# =============================================================================
+# Source Registry
+# =============================================================================
+
+
+def _url_hash(url: str) -> str:
+    """Generate a consistent hash for a URL to use as filename."""
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass(slots=True)
+class SourceEntry:
+    """Represents an authoritative source in the registry."""
+
+    url: str  # Canonical URL
+    name: str  # Human-readable name
+    source_type: str  # "primary" | "derived" | "reference"
+    status: str  # "active" | "deprecated" | "pending_review"
+    last_verified: datetime  # Last successful access check
+    added_at: datetime  # When source was registered
+    added_by: str  # GitHub username or "system"
+    approval_issue: int | None  # Issue number that approved this source
+
+    # Credibility metadata
+    credibility_score: float  # 0.0-1.0, based on evaluation
+    is_official: bool  # Official/authoritative domain
+    requires_auth: bool  # Requires authentication to access
+
+    # Discovery metadata
+    discovered_from: str | None  # Checksum of document where discovered
+    parent_source_url: str | None  # URL of source that referenced this
+
+    # Content metadata
+    content_type: str  # "webpage" | "pdf" | "api" | "feed"
+    update_frequency: str | None  # "daily" | "weekly" | "monthly" | "unknown"
+    topics: List[str] = field(default_factory=list)
+    notes: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "url": self.url,
+            "name": self.name,
+            "source_type": self.source_type,
+            "status": self.status,
+            "last_verified": self.last_verified.isoformat(),
+            "added_at": self.added_at.isoformat(),
+            "added_by": self.added_by,
+            "approval_issue": self.approval_issue,
+            "credibility_score": self.credibility_score,
+            "is_official": self.is_official,
+            "requires_auth": self.requires_auth,
+            "discovered_from": self.discovered_from,
+            "parent_source_url": self.parent_source_url,
+            "content_type": self.content_type,
+            "update_frequency": self.update_frequency,
+            "topics": self.topics,
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "SourceEntry":
+        return cls(
+            url=payload["url"],
+            name=payload["name"],
+            source_type=payload["source_type"],
+            status=payload["status"],
+            last_verified=datetime.fromisoformat(payload["last_verified"]),
+            added_at=datetime.fromisoformat(payload["added_at"]),
+            added_by=payload["added_by"],
+            approval_issue=payload.get("approval_issue"),
+            credibility_score=payload.get("credibility_score", 0.0),
+            is_official=payload.get("is_official", False),
+            requires_auth=payload.get("requires_auth", False),
+            discovered_from=payload.get("discovered_from"),
+            parent_source_url=payload.get("parent_source_url"),
+            content_type=payload.get("content_type", "webpage"),
+            update_frequency=payload.get("update_frequency"),
+            topics=payload.get("topics", []),
+            notes=payload.get("notes", ""),
+        )
+
+    @property
+    def url_hash(self) -> str:
+        """Return the hash used for storage filename."""
+        return _url_hash(self.url)
+
+
+class SourceRegistry:
+    """Manages storage of authoritative sources."""
+
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = root or _DEFAULT_KB_ROOT
+        self.root = self.root if self.root.is_absolute() else self.root.resolve()
+        utils.ensure_directory(self.root)
+        self._sources_dir = self.root / "sources"
+        utils.ensure_directory(self._sources_dir)
+        self._registry_path = self._sources_dir / "registry.json"
+
+    def _get_source_path(self, url: str) -> Path:
+        """Get the path for an individual source entry."""
+        return self._sources_dir / f"{_url_hash(url)}.json"
+
+    def _load_registry_index(self) -> dict[str, str]:
+        """Load the registry index mapping URL hashes to URLs."""
+        if not self._registry_path.exists():
+            return {}
+        try:
+            data = json.loads(self._registry_path.read_text(encoding="utf-8"))
+            return data.get("sources", {})
+        except (json.JSONDecodeError, KeyError):
+            return {}
+
+    def _save_registry_index(self, index: dict[str, str]) -> None:
+        """Save the registry index."""
+        data = {
+            "version": 1,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "sources": index,
+        }
+        tmp_path = self._registry_path.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp_path.replace(self._registry_path)
+
+    def save_source(self, source: SourceEntry) -> None:
+        """Save a source entry to storage."""
+        path = self._get_source_path(source.url)
+
+        # Write atomic
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(source.to_dict(), indent=2), encoding="utf-8")
+        tmp_path.replace(path)
+
+        # Update registry index
+        index = self._load_registry_index()
+        index[source.url_hash] = source.url
+        self._save_registry_index(index)
+
+    def get_source(self, url: str) -> SourceEntry | None:
+        """Retrieve a source entry by URL."""
+        path = self._get_source_path(url)
+        if not path.exists():
+            return None
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return SourceEntry.from_dict(data)
+        except (json.JSONDecodeError, KeyError):
+            return None
+
+    def get_source_by_hash(self, url_hash: str) -> SourceEntry | None:
+        """Retrieve a source entry by its URL hash."""
+        path = self._sources_dir / f"{url_hash}.json"
+        if not path.exists():
+            return None
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return SourceEntry.from_dict(data)
+        except (json.JSONDecodeError, KeyError):
+            return None
+
+    def list_sources(
+        self,
+        status: str | None = None,
+        source_type: str | None = None,
+    ) -> List[SourceEntry]:
+        """List all sources, optionally filtered by status or type."""
+        sources: List[SourceEntry] = []
+        index = self._load_registry_index()
+
+        for url_hash in index:
+            source = self.get_source_by_hash(url_hash)
+            if source is None:
+                continue
+            if status is not None and source.status != status:
+                continue
+            if source_type is not None and source.source_type != source_type:
+                continue
+            sources.append(source)
+
+        return sources
+
+    def delete_source(self, url: str) -> bool:
+        """Delete a source entry. Returns True if deleted, False if not found."""
+        path = self._get_source_path(url)
+        url_hash = _url_hash(url)
+
+        if not path.exists():
+            return False
+
+        path.unlink()
+
+        # Update registry index
+        index = self._load_registry_index()
+        if url_hash in index:
+            del index[url_hash]
+            self._save_registry_index(index)
+
+        return True
+
+    def source_exists(self, url: str) -> bool:
+        """Check if a source is already registered."""
+        return self._get_source_path(url).exists()
+
+    def get_all_urls(self) -> List[str]:
+        """Get all registered source URLs."""
+        index = self._load_registry_index()
+        return list(index.values())
 
