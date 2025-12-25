@@ -353,8 +353,7 @@ class TestCandidateFiltering:
 
         assert len(filtered) == 2
         domains = {u.domain for u in filtered}
-        assert "example.gov" in domains
-        assert "other.edu" in domains
+        assert domains == {"example.gov", "other.edu"}
 
     def test_normalizes_urls_for_comparison(
         self,
