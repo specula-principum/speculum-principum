@@ -503,28 +503,24 @@ class TestCredibilityScoring:
 class TestExcludedDomains:
     """Tests for excluded domain list."""
 
-    def test_twitter_excluded(self) -> None:
-        """Twitter should be in excluded domains."""
-        assert "twitter.com" in _EXCLUDED_DOMAINS
-        assert "x.com" in _EXCLUDED_DOMAINS
+    def test_social_platforms_in_exclusion_list(self) -> None:
+        """Social media platforms should be in excluded domains."""
+        # Verify exclusion list contains expected social platforms
+        exclusion_set = set(_EXCLUDED_DOMAINS)
+        social_domains = {"twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com", "youtube.com"}
+        assert social_domains.issubset(exclusion_set)
 
-    def test_social_media_excluded(self) -> None:
-        """Major social media should be excluded."""
-        assert "facebook.com" in _EXCLUDED_DOMAINS
-        assert "instagram.com" in _EXCLUDED_DOMAINS
-        assert "linkedin.com" in _EXCLUDED_DOMAINS
-        assert "youtube.com" in _EXCLUDED_DOMAINS
+    def test_url_shorteners_in_exclusion_list(self) -> None:
+        """URL shorteners should be in excluded domains."""
+        exclusion_set = set(_EXCLUDED_DOMAINS)
+        shortener_domains = {"bit.ly", "t.co", "tinyurl.com"}
+        assert shortener_domains.issubset(exclusion_set)
 
-    def test_url_shorteners_excluded(self) -> None:
-        """URL shorteners should be excluded."""
-        assert "bit.ly" in _EXCLUDED_DOMAINS
-        assert "t.co" in _EXCLUDED_DOMAINS
-        assert "tinyurl.com" in _EXCLUDED_DOMAINS
-
-    def test_code_hosts_excluded(self) -> None:
-        """Code hosting platforms should be excluded."""
-        assert "github.com" in _EXCLUDED_DOMAINS
-        assert "gitlab.com" in _EXCLUDED_DOMAINS
+    def test_code_hosts_in_exclusion_list(self) -> None:
+        """Code hosting platforms should be in excluded domains."""
+        exclusion_set = set(_EXCLUDED_DOMAINS)
+        code_domains = {"github.com", "gitlab.com"}
+        assert code_domains.issubset(exclusion_set)
 
 
 # =============================================================================
