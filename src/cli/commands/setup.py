@@ -17,6 +17,7 @@ from src.integrations.github.issues import (
     GitHubIssueError,
 )
 from src.integrations.github.sync import get_repository_variable
+from src.integrations.github import discussions as github_discussions
 
 SETUP_ISSUE_TITLE = "Project Configuration & Setup"
 SETUP_ISSUE_BODY = (
@@ -284,6 +285,29 @@ def validate_setup(
         warnings.append(f"Could not verify repository details: {e}")
         if not quiet:
             print(f"⚠️  Verification error: {e}")
+    
+    # Check 7: Sources discussion category exists (required for source curation)
+    try:
+        sources_category = github_discussions.get_category_by_name(
+            token=token,
+            repository=repo,
+            category_name="Sources",
+        )
+        if sources_category:
+            if not quiet:
+                print(f"✓ 'Sources' discussion category exists")
+        else:
+            warnings.append(
+                "'Sources' discussion category not found. "
+                "Create it in repository Settings > Discussions to enable source curation."
+            )
+            if not quiet:
+                print("⚠️  'Sources' discussion category not found")
+    except Exception as e:
+        # Discussions may not be enabled
+        warnings.append(f"Could not check discussion categories: {e}")
+        if not quiet:
+            print(f"⚠️  Could not check discussion categories: {e}")
     
     if not quiet:
         print("\n=========================================\n")
