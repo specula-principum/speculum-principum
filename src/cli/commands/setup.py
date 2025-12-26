@@ -286,23 +286,37 @@ def validate_setup(
         if not quiet:
             print(f"⚠️  Verification error: {e}")
     
-    # Check 7: Sources discussion category exists (required for source curation)
+    # Check 7: Required discussion categories exist
+    # - Sources: Required for source curation workflow
+    # - People: Required for syncing Person entities from knowledge graph
+    # - Organizations: Required for syncing Organization entities from knowledge graph
+    required_categories = [
+        ("Sources", "source curation"),
+        ("People", "Person entity sync"),
+        ("Organizations", "Organization entity sync"),
+    ]
+    missing_categories = []
+    
     try:
-        sources_category = github_discussions.get_category_by_name(
-            token=token,
-            repository=repo,
-            category_name="Sources",
-        )
-        if sources_category:
-            if not quiet:
-                print(f"✓ 'Sources' discussion category exists")
-        else:
-            warnings.append(
-                "'Sources' discussion category not found. "
-                "Create it in repository Settings > Discussions to enable source curation."
+        for category_name, purpose in required_categories:
+            category = github_discussions.get_category_by_name(
+                token=token,
+                repository=repo,
+                category_name=category_name,
             )
-            if not quiet:
-                print("⚠️  'Sources' discussion category not found")
+            if category:
+                if not quiet:
+                    print(f"✓ '{category_name}' discussion category exists")
+            else:
+                missing_categories.append(category_name)
+                if not quiet:
+                    print(f"⚠️  '{category_name}' discussion category not found")
+        
+        if missing_categories:
+            warnings.append(
+                f"Missing discussion categories: {', '.join(missing_categories)}. "
+                "Create them in repository Settings > Discussions to enable full functionality."
+            )
     except Exception as e:
         # Discussions may not be enabled
         warnings.append(f"Could not check discussion categories: {e}")
