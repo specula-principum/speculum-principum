@@ -95,7 +95,8 @@ class TestConfigureRepository:
         assert source.is_official is True
         assert source.credibility_score == 0.95
         assert source.added_by == "system"
-        assert source.approval_issue is None
+        assert source.proposal_discussion is None
+        assert source.implementation_issue is None
         assert source.notes == "Primary source from manifest.json"
 
     def test_does_not_duplicate_existing_source(self, temp_workspace: Path) -> None:
@@ -114,7 +115,8 @@ class TestConfigureRepository:
             last_verified=datetime(2025, 12, 1, tzinfo=timezone.utc),
             added_at=datetime(2025, 12, 1, tzinfo=timezone.utc),
             added_by="test",
-            approval_issue=None,
+            proposal_discussion=None,
+            implementation_issue=None,
             credibility_score=0.9,
             is_official=True,
             requires_auth=False,

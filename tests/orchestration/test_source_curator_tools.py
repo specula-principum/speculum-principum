@@ -46,7 +46,8 @@ def sample_source(temp_registry: SourceRegistry) -> SourceEntry:
         last_verified=datetime(2025, 12, 24, 10, 0, 0, tzinfo=timezone.utc),
         added_at=datetime(2025, 12, 20, 8, 0, 0, tzinfo=timezone.utc),
         added_by="system",
-        approval_issue=None,
+        proposal_discussion=None,
+        implementation_issue=None,
         credibility_score=0.95,
         is_official=True,
         requires_auth=False,
@@ -82,9 +83,13 @@ class TestToolRegistration:
             "discover_sources",
             "register_source",
             "update_source_status",
-            "propose_source",
+            "propose_source_discussion",
+            "assess_source_proposal",
+            "create_source_implementation_issue",
             "process_source_approval",
-            "sync_source_discussion",
+            "process_source_rejection",
+            "implement_approved_source",
+            "sync_source_discussion",  # Deprecated but still registered
         ]
 
         for tool_name in expected_tools:
@@ -115,7 +120,10 @@ class TestToolRegistration:
         review_tools = [
             "register_source",
             "update_source_status",
-            "propose_source",
+            "propose_source_discussion",
+            "assess_source_proposal",
+            "create_source_implementation_issue",
+            "process_source_rejection",
             "sync_source_discussion",
         ]
 
@@ -306,7 +314,7 @@ class TestRegisterSource:
         assert source.status == "active"
 
     def test_derived_source_requires_approval(self, tmp_path: Path) -> None:
-        """Derived sources should require approval_issue."""
+        """Derived sources should require implementation_issue."""
         result = _register_source_handler({
             "url": "https://example.com/derived",
             "name": "Derived Source",
@@ -315,15 +323,15 @@ class TestRegisterSource:
         })
 
         assert result.success is False
-        assert "approval_issue" in result.error.lower()
+        assert "implementation_issue" in result.error.lower()
 
     def test_derived_source_with_approval(self, tmp_path: Path) -> None:
-        """Derived sources with approval_issue should succeed."""
+        """Derived sources with implementation_issue should succeed."""
         result = _register_source_handler({
             "url": "https://example.com/derived",
             "name": "Derived Source",
             "source_type": "derived",
-            "approval_issue": 42,
+            "implementation_issue": 42,
             "kb_root": str(tmp_path),
         })
 
@@ -334,7 +342,7 @@ class TestRegisterSource:
         registry = SourceRegistry(root=tmp_path)
         source = registry.get_source("https://example.com/derived")
         assert source.status == "pending_review"
-        assert source.approval_issue == 42
+        assert source.implementation_issue == 42
 
     def test_prevents_duplicate_registration(
         self,
@@ -526,99 +534,153 @@ class TestDiscoverSources:
 # =============================================================================
 
 
-class TestProposeSource:
-    """Tests for propose_source tool handler."""
+class TestProposeSourceDiscussion:
+    """Tests for propose_source_discussion tool handler."""
 
-    @patch("src.orchestration.toolkit.source_curator.github_issues")
-    def test_creates_proposal_issue(self, mock_issues: MagicMock) -> None:
-        """Should create a GitHub issue with source proposal."""
-        from src.orchestration.toolkit.source_curator import _propose_source_handler
+    @patch("src.orchestration.toolkit.source_curator.github_discussions")
+    def test_creates_proposal_discussion(self, mock_discussions: MagicMock) -> None:
+        """Should create a GitHub Discussion with source proposal."""
+        from src.orchestration.toolkit.source_curator import _propose_source_discussion_handler
         
-        mock_issues.resolve_repository.return_value = "owner/repo"
-        mock_issues.resolve_token.return_value = "test-token"
+        # Use a simple object instead of MagicMock for category (name is reserved in MagicMock)
+        class MockCategory:
+            id = "cat-123"
+            name = "Sources"
         
-        # Mock successful issue creation
-        mock_outcome = MagicMock()
-        mock_outcome.number = 42
-        mock_outcome.html_url = "https://github.com/owner/repo/issues/42"
-        mock_issues.create_issue.return_value = mock_outcome
+        mock_discussions.list_discussion_categories.return_value = [MockCategory()]
+        
+        # Mock successful discussion creation
+        mock_discussion = MagicMock()
+        mock_discussion.number = 10
+        mock_discussion.id = "D_kwDOTest"
+        mock_discussion.url = "https://github.com/owner/repo/discussions/10"
+        mock_discussions.create_discussion.return_value = mock_discussion
 
-        result = _propose_source_handler({
+        result = _propose_source_discussion_handler({
             "url": "https://example.gov/data",
             "name": "Example Government Data",
             "discovered_from": "abc123",
             "context_snippet": "Found at https://example.gov/data in doc",
+            "repository": "owner/repo",
+            "token": "test-token",
         })
 
         assert result.success is True
-        assert result.output["issue_number"] == 42
+        assert result.output["discussion_number"] == 10
+        assert result.output["discussion_id"] == "D_kwDOTest"
         assert result.output["url"] == "https://example.gov/data"
-        assert result.output["domain_type"] == "government"
-        assert result.output["credibility_score"] > 0
+        assert result.output["name"] == "Example Government Data"
 
-        # Verify create_issue was called with correct params
-        mock_issues.create_issue.assert_called_once()
-        call_kwargs = mock_issues.create_issue.call_args.kwargs
-        assert call_kwargs["labels"] == ["source-proposal"]
+        # Verify create_discussion was called
+        mock_discussions.create_discussion.assert_called_once()
+        call_kwargs = mock_discussions.create_discussion.call_args.kwargs
+        assert call_kwargs["category_id"] == "cat-123"
         assert "Source Proposal: Example Government Data" == call_kwargs["title"]
 
-    @patch("src.orchestration.toolkit.source_curator.github_issues")
-    def test_handles_api_error(self, mock_issues: MagicMock) -> None:
-        """Should handle GitHub API errors gracefully."""
-        from src.orchestration.toolkit.source_curator import _propose_source_handler
+    @patch("src.orchestration.toolkit.source_curator.github_discussions")
+    def test_handles_missing_category(self, mock_discussions: MagicMock) -> None:
+        """Should error if Sources category not found."""
+        from src.orchestration.toolkit.source_curator import _propose_source_discussion_handler
         
-        mock_issues.resolve_repository.return_value = "owner/repo"
-        mock_issues.resolve_token.return_value = "test-token"
-        mock_issues.GitHubIssueError = github_issues.GitHubIssueError
-        mock_issues.create_issue.side_effect = github_issues.GitHubIssueError("API error")
+        mock_discussions.list_discussion_categories.return_value = [
+            MagicMock(id="cat-456", name="General"),
+        ]
 
-        result = _propose_source_handler({
+        result = _propose_source_discussion_handler({
             "url": "https://example.gov/data",
             "name": "Test Source",
+            "repository": "owner/repo",
+            "token": "test-token",
         })
 
         assert result.success is False
-        assert "API error" in result.error
+        assert "Sources" in result.error
+        assert "not found" in result.error
 
 
-# =============================================================================
-# process_source_approval Tests
-# =============================================================================
+class TestAssessSourceProposal:
+    """Tests for assess_source_proposal tool handler."""
 
-
-class TestProcessSourceApproval:
-    """Tests for process_source_approval tool handler."""
-
-    @patch("src.orchestration.toolkit.source_curator.github_issues")
-    def test_approves_and_registers_source(
-        self,
-        mock_issues: MagicMock,
-        temp_registry: SourceRegistry,
-    ) -> None:
-        """Should register source and close issue on approval."""
-        from src.orchestration.toolkit.source_curator import _process_source_approval_handler
+    @patch("src.orchestration.toolkit.source_curator.requests")
+    @patch("src.orchestration.toolkit.source_curator.github_discussions")
+    def test_posts_assessment_reply(self, mock_discussions: MagicMock, mock_requests: MagicMock) -> None:
+        """Should post credibility assessment as Discussion reply."""
+        from src.orchestration.toolkit.source_curator import _assess_source_proposal_handler
         
-        mock_issues.resolve_repository.return_value = "owner/repo"
-        mock_issues.resolve_token.return_value = "test-token"
+        # Mock discussion lookup
+        mock_discussion = MagicMock()
+        mock_discussion.id = "D_kwDOTest"
+        mock_discussions.get_discussion.return_value = mock_discussion
+        
+        # Mock comment creation
+        mock_comment = MagicMock()
+        mock_comment.id = "DC_kwDOTest"
+        mock_discussions.add_discussion_comment.return_value = mock_comment
+        
+        # Mock HTTP request for accessibility check
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"Content-Type": "text/html"}
+        mock_requests.head.return_value = mock_response
 
-        result = _process_source_approval_handler({
-            "issue_number": 42,
-            "command": "approve",
-            "source_url": "https://newexample.gov/approved",
-            "source_name": "Approved Source",
-            "comment_author": "testuser",
-            "kb_root": str(temp_registry.root),
+        result = _assess_source_proposal_handler({
+            "discussion_number": 10,
+            "source_url": "https://example.gov/data",
+            "repository": "owner/repo",
+            "token": "test-token",
         })
 
         assert result.success is True
-        assert result.output["action"] == "approved"
+        assert result.output["discussion_number"] == 10
+        assert result.output["comment_id"] == "DC_kwDOTest"
+        assert result.output["credibility_score"] > 0
+        assert result.output["domain_type"] == "government"
+        assert result.output["accessible"] is True
+
+        # Verify comment was posted
+        mock_discussions.add_discussion_comment.assert_called_once()
+
+
+class TestImplementApprovedSource:
+    """Tests for implement_approved_source tool handler."""
+
+    @patch("src.orchestration.toolkit.source_curator.github_discussions")
+    @patch("src.orchestration.toolkit.source_curator.github_issues")
+    def test_registers_source_and_closes_issue(
+        self, mock_issues: MagicMock, mock_discussions: MagicMock, temp_registry: SourceRegistry
+    ) -> None:
+        """Should register source and close implementation Issue."""
+        from src.orchestration.toolkit.source_curator import _implement_approved_source_handler
+        
+        mock_issues.resolve_repository.return_value = "owner/repo"
+        mock_issues.resolve_token.return_value = "test-token"
+        
+        mock_discussion = MagicMock()
+        mock_discussion.id = "D_kwDOTest"
+        mock_discussions.get_discussion.return_value = mock_discussion
+
+        result = _implement_approved_source_handler({
+            "issue_number": 42,
+            "discussion_number": 10,
+            "source_url": "https://newexample.gov/approved",
+            "source_name": "New Approved Source",
+            "approved_by": "testuser",
+            "kb_root": str(temp_registry.root),
+            "repository": "owner/repo",
+            "token": "test-token",
+        })
+
+        assert result.success is True
+        assert result.output["action"] == "implemented"
         assert result.output["registered"] is True
         assert result.output["issue_closed"] is True
+        assert result.output["discussion_number"] == 10
 
-        # Verify source was registered
+        # Verify source was registered with correct fields
         source = temp_registry.get_source("https://newexample.gov/approved")
         assert source is not None
-        assert source.approval_issue == 42
+        assert source.proposal_discussion == 10
+        assert source.implementation_issue == 42
         assert source.added_by == "testuser"
         assert source.source_type == "derived"
         assert source.status == "active"
@@ -627,52 +689,99 @@ class TestProcessSourceApproval:
         mock_issues.post_comment.assert_called_once()
         mock_issues.update_issue.assert_called_once()
 
-    @patch("src.orchestration.toolkit.source_curator.github_issues")
-    def test_rejects_source(self, mock_issues: MagicMock, temp_registry: SourceRegistry) -> None:
-        """Should close issue with rejection reason."""
-        from src.orchestration.toolkit.source_curator import _process_source_approval_handler
-        
-        mock_issues.resolve_repository.return_value = "owner/repo"
-        mock_issues.resolve_token.return_value = "test-token"
 
-        result = _process_source_approval_handler({
-            "issue_number": 42,
-            "command": "reject",
-            "source_url": "https://spam.com/bad",
-            "source_name": "Bad Source",
+# Keep legacy test for backward compatibility
+class TestProcessSourceApproval:
+    """Tests for process_source_approval tool handler (Discussion-first workflow)."""
+
+    @patch("src.orchestration.toolkit.source_curator.github_discussions")
+    @patch("src.orchestration.toolkit.source_curator.github_issues")
+    def test_approves_source_creates_issue(
+        self,
+        mock_issues: MagicMock,
+        mock_discussions: MagicMock,
+        temp_registry: SourceRegistry,
+    ) -> None:
+        """Should create implementation Issue when source is approved via Discussion."""
+        from src.orchestration.toolkit.source_curator import _process_discussion_approval_handler
+        
+        # Mock discussion lookup
+        mock_discussion = MagicMock()
+        mock_discussion.id = "D_kwDOTest"
+        mock_discussions.get_discussion.return_value = mock_discussion
+        
+        # Mock issue creation
+        mock_outcome = MagicMock()
+        mock_outcome.number = 42
+        mock_outcome.html_url = "https://github.com/owner/repo/issues/42"
+        mock_issues.create_issue.return_value = mock_outcome
+
+        result = _process_discussion_approval_handler({
+            "discussion_number": 10,
+            "source_url": "https://newexample.gov/approved",
+            "source_name": "Approved Source",
             "comment_author": "testuser",
-            "rejection_reason": "Not authoritative",
             "kb_root": str(temp_registry.root),
+            "repository": "owner/repo",
+            "token": "test-token",
+        })
+
+        assert result.success is True
+        assert result.output["action"] == "approved"
+        assert result.output["discussion_number"] == 10
+        assert result.output["issue_number"] == 42
+
+        # Verify issue was created with correct label
+        mock_issues.create_issue.assert_called_once()
+        call_kwargs = mock_issues.create_issue.call_args.kwargs
+        assert "source-approved" in call_kwargs["labels"]
+
+    @patch("src.orchestration.toolkit.source_curator.github_discussions")
+    def test_rejects_source(self, mock_discussions: MagicMock, temp_registry: SourceRegistry) -> None:
+        """Should post rejection comment to Discussion."""
+        from src.orchestration.toolkit.source_curator import _process_source_rejection_handler
+        
+        mock_discussion = MagicMock()
+        mock_discussion.id = "D_kwDOTest"
+        mock_discussions.get_discussion.return_value = mock_discussion
+
+        result = _process_source_rejection_handler({
+            "discussion_number": 10,
+            "source_url": "https://spam.com/bad",
+            "rejection_reason": "Not authoritative",
+            "comment_author": "testuser",
+            "repository": "owner/repo",
+            "token": "test-token",
         })
 
         assert result.success is True
         assert result.output["action"] == "rejected"
         assert result.output["reason"] == "Not authoritative"
-        assert result.output["issue_closed"] is True
+        assert result.output["discussion_number"] == 10
 
         # Verify source was NOT registered
         source = temp_registry.get_source("https://spam.com/bad")
         assert source is None
 
+    @patch("src.orchestration.toolkit.source_curator.github_discussions")
     @patch("src.orchestration.toolkit.source_curator.github_issues")
     def test_prevents_duplicate_approval(
         self,
         mock_issues: MagicMock,
+        mock_discussions: MagicMock,
         sample_source: SourceEntry,
         temp_registry: SourceRegistry,
     ) -> None:
         """Should reject approval of already-registered source."""
-        from src.orchestration.toolkit.source_curator import _process_source_approval_handler
-        
-        mock_issues.resolve_repository.return_value = "owner/repo"
-        mock_issues.resolve_token.return_value = "test-token"
+        from src.orchestration.toolkit.source_curator import _process_discussion_approval_handler
 
-        result = _process_source_approval_handler({
-            "issue_number": 99,
-            "command": "approve",
+        result = _process_discussion_approval_handler({
+            "discussion_number": 10,
             "source_url": sample_source.url,
             "source_name": sample_source.name,
             "kb_root": str(temp_registry.root),
+            "repository": "owner/repo",
+            "token": "test-token",
         })
 
         assert result.success is False

@@ -35,7 +35,7 @@ def configure_repository(args: Mapping[str, Any]) -> dict[str, Any]:
     2. Registers the source_url as the primary source in the source registry
     
     The primary source is automatically set to 'active' status and does not
-    require an approval_issue since it comes from the manifest.
+    require a proposal_discussion or implementation_issue since it comes from the manifest.
     """
     source_url = args.get("source_url")
     topic = args.get("topic")
@@ -83,7 +83,8 @@ def configure_repository(args: Mapping[str, Any]) -> dict[str, Any]:
                     last_verified=now,
                     added_at=now,
                     added_by="system",
-                    approval_issue=None,  # Primary sources don't need approval
+                    proposal_discussion=None,  # Primary sources don't need approval
+                    implementation_issue=None,  # Primary sources don't need approval
                     credibility_score=score,
                     is_official=is_official,
                     requires_auth=False,

@@ -8,9 +8,17 @@ Use this prompt to continue implementation work on the Source Curator Agent.
 
 You are implementing the **Source Curator Agent** for the speculum-principum research platform. Your work is guided by the detailed plan in [PLAN.md](PLAN.md).
 
+### ⚠️ REFACTORING IN PROGRESS
+
+The approval workflow has been restructured to use a **Discussions-first** approach:
+- **OLD**: Issues for proposals → agent assesses → `/approve-source` → register
+- **NEW**: Discussions for proposals → agent assesses → `/approve-source` → Issue created → register
+
+See the "Approval Workflow (Discussions-First)" section in PLAN.md for the full diagram.
+
 ### Before Starting Work
 
-1. **Read the current plan**: Review `PLAN.md` to understand the full scope
+1. **Read the current plan**: Review `PLAN.md` to understand the Discussions-first workflow
 2. **Check progress**: Look at the Progress Tracker section below to see what's done
 3. **Identify next task**: Pick the next uncompleted item in sequence
 4. **Update status**: Mark the task as 🔄 In Progress before starting
@@ -32,68 +40,69 @@ You are implementing the **Source Curator Agent** for the speculum-principum res
 
 ## Progress Tracker
 
-### Phase 1: Storage Layer
+### Prior Implementation (Completed Before Refactor)
 | Task | Status | Notes |
 |------|--------|-------|
-| 1.1 Add `SourceEntry` dataclass to `storage.py` | ✅ Complete | 2025-12-24 |
-| 1.2 Add `SourceRegistry` storage class | ✅ Complete | 2025-12-24 |
-| 1.3 Create `knowledge-graph/sources/` directory structure | ✅ Complete | Created automatically by SourceRegistry |
-| 1.4 Write unit tests for serialization | ✅ Complete | 23 tests in test_source_storage.py |
+| `SourceEntry` dataclass | ✅ Complete | 2025-12-24 - Needs field updates |
+| `SourceRegistry` storage class | ✅ Complete | 2025-12-24 |
+| `SourceDiscoverer` class | ✅ Complete | 2025-12-24 |
+| CLI commands (discover-sources, list-sources) | ✅ Complete | 2025-12-24 - Needs output updates |
+| Basic orchestration tools | ✅ Complete | 2025-12-24 - Needs refactoring |
+| Unit tests | ✅ Complete | 2025-12-24 - Needs updates |
 
-### Phase 2: Source Discovery
-| Task | Status | Notes |
-|------|--------|-------|
-| 2.1 Create `src/knowledge/source_discovery.py` | ✅ Complete | 2025-12-24 |
-| 2.2 Implement `SourceDiscoverer.extract_urls()` | ✅ Complete | Supports markdown links, angle brackets, bare URLs |
-| 2.3 Implement `SourceDiscoverer.filter_candidates()` | ✅ Complete | Excludes social media, shorteners, registered |
-| 2.4 Implement `SourceDiscoverer.score_candidate()` | ✅ Complete | Scores based on domain type, HTTPS |
-| 2.5 Write unit tests for URL extraction | ✅ Complete | 35 tests in test_source_discovery.py |
-| 2.6 Write unit tests for scoring | ✅ Complete | Included in test_source_discovery.py |
+---
 
-### Phase 3: CLI Commands
+### Phase 1: Refactor Storage Layer
 | Task | Status | Notes |
 |------|--------|-------|
-| 3.1 Create `src/cli/commands/sources.py` | ✅ Complete | 2025-12-24 |
-| 3.2 Implement `discover-sources` command | ✅ Complete | Supports --dry-run, --limit, --domain-filter |
-| 3.3 Implement `list-sources` command | ✅ Complete | Supports --status, --type, --json filters |
-| 3.4 Register commands in main CLI | ✅ Complete | Added to main.py |
-| 3.5 Write CLI integration tests | ⬜ Not Started | Deferred - manual testing complete |
+| 1.1 Rename `approval_issue` → `implementation_issue` in SourceEntry | ✅ Complete | 2025-12-25 |
+| 1.2 Add `proposal_discussion` field to SourceEntry | ✅ Complete | 2025-12-25 |
+| 1.3 Update `to_dict()` / `from_dict()` methods | ✅ Complete | 2025-12-25 - Added backward compat for legacy field |
+| 1.4 Update serialization tests | ✅ Complete | 2025-12-25 - Added legacy migration tests |
+| 1.5 Migrate any existing source entries (if applicable) | ✅ Complete | 2025-12-25 - Auto-migration via from_dict() |
 
-### Phase 4: Orchestration Tools
+### Phase 2: Refactor Orchestration Tools
 | Task | Status | Notes |
 |------|--------|-------|
-| 4.1 Create `src/orchestration/toolkit/source_curator.py` | ✅ Complete | 2025-12-24 |
-| 4.2 Implement `register_source` tool | ✅ Complete | REVIEW risk, requires approval for derived |
-| 4.3 Implement `get_source` / `list_sources` tools | ✅ Complete | SAFE risk |
-| 4.4 Implement `verify_source_accessibility` tool | ✅ Complete | HTTP HEAD/GET requests |
-| 4.5 Implement `calculate_credibility_score` tool | ✅ Complete | Based on domain type |
-| 4.6 Implement `propose_source` tool | ✅ Complete | 2025-12-24 - Creates Issues with credibility assessment |
-| 4.7 Implement `process_source_approval` tool | ✅ Complete | 2025-12-24 - DESTRUCTIVE risk, handles approve/reject |
-| 4.8 Implement `discover_sources` tool | ✅ Complete | Uses SourceDiscoverer |
-| 4.9 Implement `sync_source_discussion` tool | ✅ Complete | 2025-12-24 - Creates/updates Discussions |
-| 4.10 Write tool registration function | ✅ Complete | register_source_curator_tools() |
-| 4.11 Write orchestration tool tests | ✅ Complete | 36 tests in test_source_curator_tools.py |
+| 2.1 Rename `propose_source` → `propose_source_discussion` | ✅ Complete | 2025-12-25 |
+| 2.2 Update proposal tool to create Discussion | ✅ Complete | 2025-12-25 |
+| 2.3 Add `assess_source_proposal` tool | ✅ Complete | 2025-12-25 - Posts credibility reply |
+| 2.4 Add `create_source_implementation_issue` tool | ✅ Complete | 2025-12-25 - Creates Issue w/ label + assignment |
+| 2.5 Split `process_source_approval` for Discussion context | ✅ Complete | 2025-12-25 - Now _process_discussion_approval_handler |
+| 2.6 Add `process_source_rejection` tool | ✅ Complete | 2025-12-25 |
+| 2.7 Add `implement_approved_source` tool | ✅ Complete | 2025-12-25 - Tracks both discussion + issue |
+| 2.8 Deprecate `sync_source_discussion` | ✅ Complete | 2025-12-25 - Marked deprecated, still registered |
+| 2.9 Update tool tests | ✅ Complete | 2025-12-25 - 63 tests passing |
 
-### Phase 5: Mission Configuration
+### Phase 3: New Mission Configurations
 | Task | Status | Notes |
 |------|--------|-------|
-| 5.1 Create `config/missions/curate_sources.yaml` | ✅ Complete | 2025-12-24 - Updated with new tools |
-| 5.2 Create `config/missions/discover_sources.yaml` | ⬜ Not Started | May not be needed - CLI serves this purpose |
-| 5.3 Test mission execution | ⬜ Not Started | Requires GitHub integration |
+| 3.1 Create `assess_source.yaml` mission | ⬜ Not Started | Triggered by new Discussion in Sources |
+| 3.2 Create `implement_source.yaml` mission | ⬜ Not Started | Triggered by Issue with `source-approved` |
+| 3.3 Update `curate_sources.yaml` for Discussion commands | ⬜ Not Started | Handles `/approve-source` in Discussions |
+| 3.4 Remove Issue-proposal triggers from missions | ⬜ Not Started | |
 
-### Phase 6: Setup Integration
+### Phase 4: CLI Updates
 | Task | Status | Notes |
 |------|--------|-------|
-| 6.1 Extend `configure_repository()` to register primary source | ✅ Complete | 2025-12-24 - Modified setup.py |
-| 6.2 Add "Sources" category check to validate-setup | ✅ Complete | 2025-12-24 - Warns if missing (manual creation required) |
-| 6.3 Test setup integration | ✅ Complete | 16 tests in test_setup_toolkit.py, 10 tests in test_setup_commands.py |
+| 4.1 Update `discover-sources` output text (Discussion not Issue) | ⬜ Not Started | |
+| 4.2 Add `--propose` flag to create Discussions | ⬜ Not Started | Dry-run by default |
+| 4.3 Update help text and docstrings | ⬜ Not Started | |
 
-### Phase 7: GitHub Workflow
+### Phase 5: GitHub Workflow Updates
 | Task | Status | Notes |
 |------|--------|-------|
-| 7.1 Create `.github/workflows/curate-sources.yml` | ✅ Complete | 2025-12-24 - 3 jobs: assess, approve, review |
-| 7.2 Create `.github/ISSUE_TEMPLATE/source-proposal.md` | ✅ Complete | 2025-12-24 |
-| 7.3 End-to-end workflow testing | ⬜ Not Started | Requires live GitHub environment |
+| 5.1 Create `2-op-assess-source.yml` workflow | ⬜ Not Started | Triggers on Discussion created |
+| 5.2 Update `2-op-curate-sources.yml` workflow | ⬜ Not Started | Triggers on Discussion comment |
+| 5.3 Create `2-op-implement-source.yml` workflow | ⬜ Not Started | Triggers on Issue with label |
+| 5.4 Remove or update Issue template | ⬜ Not Started | May need Discussion template instead |
+
+### Phase 6: Testing & Validation
+| Task | Status | Notes |
+|------|--------|-------|
+| 6.1 Update integration tests for Discussion-first flow | ⬜ Not Started | |
+| 6.2 Add tests for new tools | ⬜ Not Started | |
+| 6.3 End-to-end workflow testing | ⬜ Not Started | Requires live GitHub |
 
 ---
 
@@ -101,125 +110,89 @@ You are implementing the **Source Curator Agent** for the speculum-principum res
 
 Record implementation sessions here for continuity.
 
-### Session: 2025-12-24 (Phase 4 Completion)
+### Session: 2025-12-25 (Phase 1: Storage Layer Refactoring)
 **Tasks Completed**:
-- Phase 4.6: Implemented `propose_source` tool
-- Phase 4.7: Implemented `process_source_approval` tool  
-- Phase 4.9: Implemented `sync_source_discussion` tool
-- Added 10 new tests (36 total in test_source_curator_tools.py)
-- Updated curate_sources.yaml mission with new tools
+- Renamed `approval_issue` → `implementation_issue` in SourceEntry dataclass
+- Added `proposal_discussion` field to SourceEntry for Discussion-first workflow
+- Updated `to_dict()` / `from_dict()` methods with backward compatibility
+- Updated all test fixtures (test_source_storage.py, test_source_curator_tools.py, test_setup_toolkit.py)
+- Updated CLI commands/sources.py to display new fields
+- Updated setup.py primary source registration
+- Updated source_curator.py tool definitions and handlers
+- Updated curate_sources.yaml mission constraints
+- Added 3 new tests for legacy field migration (backward compatibility)
+- All 83 tests passing (25 storage + 58 orchestration)
 
 **Decisions Made**:
-- `propose_source`: Creates GitHub Issues with `source-proposal` label, includes credibility assessment
-- `process_source_approval`: DESTRUCTIVE risk (closes issues), registers sources on approval
-- `sync_source_discussion`: Checks source exists before resolving credentials, creates/updates Discussions
-- Added `_resolve_github_credentials()` helper for consistent credential handling
-- Issue body includes credibility score, domain type, and approval instructions
-
-**Implementation Details**:
-- Tools use existing `github_issues` and `github_discussions` modules
-- `process_source_approval` handles both approve and reject flows
-- `sync_source_discussion` searches for "Sources" category by name (case-insensitive)
-- All new tools follow existing error handling patterns
-
-**Blockers/Issues**: None
-
-**Next Steps**:
-- Complete Phase 5.3: Mission execution testing (requires GitHub environment)
-- Complete Phase 7.3: End-to-end workflow testing
-
-### Session: 2025-12-24 (Phase 7)
-**Tasks Completed**:
-- Phase 7.1: Created `.github/workflows/2-op-curate-sources.yml`
-- Phase 7.2: Created `.github/ISSUE_TEMPLATE/source-proposal.md`
-
-**Decisions Made**:
-- Workflow has 3 jobs: `assess-source-proposal`, `process-source-approval`, `review-source`
-- Triggers on `source-proposal` and `source-review` labels
-- Approval/rejection via `/approve-source` and `/reject-source` comment commands
-- Bot comments excluded via `<!-- agent-response -->` marker pattern
-- Issue template includes checkboxes for source type selection
+- Implemented backward compatibility: `from_dict()` reads legacy `approval_issue` and maps to `implementation_issue`
+- New fields use None as default (not required in JSON)
+- CLI now shows both `Proposal Discussion` and `Implementation Issue` when present
 
 **Blockers/Issues**:
-- Phase 7.3 (e2e testing) requires live GitHub environment
+- None
 
 **Next Steps**:
-- Implement remaining tools: propose_source, process_source_approval, sync_source_discussion
-- Test workflow in actual repository
+- Phase 2: Refactor orchestration tools (rename propose_source, add new tools)
 
-### Session: 2025-12-24 (Phase 6.2 - Validate Setup)
+### Session: 2025-12-25 (Phase 2: Orchestration Tools Refactoring)
 **Tasks Completed**:
-- Phase 6.2: Added "Sources" discussion category check to `validate_setup()`
-- Updated workflow job summary to include "Sources" category in next steps
-- Added 2 new tests for discussion category validation
+- Renamed `propose_source` → `propose_source_discussion` (creates Discussion instead of Issue)
+- Added `assess_source_proposal` tool (posts credibility assessment as Discussion reply)
+- Added `create_source_implementation_issue` tool (creates Issue with `source-approved` label, assigns to copilot)
+- Refactored `process_source_approval` to `_process_discussion_approval_handler` (Discussion-first workflow)
+- Added `process_source_rejection` tool (marks Discussion as rejected)
+- Added `implement_approved_source` tool (registers source with both discussion and issue, closes Issue)
+- Deprecated `sync_source_discussion` (marked deprecated but still registered for backward compat)
+- Updated all tests for new Discussion-first tools
+- All 63 tests passing (38 source curator + 25 storage)
 
 **Decisions Made**:
-- Category check is a **warning** not an error (source curation optional)
-- Uses existing `github_discussions.get_category_by_name()` function
-- Gracefully handles Discussions API errors (e.g., Discussions not enabled)
-- Clear warning message directs users to repository Settings > Discussions
-- GitHub API does not support programmatic category creation - must be manual
-
-**Implementation Details**:
-- Added import: `from src.integrations.github import discussions as github_discussions`
-- New validation check (Check 7) after repository details checks
-- Updated `.github/workflows/1-setup-initialize-repo.yml` next steps section
-
-**Files Modified**:
-- `src/cli/commands/setup.py` - Added category check to `validate_setup()`
-- `.github/workflows/1-setup-initialize-repo.yml` - Added step 5 about Sources category
-- `tests/cli/test_setup_commands.py` - Added 2 tests, updated existing 8 with mock
-
-**Blockers/Issues**: None
-
-**Next Steps**:
-- Phase 5.3: Mission execution testing (requires live GitHub)
-- Phase 7.3: End-to-end workflow testing (requires live GitHub)
-
-### Session: 2025-12-24 (Phase 6)
-**Tasks Completed**:
-- Phase 6.1: Extended `configure_repository()` to register primary source
-- Phase 6.3: Created 16 unit tests in `test_setup_toolkit.py`
-
-**Decisions Made**:
-- Added `_calculate_primary_source_score()` and `_is_official_domain()` helpers to setup.py
-- Primary sources auto-set to "active" status, don't require approval_issue
-- Source name derived from topic: "{topic} - Primary Source"
-- Credibility scores: .gov=0.95, .edu=0.90, .org=0.80, other=0.70
-- Official domains: .gov, .gov.uk, .edu, .mil
+- New tools follow Discussion-first workflow: Discussion → Assessment → Approval → Issue → Implementation
+- `implement_approved_source` is the final step that registers source with both `proposal_discussion` and `implementation_issue` tracked
+- Legacy `_propose_source_handler` kept for backward compatibility but not registered as a tool
+- Used `github_discussions.get_discussion()` for Discussion lookup by number
 
 **Blockers/Issues**:
-- Phase 6.2 deferred - requires Discussion category API integration
+- None
 
 **Next Steps**:
-- Phase 7: GitHub Workflow (curate-sources.yml, issue template)
+- Phase 3: Create new mission configurations (assess_source.yaml, implement_source.yaml)
+- Phase 4: Update CLI commands
 
-### Session: 2025-12-24 (Phases 1-5)
+### Session: 2025-12-25 (Refactoring Plan)
+**Tasks Completed**:
+- Updated PLAN.md with Discussions-first workflow
+- Updated PROMPT.md with new implementation phases
+
+**Decisions Made**:
+- Workflow restructured per management feedback:
+  - Proposals happen in Discussions (Sources category)
+  - Agent posts credibility assessment as Discussion reply
+  - `/approve-source` command triggers Issue creation
+  - Issue has `source-approved` label and assigned to copilot
+  - Agent implements source and closes Issue
+- Split into 3 missions: assess_source, curate_sources, implement_source
+- SourceEntry fields renamed: `approval_issue` → `implementation_issue`, added `proposal_discussion`
+
+**Blockers/Issues**:
+- Prior implementation needs refactoring (not removal)
+- GitHub Discussion workflows may have API limitations
+
+**Next Steps**:
+- Phase 1: Refactor SourceEntry storage layer
+- Phase 2: Refactor orchestration tools
+
+### Session: 2025-12-24 (Prior Implementation - Pre-Refactor)
 **Tasks Completed**: 
 - Phase 1: Storage Layer (SourceEntry, SourceRegistry) - 23 tests
 - Phase 2: Source Discovery (SourceDiscoverer, URL extraction, scoring) - 35 tests  
 - Phase 3: CLI Commands (discover-sources, list-sources) - registered in main.py
-- Phase 4: Orchestration Tools (7 tools with proper risk levels) - 26 tests
+- Phase 4: Orchestration Tools (7 tools with proper risk levels) - 36 tests
 - Phase 5: Mission Configuration (curate_sources.yaml)
+- Phase 6: Setup Integration (primary source registration)
+- Phase 7: GitHub Workflow (curate-sources.yml, issue template)
 
-**Decisions Made**: 
-- Added `_url_hash()` helper function to generate 16-character hex hashes for URL-based filenames
-- `SourceRegistry` automatically creates `sources/` directory and maintains a `registry.json` index
-- Registry index maps URL hashes to full URLs for efficient listing/lookup
-- All file writes are atomic (write to .tmp then rename)
-- Read tools marked SAFE, write tools marked REVIEW
-- Derived sources require `approval_issue` reference
-- Primary sources auto-set to "active" status, derived to "pending_review"
-
-**Blockers/Issues**: 
-- Phase 4.6-4.7 (propose_source, process_source_approval) deferred - need GitHub Issue integration patterns
-- Phase 4.9 (sync_source_discussion) deferred - need Discussion category setup
-- Two pre-existing test failures unrelated to this work
-
-**Next Steps**: 
-- Phase 6: Setup Integration (extend configure_repository to register primary source)
-- Phase 7: GitHub Workflow (curate-sources.yml)
-- Implement remaining tools (propose_source, process_source_approval, sync_source_discussion)
+**Note**: This implementation used Issue-first workflow which is now deprecated. The components are still valid but need refactoring for Discussion-first workflow.
 
 ### Session Template
 ```
@@ -234,17 +207,31 @@ Record implementation sessions here for continuity.
 
 ## Quick Reference
 
+### Key Files to Modify
+
+| File | Change Required |
+|------|-----------------|
+| `src/knowledge/storage.py` | Update SourceEntry fields |
+| `src/orchestration/toolkit/source_curator.py` | Refactor tools for Discussion flow |
+| `src/cli/commands/sources.py` | Update CLI output and flags |
+| `config/missions/curate_sources.yaml` | Update for Discussion triggers |
+| `config/missions/assess_source.yaml` | NEW - Create this file |
+| `config/missions/implement_source.yaml` | NEW - Create this file |
+| `.github/workflows/2-op-*.yml` | Update/create workflow files |
+
 ### Key Files to Understand
 - `src/knowledge/storage.py` - Entity storage patterns (EntityProfile, KnowledgeGraphStorage)
 - `src/orchestration/toolkit/discussion_tools.py` - Discussion sync patterns
-- `src/orchestration/toolkit/setup.py` - Setup tool patterns
-- `src/cli/commands/extraction.py` - CLI command patterns
+- `src/integrations/github/discussions.py` - Discussion API integration
 - `config/missions/sync_discussions.yaml` - Mission YAML patterns
 
 ### Test Commands
 ```bash
 # Run specific test file
-python -m pytest tests/knowledge/test_source_curator.py -v
+python -m pytest tests/knowledge/test_source_storage.py -v
+
+# Run source curator tool tests
+python -m pytest tests/orchestration/test_source_curator_tools.py -v
 
 # Run all tests
 python -m pytest
@@ -255,34 +242,38 @@ python -m pytest --cov=src
 
 ### Code Patterns to Follow
 
-**Dataclass with serialization:**
+**SourceEntry with new fields:**
 ```python
 @dataclass(slots=True)
 class SourceEntry:
     url: str
     name: str
-    # ... fields
-    
-    def to_dict(self) -> dict[str, Any]:
-        return { ... }
-    
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "SourceEntry":
-        return cls(...)
+    source_type: str
+    status: str
+    # ...
+    proposal_discussion: int | None   # Discussion number where proposed
+    implementation_issue: int | None  # Issue number for implementation
+    # ...
 ```
 
-**Tool registration:**
+**Discussion-first tool pattern:**
 ```python
-def register_source_curator_tools(registry: ToolRegistry) -> None:
-    registry.register_tool(
-        ToolDefinition(
-            name="tool_name",
-            description="...",
-            parameters={...},
-            handler=_handler_function,
-            risk_level=ActionRisk.SAFE,
-        )
-    )
+def _propose_source_discussion_handler(args: Mapping[str, Any]) -> ToolResult:
+    """Create a Discussion proposing a new source."""
+    # 1. Validate URL
+    # 2. Create Discussion in "Sources" category
+    # 3. Return Discussion URL for agent assessment
+    ...
+```
+
+**Assessment tool pattern:**
+```python
+def _assess_source_proposal_handler(args: Mapping[str, Any]) -> ToolResult:
+    """Post credibility assessment as Discussion reply."""
+    # 1. Read Discussion to extract URL
+    # 2. Calculate credibility score
+    # 3. Post assessment as reply
+    ...
 ```
 
 ---
@@ -299,4 +290,4 @@ def register_source_curator_tools(registry: ToolRegistry) -> None:
 
 ---
 
-*Last Updated: 2025-12-24*
+*Last Updated: 2025-12-25*
