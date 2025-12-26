@@ -37,7 +37,8 @@ def sample_source_entry() -> SourceEntry:
         last_verified=datetime(2025, 12, 24, 10, 0, 0, tzinfo=timezone.utc),
         added_at=datetime(2025, 12, 20, 8, 0, 0, tzinfo=timezone.utc),
         added_by="system",
-        approval_issue=None,
+        proposal_discussion=None,
+        implementation_issue=None,
         credibility_score=0.95,
         is_official=True,
         requires_auth=False,
@@ -61,7 +62,8 @@ def sample_derived_source() -> SourceEntry:
         last_verified=datetime(2025, 12, 23, 15, 30, 0, tzinfo=timezone.utc),
         added_at=datetime(2025, 12, 23, 15, 30, 0, tzinfo=timezone.utc),
         added_by="source-curator-agent",
-        approval_issue=42,
+        proposal_discussion=10,
+        implementation_issue=42,
         credibility_score=0.75,
         is_official=False,
         requires_auth=False,
@@ -124,7 +126,8 @@ class TestSourceEntrySerialization:
         assert data["last_verified"] == "2025-12-24T10:00:00+00:00"
         assert data["added_at"] == "2025-12-20T08:00:00+00:00"
         assert data["added_by"] == "system"
-        assert data["approval_issue"] is None
+        assert data["proposal_discussion"] is None
+        assert data["implementation_issue"] is None
         assert data["credibility_score"] == 0.95
         assert data["is_official"] is True
         assert data["requires_auth"] is False
@@ -147,7 +150,8 @@ class TestSourceEntrySerialization:
         assert restored.last_verified == sample_source_entry.last_verified
         assert restored.added_at == sample_source_entry.added_at
         assert restored.added_by == sample_source_entry.added_by
-        assert restored.approval_issue == sample_source_entry.approval_issue
+        assert restored.proposal_discussion == sample_source_entry.proposal_discussion
+        assert restored.implementation_issue == sample_source_entry.implementation_issue
         assert restored.credibility_score == sample_source_entry.credibility_score
         assert restored.is_official == sample_source_entry.is_official
         assert restored.requires_auth == sample_source_entry.requires_auth
@@ -177,6 +181,46 @@ class TestSourceEntrySerialization:
         assert entry.content_type == "webpage"  # default
         assert entry.topics == []  # default
         assert entry.notes == ""  # default
+        assert entry.proposal_discussion is None  # default
+        assert entry.implementation_issue is None  # default
+
+    def test_from_dict_legacy_approval_issue_migration(self) -> None:
+        """from_dict should migrate legacy approval_issue field to implementation_issue."""
+        data = {
+            "url": "https://example.com/legacy",
+            "name": "Legacy Source",
+            "source_type": "derived",
+            "status": "active",
+            "last_verified": "2025-12-24T00:00:00+00:00",
+            "added_at": "2025-12-24T00:00:00+00:00",
+            "added_by": "user",
+            "approval_issue": 42,  # Legacy field name
+        }
+        entry = SourceEntry.from_dict(data)
+
+        # Legacy approval_issue should migrate to implementation_issue
+        assert entry.implementation_issue == 42
+        # proposal_discussion wasn't in legacy format
+        assert entry.proposal_discussion is None
+
+    def test_from_dict_prefers_implementation_issue_over_legacy(self) -> None:
+        """from_dict should prefer implementation_issue when both fields exist."""
+        data = {
+            "url": "https://example.com/both",
+            "name": "Both Fields",
+            "source_type": "derived",
+            "status": "active",
+            "last_verified": "2025-12-24T00:00:00+00:00",
+            "added_at": "2025-12-24T00:00:00+00:00",
+            "added_by": "user",
+            "approval_issue": 42,  # Legacy field
+            "implementation_issue": 99,  # New field takes precedence
+            "proposal_discussion": 10,
+        }
+        entry = SourceEntry.from_dict(data)
+
+        assert entry.implementation_issue == 99  # New field preferred
+        assert entry.proposal_discussion == 10
 
     def test_url_hash_property(self, sample_source_entry: SourceEntry) -> None:
         """url_hash property should return consistent hash."""
@@ -367,7 +411,8 @@ class TestSourceRegistry:
             last_verified=sample_source_entry.last_verified,
             added_at=sample_source_entry.added_at,
             added_by=sample_source_entry.added_by,
-            approval_issue=sample_source_entry.approval_issue,
+            proposal_discussion=sample_source_entry.proposal_discussion,
+            implementation_issue=sample_source_entry.implementation_issue,
             credibility_score=0.5,
             is_official=sample_source_entry.is_official,
             requires_auth=sample_source_entry.requires_auth,

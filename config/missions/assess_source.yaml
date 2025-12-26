@@ -1,0 +1,48 @@
+# Mission to assess source proposals in GitHub Discussions.
+
+id: assess_source
+version: 1
+metadata:
+  owner: copilot-orchestrator
+  created_at: 2025-12-25
+  summary_tooling: source-assessment
+
+goal: |
+  Assess source proposals in GitHub Discussions and post credibility analysis.
+  
+  Triggered by:
+  1. New Discussions created in the "Sources" category
+  2. Discussions updated with new information requiring re-assessment
+  
+  Actions:
+  1. Read the Discussion to extract the proposed URL
+  2. Validate URL accessibility (HTTP HEAD request)
+  3. Calculate credibility score based on domain characteristics
+  4. Post assessment as a Discussion reply with:
+     - Credibility score
+     - Domain type (government, education, organization, etc.)
+     - Integrity indicators (accessibility, SSL, content type)
+     - Recommendation (approve/review carefully)
+
+constraints:
+  - "Only assess Discussions in the 'Sources' category"
+  - "Do not create Issues - assessment only"
+  - "Post assessment as reply, not edit to original Discussion"
+  - "Do not approve or reject - only provide assessment"
+
+success_criteria:
+  - All source proposals have credibility assessments posted as replies
+  - Assessments include score, domain type, and integrity indicators
+  - Assessment is objective and based on verifiable criteria
+
+max_steps: 5
+allowed_tools:
+  - get_discussion
+  - get_discussion_comments
+  - add_discussion_comment
+  - verify_source_accessibility
+  - calculate_credibility_score
+  - assess_source_proposal
+  - get_source
+  - list_sources
+requires_approval: false

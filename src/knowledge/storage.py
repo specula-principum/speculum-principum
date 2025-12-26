@@ -396,7 +396,10 @@ class SourceEntry:
     last_verified: datetime  # Last successful access check
     added_at: datetime  # When source was registered
     added_by: str  # GitHub username or "system"
-    approval_issue: int | None  # Issue number that approved this source
+
+    # Approval tracking (Discussions-first workflow)
+    proposal_discussion: int | None  # Discussion number where proposed
+    implementation_issue: int | None  # Issue number for implementation
 
     # Credibility metadata
     credibility_score: float  # 0.0-1.0, based on evaluation
@@ -422,7 +425,8 @@ class SourceEntry:
             "last_verified": self.last_verified.isoformat(),
             "added_at": self.added_at.isoformat(),
             "added_by": self.added_by,
-            "approval_issue": self.approval_issue,
+            "proposal_discussion": self.proposal_discussion,
+            "implementation_issue": self.implementation_issue,
             "credibility_score": self.credibility_score,
             "is_official": self.is_official,
             "requires_auth": self.requires_auth,
@@ -436,6 +440,10 @@ class SourceEntry:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "SourceEntry":
+        # Handle backward compatibility: approval_issue -> implementation_issue
+        implementation_issue = payload.get("implementation_issue")
+        if implementation_issue is None:
+            implementation_issue = payload.get("approval_issue")  # legacy field
         return cls(
             url=payload["url"],
             name=payload["name"],
@@ -444,7 +452,8 @@ class SourceEntry:
             last_verified=datetime.fromisoformat(payload["last_verified"]),
             added_at=datetime.fromisoformat(payload["added_at"]),
             added_by=payload["added_by"],
-            approval_issue=payload.get("approval_issue"),
+            proposal_discussion=payload.get("proposal_discussion"),
+            implementation_issue=implementation_issue,
             credibility_score=payload.get("credibility_score", 0.0),
             is_official=payload.get("is_official", False),
             requires_auth=payload.get("requires_auth", False),

@@ -1,4 +1,12 @@
-"""CLI commands for source management and discovery."""
+"""CLI commands for source management and discovery.
+
+Workflow:
+1. discover-sources: Scan parsed documents for URLs and rank by credibility
+2. --propose: Create GitHub Discussions in 'Sources' category for proposals
+3. Agent posts credibility assessment to Discussion
+4. Human approves via /approve-source command -> Issue created
+5. Agent implements via implement_approved_source -> source registered
+"""
 
 from __future__ import annotations
 
@@ -22,7 +30,12 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
     discover_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show candidates without creating proposal Issues.",
+        help="Show candidates without creating proposal Discussions.",
+    )
+    discover_parser.add_argument(
+        "--propose",
+        action="store_true",
+        help="Create GitHub Discussions for top candidates (requires --limit).",
     )
     discover_parser.add_argument(
         "--checksum",
@@ -86,7 +99,14 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
 
 
 def discover_sources_cli(args: argparse.Namespace) -> int:
-    """Execute the source discovery workflow."""
+    """Execute the source discovery workflow.
+    
+    Scans parsed documents for URLs, ranks by credibility score,
+    and optionally creates GitHub Discussions for proposals.
+    
+    With --propose: Creates Discussion in 'Sources' category for each candidate.
+    With --dry-run: Shows candidates without creating Discussions.
+    """
     from src import paths
 
     # Initialize discoverer
@@ -131,9 +151,13 @@ def discover_sources_cli(args: argparse.Namespace) -> int:
         print()
 
     if args.dry_run:
-        print("--dry-run specified: No proposal Issues created.")
+        print("--dry-run specified: No proposal Discussions created.")
+    elif args.propose:
+        print("Creating proposal Discussions for candidates...")
+        print("(Discussion creation via --propose not yet implemented)")
     else:
-        print("To create proposal Issues, run without --dry-run (not yet implemented).")
+        print("Use --propose to create GitHub Discussions for these candidates.")
+        print("Use --dry-run to preview without creating Discussions.")
 
     return 0
 
@@ -179,8 +203,10 @@ def list_sources_cli(args: argparse.Namespace) -> int:
         print(f"    URL: {source.url}")
         print(f"    Type: {source.source_type} | Status: {source.status}")
         print(f"    Credibility: {source.credibility_score:.2f}")
-        if source.approval_issue:
-            print(f"    Approval Issue: #{source.approval_issue}")
+        if source.proposal_discussion:
+            print(f"    Proposal Discussion: #{source.proposal_discussion}")
+        if source.implementation_issue:
+            print(f"    Implementation Issue: #{source.implementation_issue}")
         print()
 
     return 0
