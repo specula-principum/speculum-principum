@@ -26,6 +26,16 @@ def mock_repository() -> str:
     return "test-org/test-repo"
 
 
+def _mock_all_categories_exist(token, repository, category_name):
+    """Mock helper that returns a category for all required categories."""
+    return DiscussionCategory(
+        id=f"CAT_{category_name}",
+        name=category_name,
+        slug=category_name.lower(),
+        is_answerable=False
+    )
+
+
 # =============================================================================
 # Tests for validate_setup
 # =============================================================================
@@ -54,10 +64,8 @@ class TestValidateSetup:
             }
         }
         
-        # Mock Sources discussion category exists
-        mock_discussions.get_category_by_name.return_value = DiscussionCategory(
-            id="CAT123", name="Sources", slug="sources", is_answerable=False
-        )
+        # Mock all discussion categories exist
+        mock_discussions.get_category_by_name.side_effect = _mock_all_categories_exist
         
         result = validate_setup(mock_repository, mock_token)
         
@@ -83,10 +91,8 @@ class TestValidateSetup:
             "template_repository": {"full_name": "org/upstream-repo"}
         }
         
-        # Mock Sources category exists
-        mock_discussions.get_category_by_name.return_value = DiscussionCategory(
-            id="CAT123", name="Sources", slug="sources", is_answerable=False
-        )
+        # Mock all discussion categories exist
+        mock_discussions.get_category_by_name.side_effect = _mock_all_categories_exist
         
         result = validate_setup(mock_repository, mock_token)
         
@@ -110,10 +116,8 @@ class TestValidateSetup:
             "template_repository": {"full_name": "org/upstream-repo"}
         }
         
-        # Mock Sources category exists
-        mock_discussions.get_category_by_name.return_value = DiscussionCategory(
-            id="CAT123", name="Sources", slug="sources", is_answerable=False
-        )
+        # Mock all discussion categories exist
+        mock_discussions.get_category_by_name.side_effect = _mock_all_categories_exist
         
         result = validate_setup(mock_repository, mock_token)
         
@@ -137,10 +141,8 @@ class TestValidateSetup:
             "template_repository": {"full_name": "org/upstream-repo"}
         }
         
-        # Mock Sources category exists
-        mock_discussions.get_category_by_name.return_value = DiscussionCategory(
-            id="CAT123", name="Sources", slug="sources", is_answerable=False
-        )
+        # Mock all discussion categories exist
+        mock_discussions.get_category_by_name.side_effect = _mock_all_categories_exist
         
         result = validate_setup(mock_repository, mock_token)
         
@@ -164,10 +166,8 @@ class TestValidateSetup:
             "template_repository": None
         }
         
-        # Mock Sources category exists
-        mock_discussions.get_category_by_name.return_value = DiscussionCategory(
-            id="CAT123", name="Sources", slug="sources", is_answerable=False
-        )
+        # Mock all discussion categories exist
+        mock_discussions.get_category_by_name.side_effect = _mock_all_categories_exist
         
         result = validate_setup(mock_repository, mock_token)
         
@@ -193,10 +193,8 @@ class TestValidateSetup:
             }
         }
         
-        # Mock Sources category exists
-        mock_discussions.get_category_by_name.return_value = DiscussionCategory(
-            id="CAT123", name="Sources", slug="sources", is_answerable=False
-        )
+        # Mock all discussion categories exist
+        mock_discussions.get_category_by_name.side_effect = _mock_all_categories_exist
         
         result = validate_setup(mock_repository, mock_token)
         
@@ -219,10 +217,8 @@ class TestValidateSetup:
             "template_repository": {"full_name": "org/upstream-repo"}
         }
         
-        # Mock Sources category exists
-        mock_discussions.get_category_by_name.return_value = DiscussionCategory(
-            id="CAT123", name="Sources", slug="sources", is_answerable=False
-        )
+        # Mock all discussion categories exist
+        mock_discussions.get_category_by_name.side_effect = _mock_all_categories_exist
         
         result = validate_setup(mock_repository, mock_token)
         
@@ -263,7 +259,7 @@ class TestValidateSetup:
     def test_missing_sources_category_warning(
         self, mock_print, mock_get_var, mock_get_details, mock_discussions, mock_repository, mock_token
     ):
-        """Should warn if Sources discussion category is missing."""
+        """Should warn if required discussion categories are missing."""
         mock_get_var.return_value = "org/upstream-repo"
         
         # Mock valid repository
@@ -273,14 +269,92 @@ class TestValidateSetup:
             "template_repository": {"full_name": "org/upstream-repo"}
         }
         
-        # Mock Sources category missing
+        # Mock all categories missing
         mock_discussions.get_category_by_name.return_value = None
         
         result = validate_setup(mock_repository, mock_token)
         
         assert len(result["warnings"]) > 0
-        assert any("Sources" in warning for warning in result["warnings"])
-        assert any("discussion category" in warning.lower() for warning in result["warnings"])
+        # Should warn about missing categories
+        category_warning = next(
+            (w for w in result["warnings"] if "Missing discussion categories" in w), None
+        )
+        assert category_warning is not None
+        assert "Sources" in category_warning
+        assert "People" in category_warning
+        assert "Organizations" in category_warning
+
+    @patch('src.cli.commands.setup.github_discussions')
+    @patch('src.cli.commands.setup.get_repository_details')
+    @patch('src.cli.commands.setup.get_repository_variable')
+    @patch('builtins.print')
+    def test_partial_categories_warning(
+        self, mock_print, mock_get_var, mock_get_details, mock_discussions, mock_repository, mock_token
+    ):
+        """Should only warn about specific missing categories."""
+        mock_get_var.return_value = "org/upstream-repo"
+        
+        # Mock valid repository
+        mock_get_details.return_value = {
+            "fork": False,
+            "topics": ["speculum-downstream"],
+            "template_repository": {"full_name": "org/upstream-repo"}
+        }
+        
+        # Mock only Sources category exists
+        def mock_get_category(token, repository, category_name):
+            if category_name == "Sources":
+                return DiscussionCategory(
+                    id="CAT123", name="Sources", slug="sources", is_answerable=False
+                )
+            return None
+        
+        mock_discussions.get_category_by_name.side_effect = mock_get_category
+        
+        result = validate_setup(mock_repository, mock_token)
+        
+        assert len(result["warnings"]) > 0
+        category_warning = next(
+            (w for w in result["warnings"] if "Missing discussion categories" in w), None
+        )
+        assert category_warning is not None
+        assert "Sources" not in category_warning  # Sources exists
+        assert "People" in category_warning  # People missing
+        assert "Organizations" in category_warning  # Organizations missing
+
+    @patch('src.cli.commands.setup.github_discussions')
+    @patch('src.cli.commands.setup.get_repository_details')
+    @patch('src.cli.commands.setup.get_repository_variable')
+    @patch('builtins.print')
+    def test_all_categories_exist(
+        self, mock_print, mock_get_var, mock_get_details, mock_discussions, mock_repository, mock_token
+    ):
+        """Should not warn when all required categories exist."""
+        mock_get_var.return_value = "org/upstream-repo"
+        
+        # Mock valid repository
+        mock_get_details.return_value = {
+            "fork": False,
+            "topics": ["speculum-downstream"],
+            "template_repository": {"full_name": "org/upstream-repo"}
+        }
+        
+        # Mock all categories exist
+        def mock_get_category(token, repository, category_name):
+            return DiscussionCategory(
+                id=f"CAT_{category_name}", 
+                name=category_name, 
+                slug=category_name.lower(), 
+                is_answerable=False
+            )
+        
+        mock_discussions.get_category_by_name.side_effect = mock_get_category
+        
+        result = validate_setup(mock_repository, mock_token)
+        
+        # Should have no category-related warnings
+        category_warnings = [w for w in result["warnings"] if "categories" in w.lower()]
+        assert len(category_warnings) == 0
 
     @patch('src.cli.commands.setup.github_discussions')
     @patch('src.cli.commands.setup.get_repository_details')

@@ -216,6 +216,122 @@ def configure_upstream(args: Mapping[str, Any]) -> dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+def create_welcome_announcement(args: Mapping[str, Any]) -> dict[str, Any]:
+    """Create a welcome announcement discussion for a newly-configured repository.
+    
+    This generates a topic-appropriate announcement in the "Announcements" category
+    to welcome users to the research repository.
+    
+    Args:
+        topic: The research topic (required)
+        source_url: Primary source URL (optional, for context)
+        repository: Repository in owner/repo format (optional)
+        token: GitHub token (optional)
+        
+    Returns:
+        dict with success status and discussion URL or error message.
+    """
+    import os
+    from src.integrations.github import discussions as github_discussions
+    
+    topic = args.get("topic")
+    if not topic:
+        return {"success": False, "error": "Topic is required"}
+    
+    source_url = args.get("source_url", "")
+    repository = args.get("repository") or os.environ.get("GITHUB_REPOSITORY")
+    token = args.get("token") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    
+    if not repository:
+        return {"success": False, "error": "Repository not specified and GITHUB_REPOSITORY not set"}
+    if not token:
+        return {"success": False, "error": "Token not specified and GITHUB_TOKEN not set"}
+    
+    try:
+        # Check for Announcements category
+        category = github_discussions.get_category_by_name(
+            token=token,
+            repository=repository,
+            category_name="Announcements",
+        )
+        
+        if not category:
+            return {
+                "success": False,
+                "error": (
+                    "Announcements category not found. Please enable Discussions in "
+                    "repository Settings and create an 'Announcements' category."
+                ),
+                "category_missing": True,
+            }
+        
+        # Generate announcement content
+        title = f"Welcome to {topic} Research"
+        
+        body_parts = [
+            f"# 🔬 Welcome to {topic} Research\n",
+            "This repository is set up for automated research tracking and knowledge extraction.\n",
+            "## What to Expect\n",
+            "- **Source Curation**: New sources will be submitted and discussed in the Sources category",
+            "- **Entity Extraction**: People, organizations, and concepts will be tracked in Discussions",
+            "- **Evidence Collection**: Documents and data will be parsed and stored",
+            "- **Knowledge Graph**: Relationships and profiles will be aggregated automatically\n",
+        ]
+        
+        if source_url:
+            body_parts.append("## Primary Source\n")
+            body_parts.append(f"This repository is tracking: [{source_url}]({source_url})\n")
+        
+        body_parts.extend([
+            "## Getting Started\n",
+            "1. Check the **Sources** category for curated data sources",
+            "2. Review entity discussions (People, Organizations, Concepts) for extracted knowledge",
+            "3. Browse the `evidence/` directory for parsed documents",
+            "4. Explore `knowledge-graph/` for aggregated profiles\n",
+            "---\n",
+            "*This announcement was automatically generated during repository setup.*",
+        ])
+        
+        body = "\n".join(body_parts)
+        
+        # Check if announcement already exists
+        existing = github_discussions.find_discussion_by_title(
+            token=token,
+            repository=repository,
+            title=title,
+            category_id=category.id,
+        )
+        
+        if existing:
+            return {
+                "success": True,
+                "action": "already_exists",
+                "discussion_url": existing.url,
+                "discussion_number": existing.number,
+            }
+        
+        # Create the announcement
+        discussion = github_discussions.create_discussion(
+            token=token,
+            repository=repository,
+            category_id=category.id,
+            title=title,
+            body=body,
+        )
+        
+        return {
+            "success": True,
+            "action": "created",
+            "discussion_url": discussion.url,
+            "discussion_number": discussion.number,
+        }
+        
+    except github_discussions.GitHubDiscussionError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        return {"success": False, "error": f"Failed to create announcement: {e}"}
+
+
 def commit_and_push(args: Mapping[str, Any]) -> dict[str, Any]:
     branch = args.get("branch", "setup-config")
     message = args.get("message", "Setup repository configuration")
@@ -319,5 +435,40 @@ def register_setup_tools(registry: ToolRegistry) -> None:
             },
             handler=commit_and_push,
             risk_level=ActionRisk.DESTRUCTIVE
+        )
+    )
+    registry.register_tool(
+        ToolDefinition(
+            name="create_welcome_announcement",
+            description=(
+                "Create a welcome announcement discussion in the repository. "
+                "Generates a topic-appropriate title and body for the Announcements category. "
+                "Returns the discussion URL if created successfully, or an error if the "
+                "Announcements category doesn't exist (requires manual creation)."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The research topic for this repository (used to generate welcome content)."
+                    },
+                    "source_url": {
+                        "type": "string",
+                        "description": "The primary source URL being tracked (optional, for context in announcement)."
+                    },
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository name in format owner/repo. Defaults to GITHUB_REPOSITORY env var."
+                    },
+                    "token": {
+                        "type": "string",
+                        "description": "GitHub token for API access. Defaults to GITHUB_TOKEN env var."
+                    }
+                },
+                "required": ["topic"],
+            },
+            handler=create_welcome_announcement,
+            risk_level=ActionRisk.REVIEW
         )
     )
