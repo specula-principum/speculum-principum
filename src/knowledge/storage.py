@@ -416,6 +416,14 @@ class SourceEntry:
     topics: List[str] = field(default_factory=list)
     notes: str = ""
 
+    # Monitoring metadata (for change detection)
+    last_content_hash: str | None = None  # SHA-256 of last acquired content
+    last_etag: str | None = None  # HTTP ETag from last check
+    last_modified_header: str | None = None  # Last-Modified header value
+    last_checked: datetime | None = None  # When source was last probed
+    check_failures: int = 0  # Consecutive check failures
+    next_check_after: datetime | None = None  # Backoff: don't check before this
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "url": self.url,
@@ -436,6 +444,13 @@ class SourceEntry:
             "update_frequency": self.update_frequency,
             "topics": self.topics,
             "notes": self.notes,
+            # Monitoring metadata
+            "last_content_hash": self.last_content_hash,
+            "last_etag": self.last_etag,
+            "last_modified_header": self.last_modified_header,
+            "last_checked": self.last_checked.isoformat() if self.last_checked else None,
+            "check_failures": self.check_failures,
+            "next_check_after": self.next_check_after.isoformat() if self.next_check_after else None,
         }
 
     @classmethod
@@ -444,6 +459,16 @@ class SourceEntry:
         implementation_issue = payload.get("implementation_issue")
         if implementation_issue is None:
             implementation_issue = payload.get("approval_issue")  # legacy field
+        
+        # Parse optional datetime fields for monitoring
+        last_checked = None
+        if payload.get("last_checked"):
+            last_checked = datetime.fromisoformat(payload["last_checked"])
+        
+        next_check_after = None
+        if payload.get("next_check_after"):
+            next_check_after = datetime.fromisoformat(payload["next_check_after"])
+        
         return cls(
             url=payload["url"],
             name=payload["name"],
@@ -463,6 +488,13 @@ class SourceEntry:
             update_frequency=payload.get("update_frequency"),
             topics=payload.get("topics", []),
             notes=payload.get("notes", ""),
+            # Monitoring metadata (with defaults for backward compatibility)
+            last_content_hash=payload.get("last_content_hash"),
+            last_etag=payload.get("last_etag"),
+            last_modified_header=payload.get("last_modified_header"),
+            last_checked=last_checked,
+            check_failures=payload.get("check_failures", 0),
+            next_check_after=next_check_after,
         )
 
     @property

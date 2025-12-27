@@ -8,8 +8,8 @@ This project collection implements a rigorous research team for analyzing state 
 
 | # | Agent | Purpose | Status |
 |---|-------|---------|--------|
-| 1 | [Source Curator](./01-source-curator/) | Identify, validate, and maintain authoritative sources | 🔲 Planning |
-| 2 | [Monitor](./02-monitor/) | Track sources for new/updated content | 🔲 Planning |
+| 1 | [Source Curator](./01-source-curator/) | Identify, validate, and maintain authoritative sources | ✅ Planning Complete |
+| 2 | [Monitor](./02-monitor/) | Queue sources for acquisition via change detection | ✅ Planning Complete |
 | 3 | [Acquisition](./03-acquisition/) | Retrieve and preserve source documents | 🔲 Planning |
 | 4 | [Extraction](./04-extraction/) | Extract structured entities and relationships | 🔲 Planning |
 | 5 | [Synthesis](./05-synthesis/) | Aggregate and organize knowledge structures | 🔲 Planning |
