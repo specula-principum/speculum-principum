@@ -354,7 +354,7 @@ def _register_write_tools(registry: ToolRegistry) -> None:
     registry.register_tool(
         ToolDefinition(
             name="create_source_implementation_issue",
-            description="Create a GitHub Issue for implementing an approved source. Adds 'source-approved' label and assigns to copilot.",
+            description="Create a GitHub Issue for implementing an approved source. Adds 'source-approved' label and assigns to copilot using the GraphQL-based assignment.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -1155,7 +1155,7 @@ This issue tracks the implementation of an approved source from Discussion #{dis
 _Created by Source Curator Agent_
 """
 
-    # Create the issue with label and assignment
+    # Create the issue with label (assignment happens separately via assign_issue_to_copilot)
     try:
         issue_title = f"Implement Source: {source_name}"
         outcome = github_issues.create_issue(
@@ -1164,8 +1164,26 @@ _Created by Source Curator Agent_
             title=issue_title,
             body=body,
             labels=["source-approved"],
-            assignees=["copilot"],
         )
+        # Assign to copilot using the dedicated GraphQL-based function
+        try:
+            github_issues.assign_issue_to_copilot(
+                token=token,
+                repository=repository,
+                issue_number=outcome.number,
+            )
+        except github_issues.GitHubIssueError as assign_exc:
+            # Issue was created but assignment failed - return partial success
+            return ToolResult(
+                success=True,
+                output={
+                    "issue_number": outcome.number,
+                    "issue_url": outcome.html_url,
+                    "discussion_number": discussion_number,
+                    "source_url": source_url,
+                    "assignment_warning": f"Issue created but copilot assignment failed: {assign_exc}",
+                },
+            )
         return ToolResult(
             success=True,
             output={
