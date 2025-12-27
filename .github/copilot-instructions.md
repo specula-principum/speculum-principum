@@ -6,7 +6,7 @@ This is a **template repository** for research projects. Clones receive code upd
 **All operations happen on GitHub.com** via Actions, Issues, Discussions, and the GitHub API—no local git commands required.
 
 ## Core Rules
-1. Do not create summary documents.
+1. Do NOT create changes summary documents. And do NOT create explanation documents for work completed.
 2. Prefer specific tools over general-purpose CLIs.
 3. Call `configure_python_environment` with `.venv` before any Python command.
 4. `main.py` is the only CLI entry point.
