@@ -1,0 +1,803 @@
+"""Monitor agent tool registrations for the orchestration runtime.
+
+This toolkit provides tools for detecting content changes in registered sources
+and creating acquisition candidate Issues when changes are detected.
+
+Two modes of operation:
+1. Initial Acquisition: For sources with no previous content hash
+2. Update Monitoring: For sources with existing content, uses tiered detection
+"""
+
+from __future__ import annotations
+
+import hashlib
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
+
+from src import paths
+from src.integrations.github import issues as github_issues
+from src.integrations.github.search_issues import GitHubIssueSearcher
+from src.knowledge.monitoring import (
+    ChangeDetection,
+    SourceMonitor,
+    calculate_next_check,
+)
+from src.knowledge.storage import SourceEntry, SourceRegistry
+
+from ..safety import ActionRisk
+from ..tools import ToolDefinition, ToolRegistry
+from ..types import ToolResult
+
+
+def register_monitor_tools(registry: ToolRegistry) -> None:
+    """Register all monitor agent tools with the registry."""
+    _register_read_tools(registry)
+    _register_write_tools(registry)
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _url_hash(url: str) -> str:
+    """Generate a short hash of a URL for deduplication markers."""
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+
+
+def _build_initial_acquisition_body(source: SourceEntry, detection: ChangeDetection) -> str:
+    """Build the Issue body for an initial acquisition request."""
+    return f"""## Initial Acquisition: {source.name}
+
+**Source URL**: {source.url}
+**Approved**: {source.added_at.isoformat()}
+**Approved By**: {source.added_by}
+**Approval Discussion**: {f'#{source.proposal_discussion}' if source.proposal_discussion else 'N/A'}
+
+### Source Profile
+
+- **Type**: {source.source_type} ({source.content_type})
+- **Credibility Score**: {source.credibility_score:.2f}
+- **Official Domain**: {'Yes' if source.is_official else 'No'}
+- **Requires Auth**: {'Yes' if source.requires_auth else 'No'}
+
+### Acquisition Scope
+
+This is the **first acquisition** of this source. The Acquisition Agent should:
+1. Fetch complete content from the source URL
+2. Parse all pages/segments using appropriate parser
+3. Store in `evidence/` with full provenance
+4. Update source registry with content hash and acquisition timestamp
+
+**Urgency**: {detection.urgency}
+
+<!-- monitor-initial:{_url_hash(source.url)} -->
+"""
+
+
+def _build_content_update_body(source: SourceEntry, detection: ChangeDetection) -> str:
+    """Build the Issue body for a content update request."""
+    prev_hash_display = detection.previous_hash[:16] if detection.previous_hash else "N/A"
+    curr_hash_display = detection.current_hash[:16] if detection.current_hash else "N/A"
+    prev_etag = source.last_etag or "N/A"
+    curr_etag = detection.current_etag or "N/A"
+    prev_modified = source.last_modified_header or "N/A"
+    curr_modified = detection.current_last_modified or "N/A"
+    prev_checked = detection.previous_checked.isoformat() if detection.previous_checked else "N/A"
+
+    return f"""## Content Update: {source.name}
+
+**Source URL**: {source.url}
+**Change Detected**: {detection.detected_at.isoformat()}
+**Detection Method**: {detection.detection_method}
+**Previous Check**: {prev_checked}
+
+### Change Summary
+
+| Metric | Previous | Current |
+|--------|----------|---------|
+| Content Hash | `{prev_hash_display}` | `{curr_hash_display}` |
+| ETag | {prev_etag} | {curr_etag} |
+| Last-Modified | {prev_modified} | {curr_modified} |
+
+### Acquisition Instructions
+
+This is an **incremental update**. The Acquisition Agent should:
+1. Fetch current content from the source URL
+2. Parse and compare against previous version in `evidence/`
+3. Store new version with provenance linking to previous
+4. Update source registry with new content hash
+
+**Urgency**: {detection.urgency}
+
+<!-- monitor-update:{_url_hash(source.url)}:{detection.current_hash or 'pending'} -->
+"""
+
+
+def _check_issue_exists(
+    searcher: GitHubIssueSearcher,
+    marker: str,
+) -> bool:
+    """Check if an issue with the given marker already exists.
+    
+    Searches open issues with acquisition-candidate label and checks
+    if the marker exists in the issue body.
+    
+    Args:
+        searcher: GitHub issue searcher instance
+        marker: The HTML comment marker to search for (e.g., 'monitor-initial:abc123')
+        
+    Returns:
+        True if an issue with this marker exists, False otherwise
+        
+    Note:
+        Currently returns False as a placeholder. Full implementation requires
+        GitHubIssueSearcher enhancement to support body content search.
+        See: https://github.com/speculum-principum/speculum-principum/issues/TBD
+        
+    TODO(monitor-dedup): Implement actual deduplication by:
+        1. Enhancing GitHubIssueSearcher.search_by_label to return issue bodies
+        2. Checking each returned issue body for the marker string
+        3. Or using GitHub's code search API with 'in:body' qualifier
+    """
+    # Placeholder: actual implementation pending GitHubIssueSearcher enhancement
+    _ = searcher  # Unused until implementation
+    _ = marker    # Unused until implementation
+    return False
+
+
+# =============================================================================
+# Read-Only Tools
+# =============================================================================
+
+
+def _register_read_tools(registry: ToolRegistry) -> None:
+    """Register safe monitor read-only tools."""
+
+    registry.register_tool(
+        ToolDefinition(
+            name="get_sources_pending_initial",
+            description="List sources that need initial acquisition (never acquired before).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "kb_root": {
+                        "type": "string",
+                        "description": "Path to knowledge graph root. Defaults to knowledge-graph/.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+            handler=_get_sources_pending_initial_handler,
+            risk_level=ActionRisk.SAFE,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
+            name="get_sources_due_for_check",
+            description="List sources that are due for update monitoring check.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "kb_root": {
+                        "type": "string",
+                        "description": "Path to knowledge graph root. Defaults to knowledge-graph/.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+            handler=_get_sources_due_for_check_handler,
+            risk_level=ActionRisk.SAFE,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
+            name="check_source_for_changes",
+            description="Check a single source for content changes using tiered detection (ETag -> Last-Modified -> Content Hash).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL of the source to check.",
+                    },
+                    "force_full": {
+                        "type": "boolean",
+                        "description": "Skip tiered detection and do full content hash comparison.",
+                    },
+                    "kb_root": {
+                        "type": "string",
+                        "description": "Path to knowledge graph root. Defaults to knowledge-graph/.",
+                    },
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            handler=_check_source_for_changes_handler,
+            risk_level=ActionRisk.SAFE,
+        )
+    )
+
+
+def _get_sources_pending_initial_handler(
+    arguments: Mapping[str, Any],
+) -> ToolResult:
+    """Handler for get_sources_pending_initial tool."""
+    kb_root = arguments.get("kb_root")
+    root_path = Path(kb_root) if kb_root else paths.get_knowledge_graph_root()
+
+    reg = SourceRegistry(root=root_path)
+    monitor = SourceMonitor(registry=reg)
+    sources = monitor.get_sources_pending_initial()
+
+    return ToolResult(
+        success=True,
+        output={
+            "count": len(sources),
+            "sources": [
+                {
+                    "url": s.url,
+                    "name": s.name,
+                    "source_type": s.source_type,
+                    "added_at": s.added_at.isoformat(),
+                    "credibility_score": s.credibility_score,
+                }
+                for s in sources
+            ],
+        },
+    )
+
+
+def _get_sources_due_for_check_handler(
+    arguments: Mapping[str, Any],
+) -> ToolResult:
+    """Handler for get_sources_due_for_check tool."""
+    kb_root = arguments.get("kb_root")
+    root_path = Path(kb_root) if kb_root else paths.get_knowledge_graph_root()
+
+    reg = SourceRegistry(root=root_path)
+    monitor = SourceMonitor(registry=reg)
+    sources = monitor.get_sources_due_for_check()
+
+    return ToolResult(
+        success=True,
+        output={
+            "count": len(sources),
+            "sources": [
+                {
+                    "url": s.url,
+                    "name": s.name,
+                    "source_type": s.source_type,
+                    "last_checked": s.last_checked.isoformat() if s.last_checked else None,
+                    "next_check_after": s.next_check_after.isoformat() if s.next_check_after else None,
+                    "check_failures": s.check_failures,
+                }
+                for s in sources
+            ],
+        },
+    )
+
+
+def _check_source_for_changes_handler(
+    arguments: Mapping[str, Any],
+) -> ToolResult:
+    """Handler for check_source_for_changes tool."""
+    url = arguments.get("url")
+    if not url:
+        return ToolResult(success=False, output="URL is required.")
+
+    force_full = arguments.get("force_full", False)
+    kb_root = arguments.get("kb_root")
+    root_path = Path(kb_root) if kb_root else paths.get_knowledge_graph_root()
+
+    reg = SourceRegistry(root=root_path)
+    source = reg.get_source(url)
+    if source is None:
+        return ToolResult(success=False, output=f"Source not found: {url}")
+
+    monitor = SourceMonitor(registry=reg)
+    result = monitor.check_source(source, force_full=force_full)
+
+    output: dict[str, Any] = {
+        "source_url": result.source_url,
+        "status": result.status,
+        "checked_at": result.checked_at.isoformat(),
+    }
+
+    if result.status == "initial":
+        output["message"] = "Source needs initial acquisition (no previous content hash)."
+    elif result.status == "changed":
+        output["detection_method"] = result.detection_method
+        output["current_etag"] = result.etag
+        output["current_last_modified"] = result.last_modified
+        output["current_hash"] = result.content_hash
+    elif result.status == "unchanged":
+        output["message"] = "No changes detected."
+    elif result.status == "error":
+        output["error"] = result.error_message
+
+    return ToolResult(success=True, output=output)
+
+
+# =============================================================================
+# Write Tools
+# =============================================================================
+
+
+def _register_write_tools(registry: ToolRegistry) -> None:
+    """Register monitor tools that modify state."""
+
+    registry.register_tool(
+        ToolDefinition(
+            name="update_source_monitoring_metadata",
+            description="Update the monitoring metadata for a source after a check.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL of the source to update.",
+                    },
+                    "check_succeeded": {
+                        "type": "boolean",
+                        "description": "Whether the check was successful.",
+                    },
+                    "content_hash": {
+                        "type": "string",
+                        "description": "New content hash (if acquired).",
+                    },
+                    "etag": {
+                        "type": "string",
+                        "description": "New ETag value.",
+                    },
+                    "last_modified": {
+                        "type": "string",
+                        "description": "New Last-Modified header value.",
+                    },
+                    "kb_root": {
+                        "type": "string",
+                        "description": "Path to knowledge graph root.",
+                    },
+                },
+                "required": ["url", "check_succeeded"],
+                "additionalProperties": False,
+            },
+            handler=_update_source_monitoring_metadata_handler,
+            risk_level=ActionRisk.REVIEW,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
+            name="create_initial_acquisition_issue",
+            description="Create a GitHub Issue for initial source acquisition.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL of the source needing acquisition.",
+                    },
+                    "repository": {
+                        "type": "string",
+                        "description": "GitHub repository (owner/repo). Defaults to GITHUB_REPOSITORY.",
+                    },
+                    "kb_root": {
+                        "type": "string",
+                        "description": "Path to knowledge graph root.",
+                    },
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            handler=_create_initial_acquisition_issue_handler,
+            risk_level=ActionRisk.REVIEW,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
+            name="create_content_update_issue",
+            description="Create a GitHub Issue for a detected content update.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL of the source with detected changes.",
+                    },
+                    "detection_method": {
+                        "type": "string",
+                        "enum": ["etag", "last_modified", "content_hash"],
+                        "description": "How the change was detected.",
+                    },
+                    "current_etag": {
+                        "type": "string",
+                        "description": "Current ETag value.",
+                    },
+                    "current_last_modified": {
+                        "type": "string",
+                        "description": "Current Last-Modified value.",
+                    },
+                    "current_hash": {
+                        "type": "string",
+                        "description": "Current content hash.",
+                    },
+                    "repository": {
+                        "type": "string",
+                        "description": "GitHub repository (owner/repo). Defaults to GITHUB_REPOSITORY.",
+                    },
+                    "kb_root": {
+                        "type": "string",
+                        "description": "Path to knowledge graph root.",
+                    },
+                },
+                "required": ["url", "detection_method"],
+                "additionalProperties": False,
+            },
+            handler=_create_content_update_issue_handler,
+            risk_level=ActionRisk.REVIEW,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
+            name="report_source_access_problem",
+            description="Create a GitHub Discussion to report persistent access problems with a source.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL of the problematic source.",
+                    },
+                    "error_message": {
+                        "type": "string",
+                        "description": "Description of the access problem.",
+                    },
+                    "consecutive_failures": {
+                        "type": "integer",
+                        "description": "Number of consecutive check failures.",
+                    },
+                    "repository": {
+                        "type": "string",
+                        "description": "GitHub repository (owner/repo). Defaults to GITHUB_REPOSITORY.",
+                    },
+                    "kb_root": {
+                        "type": "string",
+                        "description": "Path to knowledge graph root.",
+                    },
+                },
+                "required": ["url", "error_message"],
+                "additionalProperties": False,
+            },
+            handler=_report_source_access_problem_handler,
+            risk_level=ActionRisk.REVIEW,
+        )
+    )
+
+
+def _update_source_monitoring_metadata_handler(
+    arguments: Mapping[str, Any],
+) -> ToolResult:
+    """Handler for update_source_monitoring_metadata tool."""
+    url = arguments.get("url")
+    if not url:
+        return ToolResult(success=False, output="URL is required.")
+
+    check_succeeded = arguments.get("check_succeeded", True)
+    kb_root = arguments.get("kb_root")
+    root_path = Path(kb_root) if kb_root else paths.get_knowledge_graph_root()
+
+    reg = SourceRegistry(root=root_path)
+    source = reg.get_source(url)
+    if source is None:
+        return ToolResult(success=False, output=f"Source not found: {url}")
+
+    # Update monitoring fields
+    now = datetime.now(timezone.utc)
+    
+    # Create updated source entry using dataclass replace pattern
+    updated_fields: dict[str, Any] = {
+        "last_checked": now,
+    }
+
+    if check_succeeded:
+        updated_fields["check_failures"] = 0
+        if arguments.get("content_hash"):
+            updated_fields["last_content_hash"] = arguments["content_hash"]
+        if arguments.get("etag"):
+            updated_fields["last_etag"] = arguments["etag"]
+        if arguments.get("last_modified"):
+            updated_fields["last_modified_header"] = arguments["last_modified"]
+    else:
+        updated_fields["check_failures"] = source.check_failures + 1
+
+    # Calculate next check time
+    next_check = calculate_next_check(source, not check_succeeded)
+    updated_fields["next_check_after"] = next_check
+
+    # Create new source entry with updated fields
+    source_dict = source.to_dict()
+    source_dict.update({
+        "last_checked": updated_fields["last_checked"].isoformat(),
+        "check_failures": updated_fields["check_failures"],
+        "next_check_after": updated_fields["next_check_after"].isoformat(),
+    })
+    if "last_content_hash" in updated_fields:
+        source_dict["last_content_hash"] = updated_fields["last_content_hash"]
+    if "last_etag" in updated_fields:
+        source_dict["last_etag"] = updated_fields["last_etag"]
+    if "last_modified_header" in updated_fields:
+        source_dict["last_modified_header"] = updated_fields["last_modified_header"]
+
+    updated_source = SourceEntry.from_dict(source_dict)
+    reg.save_source(updated_source)
+
+    return ToolResult(
+        success=True,
+        output={
+            "url": url,
+            "last_checked": now.isoformat(),
+            "check_failures": updated_fields["check_failures"],
+            "next_check_after": next_check.isoformat(),
+            "status": "degraded" if updated_fields["check_failures"] >= 5 else "active",
+        },
+    )
+
+
+def _create_initial_acquisition_issue_handler(
+    arguments: Mapping[str, Any],
+) -> ToolResult:
+    """Handler for create_initial_acquisition_issue tool."""
+    url = arguments.get("url")
+    if not url:
+        return ToolResult(success=False, output="URL is required.")
+
+    kb_root = arguments.get("kb_root")
+    root_path = Path(kb_root) if kb_root else paths.get_knowledge_graph_root()
+
+    reg = SourceRegistry(root=root_path)
+    source = reg.get_source(url)
+    if source is None:
+        return ToolResult(success=False, output=f"Source not found: {url}")
+
+    if source.last_content_hash is not None:
+        return ToolResult(
+            success=False,
+            output="Source already has content hash. Use content update instead.",
+        )
+
+    # Create ChangeDetection for initial acquisition
+    now = datetime.now(timezone.utc)
+    detection = ChangeDetection(
+        source_url=source.url,
+        source_name=source.name,
+        detected_at=now,
+        detection_method="initial",
+        change_type="initial",
+        previous_hash=None,
+        previous_checked=None,
+        current_etag=None,
+        current_last_modified=None,
+        current_hash=None,
+        urgency="high" if source.source_type == "primary" else "normal",
+    )
+
+    # Build issue content
+    title = f"[Initial Acquisition] {source.name}"
+    body = _build_initial_acquisition_body(source, detection)
+
+    # Determine labels based on urgency
+    labels = ["acquisition-candidate", "initial-acquisition", source.source_type]
+    if detection.urgency == "high":
+        labels.append("high-priority")
+    elif detection.urgency == "low":
+        labels.append("low-priority")
+
+    # Resolve repository and token
+    try:
+        repository = github_issues.resolve_repository(arguments.get("repository"))
+        token = github_issues.resolve_token(None)
+    except github_issues.GitHubIssueError as e:
+        return ToolResult(success=False, output=str(e))
+
+    # Create the issue
+    try:
+        outcome = github_issues.create_issue(
+            token=token,
+            repository=repository,
+            title=title,
+            body=body,
+            labels=labels,
+        )
+    except github_issues.GitHubIssueError as e:
+        return ToolResult(success=False, output=f"Failed to create issue: {e}")
+
+    return ToolResult(
+        success=True,
+        output={
+            "issue_number": outcome.number,
+            "issue_url": outcome.html_url,
+            "source_url": source.url,
+            "urgency": detection.urgency,
+        },
+    )
+
+
+def _create_content_update_issue_handler(
+    arguments: Mapping[str, Any],
+) -> ToolResult:
+    """Handler for create_content_update_issue tool."""
+    url = arguments.get("url")
+    if not url:
+        return ToolResult(success=False, output="URL is required.")
+
+    detection_method = arguments.get("detection_method")
+    if not detection_method:
+        return ToolResult(success=False, output="detection_method is required.")
+
+    kb_root = arguments.get("kb_root")
+    root_path = Path(kb_root) if kb_root else paths.get_knowledge_graph_root()
+
+    reg = SourceRegistry(root=root_path)
+    source = reg.get_source(url)
+    if source is None:
+        return ToolResult(success=False, output=f"Source not found: {url}")
+
+    if source.last_content_hash is None:
+        return ToolResult(
+            success=False,
+            output="Source has no previous content hash. Use initial acquisition instead.",
+        )
+
+    # Create ChangeDetection for content update
+    now = datetime.now(timezone.utc)
+    urgency = "high" if source.source_type == "primary" else "normal"
+
+    detection = ChangeDetection(
+        source_url=source.url,
+        source_name=source.name,
+        detected_at=now,
+        detection_method=detection_method,
+        change_type="content",
+        previous_hash=source.last_content_hash,
+        previous_checked=source.last_checked,
+        current_etag=arguments.get("current_etag"),
+        current_last_modified=arguments.get("current_last_modified"),
+        current_hash=arguments.get("current_hash"),
+        urgency=urgency,
+    )
+
+    # Build issue content
+    title = f"[Content Update] {source.name}"
+    body = _build_content_update_body(source, detection)
+
+    # Determine labels based on urgency
+    labels = ["acquisition-candidate", "content-update", source.source_type]
+    if detection.urgency == "high":
+        labels.append("high-priority")
+    elif detection.urgency == "low":
+        labels.append("low-priority")
+
+    # Resolve repository and token
+    try:
+        repository = github_issues.resolve_repository(arguments.get("repository"))
+        token = github_issues.resolve_token(None)
+    except github_issues.GitHubIssueError as e:
+        return ToolResult(success=False, output=str(e))
+
+    # Create the issue
+    try:
+        outcome = github_issues.create_issue(
+            token=token,
+            repository=repository,
+            title=title,
+            body=body,
+            labels=labels,
+        )
+    except github_issues.GitHubIssueError as e:
+        return ToolResult(success=False, output=f"Failed to create issue: {e}")
+
+    return ToolResult(
+        success=True,
+        output={
+            "issue_number": outcome.number,
+            "issue_url": outcome.html_url,
+            "source_url": source.url,
+            "detection_method": detection_method,
+            "urgency": detection.urgency,
+        },
+    )
+
+
+def _report_source_access_problem_handler(
+    arguments: Mapping[str, Any],
+) -> ToolResult:
+    """Handler for report_source_access_problem tool."""
+    url = arguments.get("url")
+    if not url:
+        return ToolResult(success=False, output="URL is required.")
+
+    error_message = arguments.get("error_message", "Unknown error")
+    consecutive_failures = arguments.get("consecutive_failures", 0)
+
+    kb_root = arguments.get("kb_root")
+    root_path = Path(kb_root) if kb_root else paths.get_knowledge_graph_root()
+
+    reg = SourceRegistry(root=root_path)
+    source = reg.get_source(url)
+    if source is None:
+        return ToolResult(success=False, output=f"Source not found: {url}")
+
+    # Build discussion content
+    title = f"[Access Problem] {source.name}"
+    body = f"""## Source Access Problem Report
+
+**Source URL**: {source.url}
+**Source Name**: {source.name}
+**Source Type**: {source.source_type}
+**Consecutive Failures**: {consecutive_failures}
+
+### Error Details
+
+```
+{error_message}
+```
+
+### Recommended Actions
+
+1. Verify the source URL is still valid
+2. Check if the source requires authentication
+3. Consider if the source should be marked as deprecated
+4. If temporary, wait for the source to recover
+
+### Source Metadata
+
+- **Added By**: {source.added_by}
+- **Added At**: {source.added_at.isoformat()}
+- **Last Verified**: {source.last_verified.isoformat()}
+- **Credibility Score**: {source.credibility_score:.2f}
+
+<!-- monitor-access-problem:{_url_hash(source.url)} -->
+"""
+
+    # For now, we'll create an issue instead of a discussion
+    # since discussions require additional setup (category ID, etc.)
+    # This can be enhanced later to use the discussions API
+    
+    try:
+        repository = github_issues.resolve_repository(arguments.get("repository"))
+        token = github_issues.resolve_token(None)
+    except github_issues.GitHubIssueError as e:
+        return ToolResult(success=False, output=str(e))
+
+    labels = ["access-problem", source.source_type]
+    if consecutive_failures >= 5:
+        labels.append("needs-attention")
+
+    try:
+        outcome = github_issues.create_issue(
+            token=token,
+            repository=repository,
+            title=title,
+            body=body,
+            labels=labels,
+        )
+    except github_issues.GitHubIssueError as e:
+        return ToolResult(success=False, output=f"Failed to create issue: {e}")
+
+    return ToolResult(
+        success=True,
+        output={
+            "issue_number": outcome.number,
+            "issue_url": outcome.html_url,
+            "source_url": source.url,
+            "consecutive_failures": consecutive_failures,
+        },
+    )

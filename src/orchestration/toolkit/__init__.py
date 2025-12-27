@@ -12,6 +12,7 @@ from .extraction import register_extraction_tools
 from .discussion_tools import register_all_discussion_tools as register_discussion_tools
 from .setup import register_setup_tools
 from .source_curator import register_source_curator_tools
+from .monitor import register_monitor_tools
 
 __all__ = [
 	"register_github_read_only_tools",
@@ -22,4 +23,5 @@ __all__ = [
     "register_discussion_tools",
     "register_setup_tools",
     "register_source_curator_tools",
+    "register_monitor_tools",
 ]
