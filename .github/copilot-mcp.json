@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "evidence-acquisition": {
+      "command": "python",
+      "args": ["-m", "src.integrations.copilot.mcp_server"],
+      "env": {}
+    }
+  }
+}
