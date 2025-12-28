@@ -235,6 +235,8 @@ class TestInitialAcquisitionMode:
         new_source: SourceEntry,
     ) -> None:
         """Test that duplicate initial acquisition issues are not created."""
+        from src.integrations.github.search_issues import IssueSearchResult
+        
         source_reg = SourceRegistry(root=temp_kb_root)
         source_reg.save_source(new_source)
 
@@ -246,23 +248,30 @@ class TestInitialAcquisitionMode:
             patch("src.orchestration.toolkit.monitor.GitHubIssueSearcher") as mock_searcher_cls,
         ):
             mock_create.return_value = IssueOutcome(number=99, url="https://api.github.com/repos/test/99", html_url="https://github.com/test/99")
-            # Simulate existing issue found
+            # Simulate existing issue found via body content search
             mock_searcher = MagicMock()
-            mock_searcher.search_by_label.return_value = [
-                {"number": 99, "title": f"Initial Acquisition: {new_source.name}"}
-            ]
+            existing_issue = IssueSearchResult(
+                number=99,
+                title=f"[Initial Acquisition] {new_source.name}",
+                state="open",
+                url="https://github.com/test/99",
+                assignee=None,
+            )
+            mock_searcher.search_by_body_content.return_value = [existing_issue]
             mock_searcher_cls.return_value = mock_searcher
 
             tool = tool_registry.get_tool("create_initial_acquisition_issue")
-            # Note: Current implementation is conservative (assumes no duplicates)
-            # This test documents the expected behavior for when body search is added
             result = tool.handler(
                 {"url": new_source.url, "kb_root": str(temp_kb_root)}
             )
 
-        # With current implementation, issue is still created
-        # When body search is enhanced, this should be skipped
+        # Issue creation should be skipped
         assert result.success
+        assert result.output.get("skipped") is True
+        assert result.output.get("reason") == "Issue already exists for this source"
+        assert result.output.get("issue_number") == 99
+        # create_issue should NOT have been called
+        mock_create.assert_not_called()
 
 
 # =============================================================================

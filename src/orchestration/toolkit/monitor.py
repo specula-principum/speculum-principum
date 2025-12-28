@@ -116,38 +116,6 @@ This is an **incremental update**. The Acquisition Agent should:
 """
 
 
-def _check_issue_exists(
-    searcher: GitHubIssueSearcher,
-    marker: str,
-) -> bool:
-    """Check if an issue with the given marker already exists.
-    
-    Searches open issues with acquisition-candidate label and checks
-    if the marker exists in the issue body.
-    
-    Args:
-        searcher: GitHub issue searcher instance
-        marker: The HTML comment marker to search for (e.g., 'monitor-initial:abc123')
-        
-    Returns:
-        True if an issue with this marker exists, False otherwise
-        
-    Note:
-        Currently returns False as a placeholder. Full implementation requires
-        GitHubIssueSearcher enhancement to support body content search.
-        See: https://github.com/speculum-principum/speculum-principum/issues/TBD
-        
-    TODO(monitor-dedup): Implement actual deduplication by:
-        1. Enhancing GitHubIssueSearcher.search_by_label to return issue bodies
-        2. Checking each returned issue body for the marker string
-        3. Or using GitHub's code search API with 'in:body' qualifier
-    """
-    # Placeholder: actual implementation pending GitHubIssueSearcher enhancement
-    _ = searcher  # Unused until implementation
-    _ = marker    # Unused until implementation
-    return False
-
-
 # =============================================================================
 # Read-Only Tools
 # =============================================================================
@@ -587,6 +555,34 @@ def _create_initial_acquisition_issue_handler(
             output="Source already has content hash. Use content update instead.",
         )
 
+    # Resolve repository and token early for dedup check
+    try:
+        repository = github_issues.resolve_repository(arguments.get("repository"))
+        token = github_issues.resolve_token(None)
+    except github_issues.GitHubIssueError as e:
+        return ToolResult(success=False, output=str(e))
+
+    # Check for existing issue before creating a new one
+    dedup_marker = f"monitor-initial:{_url_hash(source.url)}"
+    try:
+        searcher = GitHubIssueSearcher(token=token, repository=repository)
+        existing_issues = searcher.search_by_body_content(dedup_marker, limit=1)
+        if existing_issues:
+            existing = existing_issues[0]
+            return ToolResult(
+                success=True,
+                output={
+                    "issue_number": existing.number,
+                    "issue_url": existing.url,
+                    "source_url": source.url,
+                    "skipped": True,
+                    "reason": "Issue already exists for this source",
+                },
+            )
+    except github_issues.GitHubIssueError:
+        # If search fails, proceed with creation (fail-open for dedup)
+        pass
+
     # Create ChangeDetection for initial acquisition
     now = datetime.now(timezone.utc)
     detection = ChangeDetection(
@@ -613,13 +609,6 @@ def _create_initial_acquisition_issue_handler(
         labels.append("high-priority")
     elif detection.urgency == "low":
         labels.append("low-priority")
-
-    # Resolve repository and token
-    try:
-        repository = github_issues.resolve_repository(arguments.get("repository"))
-        token = github_issues.resolve_token(None)
-    except github_issues.GitHubIssueError as e:
-        return ToolResult(success=False, output=str(e))
 
     # Create the issue
     try:
