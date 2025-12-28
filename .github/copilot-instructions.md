@@ -43,3 +43,18 @@ registry = SourceRegistry(github_client=github_client)
 **Code directories** (synced from upstream): `src/`, `tests/`, `.github/`, `config/missions/`, `docs/`, `main.py`, `requirements.txt`, `pytest.ini`
 
 **Research directories** (clone-specific, never synced): `evidence/`, `knowledge-graph/`, `reports/`, `dev_data/`, `devops/`
+
+## Evidence Acquisition (MCP Tools)
+When you need to **fetch content from external URLs**, use the MCP tools provided by the `evidence-acquisition` server. These tools run **outside the firewall** and have unrestricted network access.
+
+**Available MCP Tools:**
+- `fetch_source_content(url)` - Fetch and extract main content as markdown with hash
+- `check_source_headers(url)` - Lightweight HEAD request for change detection (ETag, Last-Modified)
+
+**Usage Pattern for Acquisition:**
+1. Call `fetch_source_content` to get content from the source URL
+2. Parse the JSON response for `content`, `content_hash`, and metadata
+3. Store content in `evidence/parsed/` via GitHub API
+4. Update `SourceEntry.last_content_hash` in the registry
+
+Do NOT use `curl`, `wget`, or Python `requests` directly—those are blocked by the firewall.
