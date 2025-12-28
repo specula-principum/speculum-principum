@@ -633,6 +633,26 @@ def _create_initial_acquisition_issue_handler(
     except github_issues.GitHubIssueError as e:
         return ToolResult(success=False, output=f"Failed to create issue: {e}")
 
+    # Assign the issue to Copilot
+    try:
+        github_issues.assign_issue_to_copilot(
+            token=token,
+            repository=repository,
+            issue_number=outcome.number,
+        )
+    except github_issues.GitHubIssueError as e:
+        # Issue was created but assignment failed - log but don't fail
+        return ToolResult(
+            success=True,
+            output={
+                "issue_number": outcome.number,
+                "issue_url": outcome.html_url,
+                "source_url": source.url,
+                "urgency": detection.urgency,
+                "warning": f"Issue created but Copilot assignment failed: {e}",
+            },
+        )
+
     return ToolResult(
         success=True,
         output={
@@ -717,6 +737,27 @@ def _create_content_update_issue_handler(
         )
     except github_issues.GitHubIssueError as e:
         return ToolResult(success=False, output=f"Failed to create issue: {e}")
+
+    # Assign the issue to Copilot
+    try:
+        github_issues.assign_issue_to_copilot(
+            token=token,
+            repository=repository,
+            issue_number=outcome.number,
+        )
+    except github_issues.GitHubIssueError as e:
+        # Issue was created but assignment failed - log but don't fail
+        return ToolResult(
+            success=True,
+            output={
+                "issue_number": outcome.number,
+                "issue_url": outcome.html_url,
+                "source_url": source.url,
+                "detection_method": detection_method,
+                "urgency": detection.urgency,
+                "warning": f"Issue created but Copilot assignment failed: {e}",
+            },
+        )
 
     return ToolResult(
         success=True,

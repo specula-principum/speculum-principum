@@ -203,6 +203,7 @@ class TestInitialAcquisitionMode:
             patch("src.orchestration.toolkit.monitor.github_issues.resolve_token", return_value="fake-token"),
             patch("src.orchestration.toolkit.monitor.github_issues.resolve_repository", return_value="owner/repo"),
             patch("src.orchestration.toolkit.monitor.github_issues.create_issue") as mock_create,
+            patch("src.orchestration.toolkit.monitor.github_issues.assign_issue_to_copilot") as mock_assign,
         ):
             mock_create.return_value = IssueOutcome(number=42, url="https://api.github.com/repos/test/42", html_url="https://github.com/test/42")
 
@@ -219,6 +220,13 @@ class TestInitialAcquisitionMode:
         call_kwargs = mock_create.call_args[1]
         assert "Initial Acquisition" in call_kwargs["title"]
         assert "monitor-initial:" in call_kwargs["body"]
+
+        # Verify Copilot was assigned
+        mock_assign.assert_called_once_with(
+            token="fake-token",
+            repository="owner/repo",
+            issue_number=42,
+        )
 
     def test_initial_acquisition_dedup_prevents_duplicate_issues(
         self,
@@ -394,6 +402,7 @@ class TestUpdateMonitoringMode:
             patch("src.orchestration.toolkit.monitor.github_issues.resolve_token", return_value="fake-token"),
             patch("src.orchestration.toolkit.monitor.github_issues.resolve_repository", return_value="owner/repo"),
             patch("src.orchestration.toolkit.monitor.github_issues.create_issue") as mock_create,
+            patch("src.orchestration.toolkit.monitor.github_issues.assign_issue_to_copilot") as mock_assign,
         ):
             mock_create.return_value = IssueOutcome(number=55, url="https://api.github.com/repos/test/55", html_url="https://github.com/test/55")
 
@@ -413,6 +422,13 @@ class TestUpdateMonitoringMode:
         call_kwargs = mock_create.call_args[1]
         assert "Content Update" in call_kwargs["title"]
         assert "monitor-update:" in call_kwargs["body"]
+
+        # Verify Copilot was assigned
+        mock_assign.assert_called_once_with(
+            token="fake-token",
+            repository="owner/repo",
+            issue_number=55,
+        )
 
 
 # =============================================================================
