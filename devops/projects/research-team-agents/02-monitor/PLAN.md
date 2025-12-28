@@ -75,16 +75,79 @@ The Monitor Agent handles two fundamentally different scenarios:
 
 - **Type**: {source_type} ({content_type})
 - **Credibility Score**: {credibility_score}
-- **Expected Content**: {content_type_description}
 - **Official Domain**: {is_official}
+- **Requires Auth**: {requires_auth}
 
-### Acquisition Scope
+---
 
-This is the **first acquisition** of this source. The Acquisition Agent should:
-1. Fetch complete content from the source URL
-2. Parse all pages/segments using appropriate parser
-3. Store in `evidence/` with full provenance
-4. Update source registry with content hash and acquisition timestamp
+## ⚡ Task Type: CONTENT ACQUISITION
+
+**This is an EXECUTION task, not an IMPLEMENTATION task.**
+
+DO NOT create new modules, toolkits, or infrastructure. Use the existing parsing system.
+
+---
+
+### Execution Steps
+
+1. **Fetch and parse** using the existing web parser:
+   ```python
+   from src.parsing.runner import parse_single_target
+   from src.parsing.storage import ParseStorage
+   from src import paths
+   
+   storage = ParseStorage(root=paths.get_evidence_root() / "parsed")
+   result = parse_single_target("{url}", storage=storage, is_remote=True)
+   ```
+
+2. **Update source registry** with content hash:
+   ```python
+   from src.knowledge.storage import SourceRegistry
+   from src import paths
+   
+   registry = SourceRegistry(root=paths.get_knowledge_graph_root())
+   source = registry.get_source("{url}")
+   # Update source.last_content_hash = result.checksum
+   # Save with registry.save_source(updated_source)
+   ```
+
+3. **Commit changes** via GitHub API (Actions environment requires GitHubStorageClient)
+
+### Available Infrastructure (DO NOT RECREATE)
+
+| Module | Purpose |
+|--------|---------|
+| `src/parsing/web.py` | WebParser for HTML/URL content |
+| `src/parsing/runner.py` | `parse_single_target()` orchestrator |
+| `src/parsing/storage.py` | ParseStorage, manifest management |
+| `src/knowledge/storage.py` | SourceRegistry for metadata |
+
+### Storage Location
+
+Parsed content will be stored at:
+```
+evidence/parsed/{year}/{domain}-{hash[:8]}/
+├── content.md          # Extracted content
+└── metadata.json       # Provenance info
+```
+
+### ⚠️ Network Requirements
+
+This task requires **external network access** to fetch content from the source URL.
+- **GitHub Actions**: Network access available
+- **Sandboxed environments**: May fail at fetch stage
+
+If network is blocked, close this issue with label `blocked-network`.
+
+---
+
+### Acceptance Criteria
+
+- [ ] Content fetched from source URL
+- [ ] Parsed content stored in `evidence/parsed/`
+- [ ] Manifest entry created with checksum
+- [ ] `SourceEntry.last_content_hash` updated in registry
+- [ ] Issue closed with acquisition summary
 
 **Labels**: `initial-acquisition`, `{source_type}`
 
@@ -124,13 +187,78 @@ This is the **first acquisition** of this source. The Acquisition Agent should:
 | ETag | {previous_etag or "N/A"} | {current_etag or "N/A"} |
 | Last-Modified | {previous_last_modified or "N/A"} | {current_last_modified or "N/A"} |
 
-### Acquisition Instructions
+---
 
-This is an **incremental update**. The Acquisition Agent should:
-1. Fetch current content from the source URL
-2. Parse and compare against previous version in `evidence/`
-3. Store new version with provenance linking to previous
-4. Update source registry with new content hash
+## ⚡ Task Type: CONTENT UPDATE
+
+**This is an EXECUTION task, not an IMPLEMENTATION task.**
+
+DO NOT create new modules, toolkits, or infrastructure. Use the existing parsing system.
+
+---
+
+### Execution Steps
+
+1. **Fetch and parse** the updated content:
+   ```python
+   from src.parsing.runner import parse_single_target
+   from src.parsing.storage import ParseStorage
+   from src import paths
+   
+   storage = ParseStorage(root=paths.get_evidence_root() / "parsed")
+   result = parse_single_target("{url}", storage=storage, is_remote=True, force=True)
+   ```
+
+2. **Update source registry** with new content hash:
+   ```python
+   from src.knowledge.storage import SourceRegistry
+   from src import paths
+   
+   registry = SourceRegistry(root=paths.get_knowledge_graph_root())
+   source = registry.get_source("{url}")
+   # Update source.last_content_hash = result.checksum
+   # Save with registry.save_source(updated_source)
+   ```
+
+3. **Commit changes** via GitHub API (Actions environment requires GitHubStorageClient)
+
+### Available Infrastructure (DO NOT RECREATE)
+
+| Module | Purpose |
+|--------|---------|
+| `src/parsing/web.py` | WebParser for HTML/URL content |
+| `src/parsing/runner.py` | `parse_single_target()` orchestrator |
+| `src/parsing/storage.py` | ParseStorage, manifest management |
+| `src/knowledge/storage.py` | SourceRegistry for metadata |
+
+### Storage Location
+
+New version will be stored at:
+```
+evidence/parsed/{year}/{domain}-{new_hash[:8]}/
+├── content.md          # Updated content
+└── metadata.json       # Provenance (links to previous version)
+```
+
+Previous version remains at its original location for diff comparison.
+
+### ⚠️ Network Requirements
+
+This task requires **external network access** to fetch content from the source URL.
+- **GitHub Actions**: Network access available
+- **Sandboxed environments**: May fail at fetch stage
+
+If network is blocked, close this issue with label `blocked-network`.
+
+---
+
+### Acceptance Criteria
+
+- [ ] Updated content fetched from source URL
+- [ ] New version stored in `evidence/parsed/`
+- [ ] Manifest entry created with new checksum
+- [ ] `SourceEntry.last_content_hash` updated in registry
+- [ ] Issue closed with update summary
 
 **Labels**: `content-update`, `{urgency}-priority`
 
