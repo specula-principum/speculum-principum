@@ -1,8 +1,38 @@
 """MCP server for Copilot coding agent content acquisition.
 
 This module provides a Model Context Protocol (MCP) server that enables the
-Copilot coding agent to fetch content from external sources. MCP servers run
-OUTSIDE the agent firewall, providing unrestricted network access.
+Copilot coding agent to fetch content from external sources.
+
+## Deployment Modes
+
+### Local Server (Current Configuration)
+When configured with `type: "local"` in MCP settings, this server runs as a
+child process of the Copilot agent. **IMPORTANT:** Local MCP servers run
+INSIDE the same firewall sandbox as the agent, so they CANNOT bypass firewall
+restrictions on outbound network requests.
+
+### Remote Server (Required for Network Access)
+To enable unrestricted network access, deploy this as an HTTP/SSE server:
+1. Deploy to a cloud service (e.g., Cloud Run, Lambda, EC2)
+2. Update MCP configuration to use `type: "http"` or `type: "sse"`
+3. Set the `url` to the deployed server endpoint
+
+Example remote configuration:
+```json
+{
+  "mcpServers": {
+    "evidence-acquisition": {
+      "type": "http",
+      "url": "https://your-mcp-server.example.com/mcp",
+      "tools": ["fetch_source_content", "check_source_headers"]
+    }
+  }
+}
+```
+
+## Local Development
+For local testing, run: python -m src.integrations.copilot.mcp_server
+The server communicates via JSON-RPC 2.0 over stdio.
 """
 
 from __future__ import annotations
