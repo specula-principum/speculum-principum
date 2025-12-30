@@ -10,7 +10,7 @@ This project collection implements a rigorous research team for analyzing state 
 |---|-------|---------|--------|
 | 1 | [Source Curator](./01-source-curator/) | Identify, validate, and maintain authoritative sources | ✅ Planning Complete |
 | 2 | [Monitor](./02-monitor/) | Queue sources for acquisition via change detection | ✅ Planning Complete |
-| 3 | [Acquisition](./03-acquisition/) | Retrieve and preserve source documents | 🔲 Planning |
+| 3 | ~~[Acquisition](./03-acquisition/)~~ | ~~Retrieve and preserve source documents~~ | ⏭️ Merged into #2 |
 | 4 | [Extraction](./04-extraction/) | Extract structured entities and relationships | 🔲 Planning |
 | 5 | [Synthesis](./05-synthesis/) | Aggregate and organize knowledge structures | 🔲 Planning |
 | 6 | [Conflict Detection](./06-conflict-detection/) | Identify inconsistencies and contradictions | 🔲 Planning |
@@ -70,7 +70,7 @@ Each agent will be developed as an independent feature with:
 ## Progress Tracking
 
 - [ ] Phase 1: Source Curator + Monitor (foundation)
-- [ ] Phase 2: Acquisition + Extraction (data pipeline)
+- [ ] Phase 2: Extraction (data pipeline) — *Acquisition merged into Monitor*
 - [ ] Phase 3: Synthesis + Conflict Detection (knowledge building)
 - [ ] Phase 4: QA + Report Generation (output quality)
 
