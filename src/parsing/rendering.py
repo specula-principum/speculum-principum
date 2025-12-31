@@ -128,6 +128,7 @@ def render_page(
             # Additional anti-detection context options
             context_options["java_script_enabled"] = True
             context_options["bypass_csp"] = False
+            context_options["ignore_https_errors"] = True
             
             context = browser.new_context(**context_options)
             page = context.new_page()
