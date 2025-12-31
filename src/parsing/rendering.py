@@ -117,7 +117,7 @@ def render_page(
                 context_options["user_agent"] = (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
+                    "Chrome/131.0.0.0 Safari/537.36"
                 )
             else:
                 context_options["user_agent"] = user_agent
@@ -128,6 +128,7 @@ def render_page(
             # Additional anti-detection context options
             context_options["java_script_enabled"] = True
             context_options["bypass_csp"] = False
+            context_options["ignore_https_errors"] = True
             
             context = browser.new_context(**context_options)
             page = context.new_page()
