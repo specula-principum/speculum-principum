@@ -92,16 +92,61 @@ def render_page(
     
     try:
         with sync_playwright() as p:
-            # Launch browser
-            browser = p.chromium.launch(headless=headless)
+            # Configure browser launch arguments
+            browser_args = []
+            # Anti-detection: disable automation flags and set realistic args
+            browser_args.extend([
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-web-security",
+            ])
             
-            # Create context with optional user agent
+            # Launch browser
+            browser = p.chromium.launch(
+                headless=headless,
+                args=browser_args if browser_args else None,
+            )
+            
+            # Create context with optional user agent and stealth options
             context_options = {}
-            if user_agent:
+            
+            # Set realistic user agent if not provided
+            if not user_agent:
+                context_options["user_agent"] = (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
+            else:
                 context_options["user_agent"] = user_agent
+            
+            # Set realistic viewport
+            context_options["viewport"] = {"width": 1920, "height": 1080}
+            
+            # Additional anti-detection context options
+            context_options["java_script_enabled"] = True
+            context_options["bypass_csp"] = False
             
             context = browser.new_context(**context_options)
             page = context.new_page()
+            
+            # Mask WebDriver property and navigator properties
+            await_js = """
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            // Override plugin array to appear non-headless
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+            // Set realistic language
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en']
+            });
+            """
+            page.add_init_script(await_js)
             
             # Set timeout
             page.set_default_timeout(timeout)
