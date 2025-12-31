@@ -226,13 +226,13 @@ class TestCrawlScopeIntegration:
         assert filter_result.success
         in_scope = _get_output(filter_result).get("in_scope", [])
 
-        assert "https://example.com/docs" in in_scope
-        assert "https://example.com/other" in in_scope
-        assert "https://www.example.com/docs" in in_scope
-        assert "https://docs.example.com/" in in_scope
-        assert "https://api.example.com/v1" in in_scope
-        assert "https://other.com/docs" not in in_scope
-        assert "https://example.org/" not in in_scope
+        assert any(url == "https://example.com/docs" for url in in_scope)
+        assert any(url == "https://example.com/other" for url in in_scope)
+        assert any(url == "https://www.example.com/docs" for url in in_scope)
+        assert any(url == "https://docs.example.com/" for url in in_scope)
+        assert any(url == "https://api.example.com/v1" for url in in_scope)
+        assert not any(url == "https://other.com/docs" for url in in_scope)
+        assert not any(url == "https://example.org/" for url in in_scope)
 
 
 # =============================================================================
