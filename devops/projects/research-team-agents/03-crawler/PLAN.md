@@ -4,9 +4,73 @@
 
 **Mission:** Traverse all accessible pages under a source URL and acquire content for the knowledge graph.
 
-**Status:** 📋 Planning
+**Status:** ✅ Complete
 
 **Prerequisite:** Monitor Agent (02-monitor) - provides source registry and change detection
+
+---
+
+## Implementation Progress
+
+> **Last Updated:** 2025-12-30
+
+### Phase 1: Core Data Models ✅ COMPLETE
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| `src/knowledge/crawl_state.py` | ✅ Done | CrawlState dataclass with persistence |
+| `src/knowledge/page_registry.py` | ✅ Done | PageEntry with batch storage |
+| `src/knowledge/storage.py` extensions | ✅ Done | SourceEntry crawl fields added |
+| `tests/knowledge/test_crawl_state.py` | ✅ Done | 34 tests passing |
+| `tests/knowledge/test_page_registry.py` | ✅ Done | 28 tests passing |
+
+**Test Results:** 62 new tests, all passing
+
+### Phase 2: URL Scope & Link Extraction ✅ COMPLETE
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| `src/parsing/url_scope.py` | ✅ Done | Scope validation for path/host/domain |
+| `src/parsing/link_extractor.py` | ✅ Done | HTML link extraction with normalization |
+| `src/parsing/robots.py` | ✅ Done | Robots.txt parsing and compliance |
+| `tests/parsing/test_url_scope.py` | ✅ Done | 69 tests passing |
+| `tests/parsing/test_link_extractor.py` | ✅ Done | 52 tests passing |
+
+**Test Results:** 121 new tests, all passing
+
+### Phase 3: Crawler Toolkit ✅ COMPLETE
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| `src/orchestration/toolkit/crawler.py` | ✅ Done | 12 tools registered |
+| `tests/orchestration/test_crawler_toolkit.py` | ✅ Done | 60 tests passing |
+| `src/parsing/url_scope.py` extensions | ✅ Done | Added filter_urls_by_scope() |
+
+**Test Results:** 60 new tests, all passing
+
+**Tools Implemented:**
+- State Management: `load_crawl_state`, `save_crawl_state`, `get_crawl_statistics`
+- Frontier: `get_frontier_urls`, `add_to_frontier`, `filter_urls_by_scope`
+- Fetch/Extract: `check_robots_txt`, `extract_links`, `fetch_page`
+- Storage: `store_page_content`, `update_page_registry`, `mark_url_visited`
+
+### Phase 4: Mission & Workflow ✅ COMPLETE
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| `config/missions/crawl_source.yaml` | ✅ Done | Full mission with algorithm |
+| `.github/workflows/4-op-crawl-source.yml` | ✅ Done | Manual dispatch with inputs |
+
+### Phase 5: Integration & Testing ✅ COMPLETE
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| End-to-end tests | ✅ Done | 21 integration tests |
+| Documentation | ✅ Done | docs/guides/crawler-agent.md |
+
+**Test Results:** 21 integration tests, all passing
+
+**Final Test Count:** 961 tests total, all passing
 
 ---
 
@@ -286,7 +350,7 @@ id: crawl_source
 version: 1
 metadata:
   owner: copilot-orchestrator
-  created_at: 2025-12-29
+  created_at: 2025-12-30
   summary_tooling: site-crawler
 
 goal: |
@@ -689,21 +753,21 @@ FUNCTION crawl_source(source_url, scope, max_pages_per_run):
 
 ## Implementation Phases
 
-### Phase 1: Core Data Models (3 days)
+### Phase 1: Core Data Models (3 days) ✅ COMPLETE
 
 **Deliverables:**
-- [ ] `src/knowledge/crawl_state.py` - CrawlState dataclass
-- [ ] `src/knowledge/page_registry.py` - PageEntry and batching
-- [ ] Extend `src/knowledge/storage.py` - SourceEntry crawl fields
-- [ ] Unit tests for all models
+- [x] `src/knowledge/crawl_state.py` - CrawlState dataclass
+- [x] `src/knowledge/page_registry.py` - PageEntry and batching
+- [x] Extend `src/knowledge/storage.py` - SourceEntry crawl fields
+- [x] Unit tests for all models
 
 **Files:**
 ```
-src/knowledge/crawl_state.py      (NEW)
-src/knowledge/page_registry.py    (NEW)
-src/knowledge/storage.py          (MODIFY)
-tests/knowledge/test_crawl_state.py  (NEW)
-tests/knowledge/test_page_registry.py (NEW)
+src/knowledge/crawl_state.py      (NEW) ✅
+src/knowledge/page_registry.py    (NEW) ✅
+src/knowledge/storage.py          (MODIFY) ✅
+tests/knowledge/test_crawl_state.py  (NEW) ✅
+tests/knowledge/test_page_registry.py (NEW) ✅
 ```
 
 ### Phase 2: URL Scope & Link Extraction (2 days)
@@ -790,4 +854,4 @@ docs/guides/site-crawling.md          (NEW)
 
 ---
 
-*Last Updated: 2025-12-29*
+*Last Updated: 2025-12-30*
