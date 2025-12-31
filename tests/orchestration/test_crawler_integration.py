@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from urllib.parse import urlparse
 
 from src.knowledge.crawl_state import CrawlState, CrawlStateStorage
 from src.knowledge.page_registry import PageEntry, PageRegistry
@@ -534,7 +535,7 @@ class TestLinkExtractionIntegration:
         # Out-of-scope
         out_of_scope = data.get("out_of_scope", [])
         assert any("blog" in u for u in out_of_scope)
-        assert any("other.com" in u for u in out_of_scope)
+        assert any(urlparse(u).hostname == "other.com" for u in out_of_scope)
 
     def test_relative_url_resolution(self, temp_kb_root: Path):
         """Test relative URLs are resolved correctly."""
