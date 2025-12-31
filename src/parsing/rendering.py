@@ -36,6 +36,7 @@ class RenderedPage:
     final_url: str
     html: str
     title: str | None = None
+    user_agent: str | None = None
     
     @property
     def content_length(self) -> int:
@@ -122,59 +123,24 @@ def render_page(
             context_options["bypass_csp"] = False
             context_options["ignore_https_errors"] = True
             
+            # Add realistic browser headers to avoid detection
+            context_options["extra_http_headers"] = {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Cache-Control": "max-age=0",
+                "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+            }
+            
             context = browser.new_context(**context_options)
             page = context.new_page()
-            
-            # Enhanced anti-detection script
-            stealth_js = """
-            // Remove webdriver property
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            
-            // Add chrome object for better Chrome impersonation
-            window.chrome = {
-                runtime: {},
-                loadTimes: function() {},
-                csi: function() {},
-                app: {}
-            };
-            
-            // Override plugins to appear non-headless
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => {
-                    return [
-                        {name: 'Chrome PDF Plugin', description: 'Portable Document Format', filename: 'internal-pdf-viewer'},
-                        {name: 'Chrome PDF Viewer', description: '', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai'},
-                        {name: 'Native Client', description: '', filename: 'internal-nacl-plugin'}
-                    ];
-                }
-            });
-            
-            // Set realistic language
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en']
-            });
-            
-            // Override permissions
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                    Promise.resolve({ state: Notification.permission }) :
-                    originalQuery(parameters)
-            );
-            
-            // Set platform
-            Object.defineProperty(navigator, 'platform', {
-                get: () => 'Win32'
-            });
-            
-            // Set hardware concurrency
-            Object.defineProperty(navigator, 'hardwareConcurrency', {
-                get: () => 8
-            });
-            """
-            page.add_init_script(stealth_js)
             
             # Set timeout
             page.set_default_timeout(timeout)
@@ -205,6 +171,7 @@ def render_page(
                     final_url=final_url,
                     html=html,
                     title=title,
+                    user_agent=user_agent,
                 )
                 
             except PlaywrightTimeout as e:
