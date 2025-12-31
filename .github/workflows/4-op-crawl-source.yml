@@ -21,7 +21,7 @@ on:
         description: "Max pages to process this run (for chunking)"
         required: false
         type: number
-        default: 1000
+        default: 100
       force_restart:
         description: "Restart crawl from scratch (discard existing state)"
         required: false
