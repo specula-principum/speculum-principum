@@ -74,7 +74,7 @@ This repository is designed to be used as a **template** for research projects. 
 ### Quick Start
 
 1. Click **"Use this template"** on GitHub to create your research repository
-2. Run the **Initialize Repository** workflow to configure your research topic
+2. Run the **Template: Initialize Clone** workflow to configure your research topic
 3. Add research materials to `evidence/`, build knowledge in `knowledge-graph/`
 
 ### Syncing with Upstream
@@ -83,7 +83,7 @@ Cloned repositories can receive code updates (bug fixes, new features) while pre
 
 ```bash
 # Via GitHub Actions UI:
-# Go to Actions → Sync from Upstream → Run workflow
+# Go to Actions → Template: Sync from Upstream → Run workflow
 ```
 
 **What gets synced:**
