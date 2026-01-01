@@ -1,4 +1,4 @@
-name: "Template: Notify Downstream Clones"
+name: "Template: Notify Downstream Clones 🔧🔄⚙️"
 
 on:
   release:

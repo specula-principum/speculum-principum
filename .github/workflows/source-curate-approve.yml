@@ -1,4 +1,4 @@
-name: "Content: Curate & Approve"
+name: "Source: Curate & Approve 📋🔄"
 
 # Trigger on Discussion comments for approval/rejection commands
 on:
