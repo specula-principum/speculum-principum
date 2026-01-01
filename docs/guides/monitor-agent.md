@@ -1,5 +1,7 @@
 # Monitor Agent Guide
 
+> ⚠️ **DEPRECATION NOTICE**: This agent is being replaced by the unified [Content Pipeline](content-pipeline.md). The Content Pipeline provides the same functionality with zero LLM cost and improved politeness controls. See the [migration guide](content-pipeline.md#migration-from-monitorcrawler-agents).
+
 ## Overview
 
 The Monitor Agent is a lightweight change detector that monitors registered sources for content changes and queues them for acquisition by creating GitHub Issues. It operates on a scheduled basis (every 6 hours by default) and uses a bandwidth-efficient tiered detection strategy.
