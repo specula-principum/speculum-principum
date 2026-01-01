@@ -266,9 +266,10 @@ def acquire_crawl(
             page_hash = _content_hash(markdown)
             content_hashes.append(page_hash)
             
-            # Extract links
-            if document.raw_content:
-                links = extract_links(document.raw_content, url)
+            # Extract links from raw HTML
+            raw_html = document.metadata.get("raw_html")
+            if raw_html:
+                links = extract_links(raw_html, url)
                 in_scope = filter_urls_by_scope(
                     [link.url for link in links],
                     source.url,
