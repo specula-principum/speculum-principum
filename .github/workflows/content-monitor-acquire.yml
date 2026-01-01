@@ -1,4 +1,4 @@
-name: "Content: Monitor & Acquire"
+name: "Content: Monitor & Acquire 📦🔄⚙️"
 
 # Unified content pipeline for source monitoring and acquisition
 # Replaces the separate monitor (3-op-monitor-sources.yml) and crawler (4-op-crawl-source.yml) workflows

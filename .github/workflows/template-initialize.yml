@@ -1,4 +1,4 @@
-name: "Template: Initialize Clone"
+name: "Template: Initialize Clone 🔧⚙️"
 
 on:
   workflow_dispatch:

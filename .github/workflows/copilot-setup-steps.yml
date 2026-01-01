@@ -1,4 +1,4 @@
-name: "Copilot Setup Steps"
+name: "Copilot Setup Steps 🛠️🔄⚙️"
 
 # This workflow runs before the Copilot coding agent starts working.
 # It installs Python dependencies required for the agent.
