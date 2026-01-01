@@ -145,7 +145,8 @@ save_crawl_state
 The crawler runs via manual dispatch with configurable parameters:
 
 ```yaml
-# .github/workflows/4-op-crawl-source.yml
+# .github/workflows/content-monitor-acquire.yml
+# Note: This workflow replaces the old 4-op-crawl-source.yml
 on:
   workflow_dispatch:
     inputs:

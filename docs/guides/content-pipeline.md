@@ -154,7 +154,7 @@ Options:
 
 ## GitHub Workflow
 
-The pipeline runs via `.github/workflows/5-op-content-pipeline.yml`:
+The pipeline runs via `.github/workflows/content-monitor-acquire.yml`:
 
 ### Scheduled Execution
 

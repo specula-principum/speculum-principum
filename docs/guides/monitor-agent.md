@@ -102,7 +102,8 @@ The monitor agent has access to these tools:
 The monitor agent runs via GitHub Actions on a 6-hour schedule:
 
 ```yaml
-# .github/workflows/3-op-monitor-sources.yml
+# .github/workflows/content-monitor-acquire.yml
+# Note: This workflow replaces the old 3-op-monitor-sources.yml
 on:
   schedule:
     - cron: "0 */6 * * *"  # Every 6 hours
