@@ -115,6 +115,9 @@ class WebParser:
         if rendered.title:
             document.metadata["title"] = rendered.title
         
+        # Store raw HTML for link extraction (used by crawler)
+        document.metadata["raw_html"] = rendered.html
+        
         # Extract text content from rendered HTML
         self._populate_segments(document, rendered.html, document_target)
         
@@ -140,6 +143,7 @@ class WebParser:
                 "file_size": path.stat().st_size,
                 "content_type": media_type,
                 "encoding": encoding,
+                "raw_html": html,
             }
         )
 
