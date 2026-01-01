@@ -1,17 +1,18 @@
-name: "Infrastructure: Copilot Dependencies"
+name: "Copilot Setup Steps"
 
 # This workflow runs before the Copilot coding agent starts working.
 # It installs Python dependencies required for the agent.
 # Note: This runs BEFORE the firewall is enabled, so it can fetch external content.
+# IMPORTANT: The workflow name "Copilot Setup Steps" is required by GitHub Copilot.
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - .github/workflows/infra-copilot-dependencies.yml
+      - .github/workflows/copilot-setup-steps.yml
   pull_request:
     paths:
-      - .github/workflows/infra-copilot-dependencies.yml
+      - .github/workflows/copilot-setup-steps.yml
 
 jobs:
   # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
