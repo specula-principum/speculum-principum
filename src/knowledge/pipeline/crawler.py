@@ -240,7 +240,7 @@ def acquire_crawl(
         url = normalize_url(url)
         
         # Check robots.txt
-        if not robots.can_fetch(url):
+        if not robots.is_allowed(url):
             state.skipped_count += 1
             state.mark_url_visited(url)
             logger.debug("Skipped (robots.txt): %s", url)

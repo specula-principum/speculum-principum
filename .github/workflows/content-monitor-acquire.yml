@@ -213,7 +213,7 @@ jobs:
           fi
       
       - name: Commit pipeline updates
-        if: ${{ inputs.dry_run != 'true' }}
+        if: ${{ inputs.dry_run != 'true' && steps.pipeline.outputs.exit_code == '0' }}
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore(pipeline): update sources and content [skip ci]"
@@ -224,3 +224,9 @@ jobs:
           skip_dirty_check: false
           skip_fetch: false
           skip_checkout: false
+      
+      - name: Fail workflow on pipeline error
+        if: ${{ steps.pipeline.outputs.exit_code != '0' }}
+        run: |
+          echo "::error::Pipeline failed with exit code ${{ steps.pipeline.outputs.exit_code }}"
+          exit 1
