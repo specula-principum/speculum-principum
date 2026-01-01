@@ -236,7 +236,7 @@ class TestDomainScheduler:
         
         # example.com should still have pending sources
         pending = scheduler.domains_with_pending
-        assert "example.com" in pending
+        assert {"example.com"}.issubset(set(pending))
 
 
 class TestBackoffCalculation:
