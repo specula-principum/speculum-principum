@@ -143,6 +143,52 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         help="GitHub token. Defaults to GH_TOKEN or GITHUB_TOKEN env var.",
     )
     assign_parser.set_defaults(func=assign_cli)
+    
+    # Skip command - mark document as extraction_skipped
+    skip_parser = sub.add_parser(
+        "skip",
+        description="Mark a document as skipped to prevent re-queuing.",
+        help="Mark a document as skipped to prevent re-queuing.",
+    )
+    skip_parser.add_argument(
+        "--checksum",
+        type=str,
+        required=True,
+        help="Checksum of the document to mark as skipped.",
+    )
+    skip_parser.add_argument(
+        "--reason",
+        type=str,
+        required=True,
+        help="Reason for skipping the document.",
+    )
+    skip_parser.add_argument(
+        "--evidence-root",
+        type=Path,
+        default=None,
+        help="Root directory for evidence. Defaults to evidence/.",
+    )
+    skip_parser.set_defaults(func=skip_cli)
+    
+    # Complete command - mark document as extraction_complete
+    complete_parser = sub.add_parser(
+        "complete",
+        description="Mark a document as extraction complete to prevent re-queuing.",
+        help="Mark a document as extraction complete to prevent re-queuing.",
+    )
+    complete_parser.add_argument(
+        "--checksum",
+        type=str,
+        required=True,
+        help="Checksum of the document to mark as complete.",
+    )
+    complete_parser.add_argument(
+        "--evidence-root",
+        type=Path,
+        default=None,
+        help="Root directory for evidence. Defaults to evidence/.",
+    )
+    complete_parser.set_defaults(func=complete_cli)
 
 
 def _parse_checksum_from_issue_body(body: str | None) -> str | None:
@@ -193,6 +239,14 @@ def get_documents_needing_issues(
     for checksum, entry in manifest.entries.items():
         # Only queue completed documents
         if entry.status != "completed":
+            continue
+        
+        # Skip documents that have already been marked as extraction_skipped
+        if entry.metadata.get("extraction_skipped"):
+            continue
+        
+        # Skip documents that have already been marked as extraction_complete
+        if entry.metadata.get("extraction_complete"):
             continue
         
         # If specific checksum requested, only include that one
@@ -249,23 +303,52 @@ def _create_extraction_issue(
 
 ## Extraction Instructions
 
-@copilot Please process this document:
+@copilot Please process this document following these steps:
 
-1. **Assess** - Read the document and determine if it contains substantive content
-   - Skip if: navigation page, error page, boilerplate, or duplicate content
-   - If skipping: Comment with reason and close with "skipped" label
+### 1. Assess Document Quality
 
-2. **Extract** (if substantive) - Run extractions in order:
-   ```bash
-   python main.py extract --checksum {entry.checksum}
-   python main.py extract --checksum {entry.checksum} --orgs
-   python main.py extract --checksum {entry.checksum} --concepts
-   python main.py extract --checksum {entry.checksum} --associations
-   ```
+Read the document from the artifact path above and determine if it contains substantive, extractable content.
 
-3. **Commit** - Save changes to knowledge-graph/
+**Skip if the document is:**
+- Navigation/homepage with only links and teasers
+- Error page or access denied message
+- Boilerplate/template content
+- Duplicate of already-processed content
 
-4. **Report** - Comment with summary of extracted entities
+### 2A. If Skipping (Non-Substantive Content)
+
+**Mark the document as skipped to prevent re-queuing:**
+
+```bash
+python main.py extraction skip --checksum {entry.checksum} --reason "Your specific reason"
+```
+
+Example:
+```bash
+python main.py extraction skip --checksum {entry.checksum} --reason "Homepage with only navigation links and article teasers"
+```
+
+Then:
+- Comment explaining why you're skipping (be specific)
+- Add `extraction-skipped` label
+- Close this issue
+
+### 2B. If Extracting (Substantive Content)
+
+Run these commands in order:
+
+```bash
+python main.py extract --checksum {entry.checksum}
+python main.py extract --checksum {entry.checksum} --orgs
+python main.py extract --checksum {entry.checksum} --concepts
+python main.py extract --checksum {entry.checksum} --associations
+python main.py extraction complete --checksum {entry.checksum}
+```
+
+Then:
+- Comment with extraction statistics
+- Add `extraction-complete` label
+- Close this issue
 
 ---
 <!-- copilot:extraction-queue -->
@@ -466,6 +549,80 @@ def pending_cli(args: argparse.Namespace) -> int:
         return 1
 
 
+def skip_cli(args: argparse.Namespace) -> int:
+    """Execute the skip command to mark document as extraction_skipped."""
+    try:
+        # Use default evidence root if not provided
+        evidence_root = args.evidence_root or get_evidence_root()
+        
+        # Initialize storage with GitHub client if available
+        from src.integrations.github.storage import get_github_storage_client
+        
+        github_client = get_github_storage_client()
+        storage = ParseStorage(evidence_root / "parsed", github_client=github_client)
+        
+        # Get the manifest entry
+        entry = storage.manifest().get(args.checksum)
+        if not entry:
+            print(f"Error: Document with checksum {args.checksum} not found in manifest.", file=sys.stderr)
+            return 1
+        
+        # Update metadata
+        entry.metadata["extraction_skipped"] = True
+        entry.metadata["skip_reason"] = args.reason
+        
+        # Record the updated entry
+        storage.record_entry(entry)
+        
+        # Flush changes if using GitHub client
+        if github_client:
+            storage.flush_all()
+        
+        print(f"✓ Marked document {args.checksum[:8]}... as skipped")
+        print(f"  Reason: {args.reason}")
+        
+        return 0
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+def complete_cli(args: argparse.Namespace) -> int:
+    """Execute the complete command to mark document as extraction_complete."""
+    try:
+        # Use default evidence root if not provided
+        evidence_root = args.evidence_root or get_evidence_root()
+        
+        # Initialize storage with GitHub client if available
+        from src.integrations.github.storage import get_github_storage_client
+        
+        github_client = get_github_storage_client()
+        storage = ParseStorage(evidence_root / "parsed", github_client=github_client)
+        
+        # Get the manifest entry
+        entry = storage.manifest().get(args.checksum)
+        if not entry:
+            print(f"Error: Document with checksum {args.checksum} not found in manifest.", file=sys.stderr)
+            return 1
+        
+        # Update metadata
+        entry.metadata["extraction_complete"] = True
+        
+        # Record the updated entry
+        storage.record_entry(entry)
+        
+        # Flush changes if using GitHub client
+        if github_client:
+            storage.flush_all()
+        
+        print(f"✓ Marked document {args.checksum[:8]}... as extraction complete")
+        
+        return 0
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
 def assign_cli(args: argparse.Namespace) -> int:
     """Execute the assign command to assign issue to Copilot."""
     try:
@@ -487,50 +644,89 @@ def assign_cli(args: argparse.Namespace) -> int:
             return 1
         
         # Post instructions comment
-        instructions = f"""## Extraction Instructions
+        instructions = f"""## ⚙️ Environment Context
 
-Hello @copilot! Please extract knowledge entities from this document.
+You are running in a **GitHub Actions ephemeral runner**. All file writes must use the GitHub Contents API:
 
-### Process
+```python
+from src.integrations.github.storage import get_github_storage_client
 
-1. **Assess Document Quality**
-   - Read the document content from the artifact path above
-   - Determine if it contains substantive, extractable content
-   - Skip if: navigation page, error page, boilerplate, or duplicate content
-   - If NOT substantive: Comment with clear reason, add `extraction-skipped` label, and close this issue
+github_client = get_github_storage_client()  # Auto-detects Actions environment
+# Pass github_client to storage classes for API-based persistence
+```
 
-2. **Extract Entities** (if substantive)
-   
-   Run the following commands in order:
-   ```bash
-   # Extract people
-   python main.py extract --checksum {checksum}
-   
-   # Extract organizations
-   python main.py extract --checksum {checksum} --orgs
-   
-   # Extract concepts
-   python main.py extract --checksum {checksum} --concepts
-   
-   # Extract associations between entities
-   python main.py extract --checksum {checksum} --associations
-   ```
+**Critical**: Local filesystem writes are discarded when the workflow ends. Always use `github_client` parameter.
 
-3. **Commit Changes**
-   - All extracted entities should be saved to `knowledge-graph/` directory
-   - Commit all changes with a descriptive message
+---
 
-4. **Report Summary**
-   - Comment with extraction statistics (count of each entity type extracted)
-   - Add `extraction-complete` label
-   - Close this issue
+## 📋 Extraction Process
 
-### Important Notes
+### Step 1: Assess Document Quality
 
-- Always assess document quality BEFORE extracting
-- Explain skip decisions clearly with specific reasons
-- Extract entities in the specified order (people → orgs → concepts → associations)
-- If extraction fails, add `extraction-error` label and leave issue open
+Read the document from the artifact path in the issue body. Determine if it has substantive, extractable content.
+
+**Skip if:**
+- Navigation/homepage (links, teasers, no full articles)
+- Error page or access denied
+- Boilerplate/template with no unique content
+- Duplicate content already processed
+
+### Step 2A: If Skipping (CRITICAL - Prevents Re-queuing)
+
+**Mark the document as skipped using the CLI:**
+
+```bash
+python main.py extraction skip --checksum {checksum} --reason "Specific reason here"
+```
+
+Example:
+```bash
+python main.py extraction skip --checksum {checksum} --reason "Homepage with only nav links and article teasers"
+```
+
+This command:
+- Updates the manifest metadata with `extraction_skipped: true`
+- Commits the change via GitHub API (in Actions environment)
+- Prevents this document from being re-queued
+
+**Then:**
+1. Comment explaining your skip decision (be specific about what makes it non-substantive)
+2. Add `extraction-skipped` label
+3. Close this issue
+4. **STOP** - do not extract
+
+### Step 2B: If Extracting (Substantive Content)
+
+Run extraction commands in order (they auto-commit via GitHub API):
+
+```bash
+python main.py extract --checksum {checksum}                 # People
+python main.py extract --checksum {checksum} --orgs          # Organizations
+python main.py extract --checksum {checksum} --concepts      # Concepts
+python main.py extract --checksum {checksum} --associations  # Relationships
+python main.py extraction complete --checksum {checksum}     # Mark as complete
+```
+
+**Then:**
+1. Comment with statistics (entity counts)
+2. Add `extraction-complete` label
+3. Close this issue
+
+---
+
+## 🚨 Common Mistakes to Avoid
+
+1. ❌ **Skipping without updating manifest** → Document gets re-queued endlessly
+2. ❌ **Not committing manifest changes** → Updates lost, document re-queued
+3. ❌ **Vague skip reasons** → Hard to audit quality later
+4. ❌ **Using git CLI commands** → Use file edits and commit tools instead
+
+## ✅ Success Criteria
+
+- Skip decisions prevent re-queuing (manifest updated)
+- Substantive content fully extracted (all 4 entity types)
+- Clear audit trail in comments
+- Appropriate label applied
 
 Thank you! 🧠
 """

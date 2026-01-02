@@ -190,6 +190,63 @@ class TestGetDocumentsNeedingIssues:
         assert len(result) == 1
         assert result[0].checksum == "checksum1"
 
+    def test_skip_extraction_skipped_documents(self):
+        """Should skip documents marked as extraction_skipped in metadata."""
+        manifest = Manifest(
+            entries={
+                "checksum1": ManifestEntry(
+                    source="doc1",
+                    checksum="checksum1",
+                    parser="pdf",
+                    artifact_path="path/to/doc1",
+                    processed_at=datetime.now(timezone.utc),
+                    status="completed",
+                    metadata={"extraction_skipped": True, "skip_reason": "Navigation page"},
+                ),
+                "checksum2": ManifestEntry(
+                    source="doc2",
+                    checksum="checksum2",
+                    parser="web",
+                    artifact_path="path/to/doc2",
+                    processed_at=datetime.now(timezone.utc),
+                    status="completed",
+                ),
+            }
+        )
+        
+        result = get_documents_needing_issues(manifest, [])
+        assert len(result) == 1
+        assert result[0].checksum == "checksum2"
+
+
+    def test_skip_extraction_complete_documents(self):
+        """Should skip documents marked as extraction_complete in metadata."""
+        manifest = Manifest(
+            entries={
+                "checksum1": ManifestEntry(
+                    source="doc1",
+                    checksum="checksum1",
+                    parser="pdf",
+                    artifact_path="path/to/doc1",
+                    processed_at=datetime.now(timezone.utc),
+                    status="completed",
+                    metadata={"extraction_complete": True},
+                ),
+                "checksum2": ManifestEntry(
+                    source="doc2",
+                    checksum="checksum2",
+                    parser="web",
+                    artifact_path="path/to/doc2",
+                    processed_at=datetime.now(timezone.utc),
+                    status="completed",
+                ),
+            }
+        )
+        
+        result = get_documents_needing_issues(manifest, [])
+        assert len(result) == 1
+        assert result[0].checksum == "checksum2"
+
 
 class TestQueueDocumentsForExtraction:
     """Test queue_documents_for_extraction function."""
@@ -317,3 +374,140 @@ class TestQueueDocumentsForExtraction:
         # Verify - no issues created
         assert len(result) == 0
         mock_create.assert_not_called()
+
+
+class TestSkipCommand:
+    """Test the skip CLI command."""
+
+    def test_skip_marks_document_as_skipped(self, tmp_path):
+        """Should update manifest metadata when skipping a document."""
+        from src.cli.commands.extraction_queue import skip_cli
+        from src.parsing.storage import ParseStorage
+        from datetime import datetime, timezone
+        import argparse
+        
+        # Create a test manifest
+        manifest_dir = tmp_path / "parsed"
+        manifest_dir.mkdir(parents=True)
+        
+        storage = ParseStorage(manifest_dir)
+        entry = ManifestEntry(
+            source="https://example.com/page",
+            checksum="abc123def456",
+            parser="web",
+            artifact_path="parsed/example/index.md",
+            processed_at=datetime.now(timezone.utc),
+            status="completed",
+        )
+        storage.record_entry(entry)
+        
+        # Create args for skip command
+        args = argparse.Namespace(
+            checksum="abc123def456",
+            reason="Homepage with only navigation links",
+            evidence_root=tmp_path,
+        )
+        
+        # Execute skip command
+        result = skip_cli(args)
+        
+        # Should succeed
+        assert result == 0
+        
+        # Reload manifest and verify metadata was updated
+        storage2 = ParseStorage(manifest_dir)
+        updated_entry = storage2.manifest().get("abc123def456")
+        assert updated_entry is not None
+        assert updated_entry.metadata.get("extraction_skipped") is True
+        assert updated_entry.metadata.get("skip_reason") == "Homepage with only navigation links"
+
+    def test_skip_nonexistent_document(self, tmp_path):
+        """Should return error for nonexistent checksum."""
+        from src.cli.commands.extraction_queue import skip_cli
+        from src.parsing.storage import ParseStorage
+        import argparse
+        
+        # Create empty manifest
+        manifest_dir = tmp_path / "parsed"
+        manifest_dir.mkdir(parents=True)
+        ParseStorage(manifest_dir)
+        
+        # Create args for skip command
+        args = argparse.Namespace(
+            checksum="nonexistent",
+            reason="Test reason",
+            evidence_root=tmp_path,
+        )
+        
+        # Execute skip command
+        result = skip_cli(args)
+        
+        # Should fail
+        assert result == 1
+
+
+class TestCompleteCommand:
+    """Test the complete CLI command."""
+
+    def test_complete_marks_document_as_complete(self, tmp_path):
+        """Should update manifest metadata when marking document as complete."""
+        from src.cli.commands.extraction_queue import complete_cli
+        from src.parsing.storage import ParseStorage
+        from datetime import datetime, timezone
+        import argparse
+        
+        # Create a test manifest
+        manifest_dir = tmp_path / "parsed"
+        manifest_dir.mkdir(parents=True)
+        
+        storage = ParseStorage(manifest_dir)
+        entry = ManifestEntry(
+            source="https://example.com/page",
+            checksum="abc123def456",
+            parser="web",
+            artifact_path="parsed/example/index.md",
+            processed_at=datetime.now(timezone.utc),
+            status="completed",
+        )
+        storage.record_entry(entry)
+        
+        # Create args for complete command
+        args = argparse.Namespace(
+            checksum="abc123def456",
+            evidence_root=tmp_path,
+        )
+        
+        # Execute complete command
+        result = complete_cli(args)
+        
+        # Should succeed
+        assert result == 0
+        
+        # Reload manifest and verify metadata was updated
+        storage2 = ParseStorage(manifest_dir)
+        updated_entry = storage2.manifest().get("abc123def456")
+        assert updated_entry is not None
+        assert updated_entry.metadata.get("extraction_complete") is True
+
+    def test_complete_nonexistent_document(self, tmp_path):
+        """Should return error for nonexistent checksum."""
+        from src.cli.commands.extraction_queue import complete_cli
+        from src.parsing.storage import ParseStorage
+        import argparse
+        
+        # Create empty manifest
+        manifest_dir = tmp_path / "parsed"
+        manifest_dir.mkdir(parents=True)
+        ParseStorage(manifest_dir)
+        
+        # Create args for complete command
+        args = argparse.Namespace(
+            checksum="nonexistent",
+            evidence_root=tmp_path,
+        )
+        
+        # Execute complete command
+        result = complete_cli(args)
+        
+        # Should fail
+        assert result == 1
