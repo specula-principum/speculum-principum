@@ -266,11 +266,18 @@ git push
 
 **Problem**: Issue labeled `extraction-queue` but Copilot doesn't pick it up.
 
-**Solutions**:
+**Root Cause**: GitHub's `labeled` webhook event only fires when a label is **added** to an existing issue, not when an issue is created with labels already applied.
+
+**Solution**: The queue CLI now creates issues in two steps:
+1. Create issue with `copilot-queue` label
+2. Add `extraction-queue` label in separate API call (triggers workflow)
+
+**If still not working**:
 - Check workflow logs: Actions → "Extraction: Process Document 🧠"
+- Verify `GH_TOKEN` secret is set in repository settings
 - Verify `COPILOT_TOKEN` secret is set in repository settings
 - Check Copilot availability (rate limits, quota)
-- Manually assign Copilot to the Issue
+- Manually add the `extraction-queue` label again to re-trigger
 
 ### Extraction Failed
 

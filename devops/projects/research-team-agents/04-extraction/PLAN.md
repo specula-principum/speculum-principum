@@ -920,3 +920,26 @@ The Extraction Agent is **ready for production use**. Recommended next actions:
 ---
 
 *Last Updated: 2026-01-02*
+
+---
+
+## Post-Implementation Fixes
+
+### Fix #1: Issue Label Timing (2026-01-02)
+
+**Problem**: Queue workflow created issues successfully, but Copilot was not being triggered to process them.
+
+**Root Cause**: GitHub's `labeled` webhook event only fires when a label is **added** to an existing issue. When an issue is created with labels already applied, the event doesn't trigger.
+
+**Solution**: Modified `_create_extraction_issue()` to use a two-step process:
+1. Create issue with `copilot-queue` label only
+2. Call `add_labels()` separately to add `extraction-queue` label
+3. Second API call triggers the `labeled` event, which activates `extraction-process.yml`
+
+**Files Modified**:
+- `src/cli/commands/extraction_queue.py` - Added `add_labels` import and two-step issue creation
+
+**Testing**: All existing tests pass without modification. The change is transparent to callers.
+
+**Documentation Updated**:
+- Added troubleshooting section in `docs/guides/extraction-pipeline.md` explaining this behavior
