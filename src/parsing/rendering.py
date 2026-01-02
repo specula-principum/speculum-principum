@@ -62,8 +62,9 @@ def render_page(
     user_agent: str,
     headless: bool = True,
     timeout: int = DEFAULT_NAVIGATION_TIMEOUT,
-    wait_until: WaitUntilEvent = "networkidle",
+    wait_until: WaitUntilEvent = "load",
     wait_after_load: int = 0,
+    block_media: bool = True,
 ) -> RenderedPage:
     """Render a page using Playwright and return the HTML content.
     
@@ -78,7 +79,10 @@ def render_page(
         timeout: Navigation timeout in milliseconds.
         wait_until: When to consider navigation complete.
             Options: "load", "domcontentloaded", "networkidle", "commit"
+            Default is "load" which works well for pages with streaming media.
         wait_after_load: Additional milliseconds to wait after page load.
+        block_media: If True, block video/audio downloads to prevent timeouts on
+            media-heavy pages. Only affects media files, not page structure.
         
     Returns:
         RenderedPage with the rendered HTML content.
@@ -135,6 +139,20 @@ def render_page(
             
             context = browser.new_context(**context_options)
             page = context.new_page()
+            
+            # Block media files to prevent timeouts on video-heavy pages
+            if block_media:
+                def block_media_route(route):
+                    """Block video, audio, and other large media files."""
+                    request = route.request
+                    resource_type = request.resource_type
+                    if resource_type in ("media", "video", "audio"):
+                        route.abort()
+                    else:
+                        route.continue_()
+                
+                # Apply route handler for media blocking
+                page.route("**/*", block_media_route)
             
             # Set timeout
             page.set_default_timeout(timeout)

@@ -106,6 +106,9 @@ class ParseStorage:
         self._github_client = github_client
         # Project root for computing relative paths (defaults to cwd)
         self._project_root = project_root or Path.cwd()
+        # Defer manifest writes for batching (GitHub API efficiency)
+        self._defer_manifest_writes = False
+        self._manifest_dirty = False
         utils.ensure_directory(self.root)
         self._manifest = self._load_manifest()
 
@@ -129,10 +132,32 @@ class ParseStorage:
         if entry is None:
             return True
         return entry.status != "completed"
+    
+    def begin_batch(self) -> None:
+        """Start batching manifest writes to reduce GitHub API commits.
+        
+        Call this before processing multiple documents, then call flush_manifest()
+        when done to write all changes in a single commit.
+        """
+        self._defer_manifest_writes = True
+        self._manifest_dirty = False
+    
+    def flush_manifest(self) -> None:
+        """Write pending manifest changes if any exist.
+        
+        This should be called after begin_batch() and document processing to
+        commit all accumulated manifest changes in a single write.
+        """
+        if self._manifest_dirty:
+            self._write_manifest()
+            self._manifest_dirty = False
+        self._defer_manifest_writes = False
 
     def record_entry(self, entry: ManifestEntry) -> None:
         self._manifest.upsert(entry)
-        self._write_manifest()
+        self._manifest_dirty = True
+        if not self._defer_manifest_writes:
+            self._write_manifest()
 
     def persist_document(self, document: ParsedDocument) -> ManifestEntry:
         """Write the document to disk and record a manifest entry."""
