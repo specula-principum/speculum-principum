@@ -103,6 +103,7 @@ def acquire_single_page(
     source: "SourceEntry",
     storage: ParseStorage,
     delay_seconds: float = 1.0,
+    config: PipelineConfig | None = None,
 ) -> AcquisitionResult:
     """Acquire content from a single-page source.
     
@@ -110,6 +111,7 @@ def acquire_single_page(
         source: The source to acquire.
         storage: Storage for parsed content.
         delay_seconds: Delay before fetching (politeness).
+        config: Pipeline configuration (optional, for timeout settings).
         
     Returns:
         AcquisitionResult with content hash and path.
@@ -121,7 +123,8 @@ def acquire_single_page(
         time.sleep(delay_seconds)
     
     try:
-        parser = WebParser()
+        timeout_ms = config.rendering_timeout_ms if config else 60000
+        parser = WebParser(timeout=timeout_ms)
         target = ParseTarget(source=source.url, is_remote=True)
         
         document = parser.extract(target)
@@ -177,6 +180,7 @@ def acquire_crawl(
     max_pages: int = 100,
     delay_seconds: float = 1.0,
     force_restart: bool = False,
+    config: PipelineConfig | None = None,
 ) -> AcquisitionResult:
     """Acquire content from a multi-page source via crawling.
     
@@ -187,6 +191,7 @@ def acquire_crawl(
         max_pages: Maximum pages to acquire this run.
         delay_seconds: Delay between page fetches.
         force_restart: If True, restart crawl from scratch.
+        config: Pipeline configuration (optional, for timeout settings).
         
     Returns:
         AcquisitionResult with aggregate statistics.
@@ -222,8 +227,9 @@ def acquire_crawl(
     # Load robots.txt
     robots = RobotsChecker(source.url)
     
-    # Initialize parser
-    parser = WebParser()
+    # Initialize parser with configured timeout
+    timeout_ms = config.rendering_timeout_ms if config else 60000
+    parser = WebParser(timeout=timeout_ms)
     pages_this_run = 0
     content_hashes: list[str] = []
     errors: list[str] = []
@@ -419,12 +425,14 @@ def run_crawler(
                     max_pages=max_pages,
                     delay_seconds=delay,
                     force_restart=config.force_fresh,
+                    config=config,
                 )
             else:
                 acq_result = acquire_single_page(
                     source=source,
                     storage=parse_storage,
                     delay_seconds=delay,
+                    config=config,
                 )
         except Exception as e:
             logger.error("Acquisition failed for %s: %s", source.url, e, exc_info=True)
