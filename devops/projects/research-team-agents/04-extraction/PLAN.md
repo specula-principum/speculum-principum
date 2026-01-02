@@ -941,5 +941,33 @@ The Extraction Agent is **ready for production use**. Recommended next actions:
 
 **Testing**: All existing tests pass without modification. The change is transparent to callers.
 
-**Documentation Updated**:
-- Added troubleshooting section in `docs/guides/extraction-pipeline.md` explaining this behavior
+### Fix #2: Corrected Copilot Assignment Architecture (2026-01-02)
+
+**Problem**: Extraction workflow was using local agent runtime instead of GitHub Copilot assignment.
+
+**Root Cause**: Implementation deviated from original design. The plan specified "Copilot-assigned GitHub Issues" but the workflow used `python main.py agent run` (local agent runtime with LLM API) instead of GitHub's native Copilot coding agent.
+
+**Differences**:
+
+| Aspect | Required (Spec) | Previously Implemented | Corrected |
+|--------|----------------|----------------------|-----------|
+| Processor | GitHub Copilot SWE agent | Local Python agent runtime | ✅ GitHub Copilot |
+| Trigger | Issue assigned to `copilot` | Issue labeled `extraction-queue` | ✅ Label triggers assignment |
+| Assignment | `assign_issue_to_copilot()` | Not used | ✅ Now uses helper function |
+| Instructions | Issue comment | Mission YAML | ✅ Posted as comment |
+| Token | `GH_TOKEN` only | `COPILOT_TOKEN` (LLM API) | ✅ Removed unneeded token |
+
+**Solution**:
+1. Updated `extraction-process.yml` to call new `extraction assign` CLI command
+2. Added `assign_cli()` function that:
+   - Posts detailed extraction instructions as a comment
+   - Calls `assign_issue_to_copilot()` to assign issue to GitHub's Copilot
+3. Removed local agent runtime call (`agent run`)
+4. Updated documentation to clarify Copilot assignment flow
+
+**Files Modified**:
+- `.github/workflows/extraction-process.yml` - Changed from agent runtime to Copilot assignment
+- `src/cli/commands/extraction_queue.py` - Added `assign` command and `assign_cli()` function
+- `docs/guides/extraction-pipeline.md` - Updated workflow descriptions and troubleshooting
+
+**Testing**: The workflow now correctly follows the source-implement.yml pattern, using GitHub's native Copilot for issue processing.
