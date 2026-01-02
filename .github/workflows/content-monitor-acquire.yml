@@ -1,8 +1,8 @@
 name: "Content: Monitor & Acquire 📦🔄⚙️"
 
 # Unified content pipeline for source monitoring and acquisition
-# Replaces the separate monitor (3-op-monitor-sources.yml) and crawler (4-op-crawl-source.yml) workflows
-# with a single, LLM-free, politeness-aware pipeline.
+# Replaces the separate monitor and crawler agent workflows with a single,
+# deterministic, politeness-aware pipeline (no LLM required).
 on:
   schedule:
     # Run weekly on Sundays at 00:00 UTC
