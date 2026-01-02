@@ -1,4 +1,4 @@
-name: "Extraction: Queue Documents 📋"
+name: "Extraction: Queue Documents 📋🔄"
 
 on:
   push:
