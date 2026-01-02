@@ -12,15 +12,37 @@ The extraction pipeline is a **Copilot-orchestrated queue system** that:
 4. **Saves results** to the knowledge graph
 5. **Provides an audit trail** via Issue comments and labels
 
+**Important:** All documents must enter through the **Source Approval Process**. Manual document submission is not permitted to ensure source authenticity and reliability.
+
 ## Architecture
 
 ```
-Content Pipeline → PR merged → Queue Workflow → Issues created
-                                                      ↓
-                              Copilot picks up Issues as available
-                                                      ↓
-                              Filter → Extract → Commit → Close Issue
+Source Proposal → AI Assessment → Human Approval → Source Registry
+                                                           ↓
+                                        Content Pipeline monitors source
+                                                           ↓
+                           Content Pipeline → PR merged → Queue Workflow → Issues created
+                                                                                 ↓
+                                                     Copilot picks up Issues as available
+                                                                                 ↓
+                                                     Filter → Extract → Commit → Close Issue
 ```
+
+### Source Approval Requirement
+
+**All sources must be approved before documents can be acquired and extracted.** This ensures:
+
+- **Authenticity**: Sources are verified for legitimacy
+- **Credibility**: AI assessment evaluates source authority
+- **Provenance**: Full tracking of where knowledge originated
+- **Quality**: Prevents spam, misinformation, or unreliable sources
+
+To add a new source:
+1. Create a [Source Proposal](../../.github/ISSUE_TEMPLATE/source-proposal.md) issue
+2. AI curator assesses credibility and relevance
+3. Human reviewer approves with `/approve-source` command
+4. Source is registered in the source registry
+5. Content Pipeline begins monitoring
 
 ### Workflow Chain
 
