@@ -1,4 +1,4 @@
-name: "Extraction: Assign to Copilot 📋🔄"
+name: "Extraction: Process Queue"
 
 on:
   issues:
@@ -9,10 +9,16 @@ permissions:
   contents: write
   pull-requests: write
 
+# CRITICAL: Limit concurrency to avoid rate limit bursts
+concurrency:
+  group: extraction-processing
+  cancel-in-progress: false  # Queue them, don't cancel
+
 jobs:
-  assign-to-copilot:
+  extract:
     if: github.event.label.name == 'extraction-queue'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     
     steps:
       - name: Checkout repository
@@ -26,11 +32,40 @@ jobs:
           
       - name: Install dependencies
         run: pip install -r requirements.txt
-        
-      - name: Assign Issue to Copilot
+      
+      - name: Run Direct Extraction
+        id: extract
+        continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python main.py extraction assign \
+          python main.py extraction-direct \
             --issue-number ${{ github.event.issue.number }} \
-            --repository ${{ github.repository }}
+            --repository ${{ github.repository }} \
+            2>&1 | tee extraction.log
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+      
+      - name: Handle Rate Limit Errors
+        if: steps.extract.outputs.exit_code == '2'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "extraction-queue" \
+            --add-label "extraction-rate-limited"
+          
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "⏸️ Rate limit encountered. Will retry automatically in 30 minutes."
+      
+      - name: Handle Other Errors
+        if: steps.extract.outputs.exit_code == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "extraction-queue" \
+            --add-label "extraction-error"
+          
+          # Post error comment with log excerpt
+          echo "❌ Extraction failed. Check workflow logs for details." | \
+            gh issue comment ${{ github.event.issue.number }} --body-file -

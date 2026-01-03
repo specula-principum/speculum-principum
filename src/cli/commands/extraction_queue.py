@@ -301,54 +301,21 @@ def _create_extraction_issue(
 
 <!-- checksum:{entry.checksum} -->
 
-## Extraction Instructions
+## Automatic Processing
 
-@copilot Please process this document following these steps:
+This issue will be processed automatically by the extraction workflow.
 
-### 1. Assess Document Quality
+The workflow will:
+1. ✅ Assess if content is substantive (using LLM)
+2. ✅ Extract entities if substantive (people, orgs, concepts, associations)
+3. ✅ Create a PR with changes
+4. ✅ Close this issue with results
 
-Read the document from the artifact path above and determine if it contains substantive, extractable content.
+**If rate limited:** Issue will be labeled `extraction-rate-limited` and retried in 30 minutes.
 
-**Skip if the document is:**
-- Navigation/homepage with only links and teasers
-- Error page or access denied message
-- Boilerplate/template content
-- Duplicate of already-processed content
+**If extraction fails:** Issue will be labeled `extraction-error` for manual review.
 
-### 2A. If Skipping (Non-Substantive Content)
-
-**Mark the document as skipped to prevent re-queuing:**
-
-```bash
-python main.py extraction skip --checksum {entry.checksum} --reason "Your specific reason"
-```
-
-Example:
-```bash
-python main.py extraction skip --checksum {entry.checksum} --reason "Homepage with only navigation links and article teasers"
-```
-
-Then:
-- Comment explaining why you're skipping (be specific)
-- Add `extraction-skipped` label
-- Close this issue
-
-### 2B. If Extracting (Substantive Content)
-
-Run these commands in order:
-
-```bash
-python main.py extract --checksum {entry.checksum}
-python main.py extract --checksum {entry.checksum} --orgs
-python main.py extract --checksum {entry.checksum} --concepts
-python main.py extract --checksum {entry.checksum} --associations
-python main.py extraction complete --checksum {entry.checksum}
-```
-
-Then:
-- Comment with extraction statistics
-- Add `extraction-complete` label
-- Close this issue
+No manual intervention needed - just wait for the workflow to complete.
 
 ---
 <!-- copilot:extraction-queue -->
@@ -637,107 +604,7 @@ def assign_cli(args: argparse.Namespace) -> int:
             issue_number=issue_number,
         )
         
-        # Extract checksum from issue body
-        checksum = _parse_checksum_from_issue_body(issue.get("body"))
-        if not checksum:
-            print(f"Error: Could not find checksum in issue #{issue_number}", file=sys.stderr)
-            return 1
-        
-        # Post instructions comment
-        instructions = f"""## ⚙️ Environment Context
-
-You are running in a **GitHub Actions ephemeral runner**. All file writes must use the GitHub Contents API:
-
-```python
-from src.integrations.github.storage import get_github_storage_client
-
-github_client = get_github_storage_client()  # Auto-detects Actions environment
-# Pass github_client to storage classes for API-based persistence
-```
-
-**Critical**: Local filesystem writes are discarded when the workflow ends. Always use `github_client` parameter.
-
----
-
-## 📋 Extraction Process
-
-### Step 1: Assess Document Quality
-
-Read the document from the artifact path in the issue body. Determine if it has substantive, extractable content.
-
-**Skip if:**
-- Navigation/homepage (links, teasers, no full articles)
-- Error page or access denied
-- Boilerplate/template with no unique content
-- Duplicate content already processed
-
-### Step 2A: If Skipping (CRITICAL - Prevents Re-queuing)
-
-**Mark the document as skipped using the CLI:**
-
-```bash
-python main.py extraction skip --checksum {checksum} --reason "Specific reason here"
-```
-
-Example:
-```bash
-python main.py extraction skip --checksum {checksum} --reason "Homepage with only nav links and article teasers"
-```
-
-This command:
-- Updates the manifest metadata with `extraction_skipped: true`
-- Commits the change via GitHub API (in Actions environment)
-- Prevents this document from being re-queued
-
-**Then:**
-1. Comment explaining your skip decision (be specific about what makes it non-substantive)
-2. Add `extraction-skipped` label
-3. Close this issue
-4. **STOP** - do not extract
-
-### Step 2B: If Extracting (Substantive Content)
-
-Run extraction commands in order (they auto-commit via GitHub API):
-
-```bash
-python main.py extract --checksum {checksum}                 # People
-python main.py extract --checksum {checksum} --orgs          # Organizations
-python main.py extract --checksum {checksum} --concepts      # Concepts
-python main.py extract --checksum {checksum} --associations  # Relationships
-python main.py extraction complete --checksum {checksum}     # Mark as complete
-```
-
-**Then:**
-1. Comment with statistics (entity counts)
-2. Add `extraction-complete` label
-3. Close this issue
-
----
-
-## 🚨 Common Mistakes to Avoid
-
-1. ❌ **Skipping without updating manifest** → Document gets re-queued endlessly
-2. ❌ **Not committing manifest changes** → Updates lost, document re-queued
-3. ❌ **Vague skip reasons** → Hard to audit quality later
-4. ❌ **Using git CLI commands** → Use file edits and commit tools instead
-
-## ✅ Success Criteria
-
-- Skip decisions prevent re-queuing (manifest updated)
-- Substantive content fully extracted (all 4 entity types)
-- Clear audit trail in comments
-- Appropriate label applied
-
-Thank you! 🧠
-"""
-        
-        post_comment(
-            token=token,
-            repository=repository,
-            issue_number=issue_number,
-            body=instructions,
-        )
-        print(f"✓ Posted instructions to issue #{issue_number}")
+        # No additional setup needed - just assign to Copilot
         
         # Assign to Copilot
         assign_issue_to_copilot(
