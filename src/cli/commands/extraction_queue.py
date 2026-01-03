@@ -143,6 +143,52 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         help="GitHub token. Defaults to GH_TOKEN or GITHUB_TOKEN env var.",
     )
     assign_parser.set_defaults(func=assign_cli)
+    
+    # Skip command - mark document as extraction_skipped
+    skip_parser = sub.add_parser(
+        "skip",
+        description="Mark a document as skipped to prevent re-queuing.",
+        help="Mark a document as skipped to prevent re-queuing.",
+    )
+    skip_parser.add_argument(
+        "--checksum",
+        type=str,
+        required=True,
+        help="Checksum of the document to mark as skipped.",
+    )
+    skip_parser.add_argument(
+        "--reason",
+        type=str,
+        required=True,
+        help="Reason for skipping the document.",
+    )
+    skip_parser.add_argument(
+        "--evidence-root",
+        type=Path,
+        default=None,
+        help="Root directory for evidence. Defaults to evidence/.",
+    )
+    skip_parser.set_defaults(func=skip_cli)
+    
+    # Complete command - mark document as extraction_complete
+    complete_parser = sub.add_parser(
+        "complete",
+        description="Mark a document as extraction complete to prevent re-queuing.",
+        help="Mark a document as extraction complete to prevent re-queuing.",
+    )
+    complete_parser.add_argument(
+        "--checksum",
+        type=str,
+        required=True,
+        help="Checksum of the document to mark as complete.",
+    )
+    complete_parser.add_argument(
+        "--evidence-root",
+        type=Path,
+        default=None,
+        help="Root directory for evidence. Defaults to evidence/.",
+    )
+    complete_parser.set_defaults(func=complete_cli)
 
 
 def _parse_checksum_from_issue_body(body: str | None) -> str | None:
@@ -193,6 +239,14 @@ def get_documents_needing_issues(
     for checksum, entry in manifest.entries.items():
         # Only queue completed documents
         if entry.status != "completed":
+            continue
+        
+        # Skip documents that have already been marked as extraction_skipped
+        if entry.metadata.get("extraction_skipped"):
+            continue
+        
+        # Skip documents that have already been marked as extraction_complete
+        if entry.metadata.get("extraction_complete"):
             continue
         
         # If specific checksum requested, only include that one
@@ -247,25 +301,21 @@ def _create_extraction_issue(
 
 <!-- checksum:{entry.checksum} -->
 
-## Extraction Instructions
+## Automatic Processing
 
-@copilot Please process this document:
+This issue will be processed automatically by the extraction workflow.
 
-1. **Assess** - Read the document and determine if it contains substantive content
-   - Skip if: navigation page, error page, boilerplate, or duplicate content
-   - If skipping: Comment with reason and close with "skipped" label
+The workflow will:
+1. ✅ Assess if content is substantive (using LLM)
+2. ✅ Extract entities if substantive (people, orgs, concepts, associations)
+3. ✅ Create a PR with changes
+4. ✅ Close this issue with results
 
-2. **Extract** (if substantive) - Run extractions in order:
-   ```bash
-   python main.py extract --checksum {entry.checksum}
-   python main.py extract --checksum {entry.checksum} --orgs
-   python main.py extract --checksum {entry.checksum} --concepts
-   python main.py extract --checksum {entry.checksum} --associations
-   ```
+**If rate limited:** Issue will be labeled `extraction-rate-limited` and retried in 30 minutes.
 
-3. **Commit** - Save changes to knowledge-graph/
+**If extraction fails:** Issue will be labeled `extraction-error` for manual review.
 
-4. **Report** - Comment with summary of extracted entities
+No manual intervention needed - just wait for the workflow to complete.
 
 ---
 <!-- copilot:extraction-queue -->
@@ -466,6 +516,80 @@ def pending_cli(args: argparse.Namespace) -> int:
         return 1
 
 
+def skip_cli(args: argparse.Namespace) -> int:
+    """Execute the skip command to mark document as extraction_skipped."""
+    try:
+        # Use default evidence root if not provided
+        evidence_root = args.evidence_root or get_evidence_root()
+        
+        # Initialize storage with GitHub client if available
+        from src.integrations.github.storage import get_github_storage_client
+        
+        github_client = get_github_storage_client()
+        storage = ParseStorage(evidence_root / "parsed", github_client=github_client)
+        
+        # Get the manifest entry
+        entry = storage.manifest().get(args.checksum)
+        if not entry:
+            print(f"Error: Document with checksum {args.checksum} not found in manifest.", file=sys.stderr)
+            return 1
+        
+        # Update metadata
+        entry.metadata["extraction_skipped"] = True
+        entry.metadata["skip_reason"] = args.reason
+        
+        # Record the updated entry
+        storage.record_entry(entry)
+        
+        # Flush changes if using GitHub client
+        if github_client:
+            storage.flush_all()
+        
+        print(f"✓ Marked document {args.checksum[:8]}... as skipped")
+        print(f"  Reason: {args.reason}")
+        
+        return 0
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+def complete_cli(args: argparse.Namespace) -> int:
+    """Execute the complete command to mark document as extraction_complete."""
+    try:
+        # Use default evidence root if not provided
+        evidence_root = args.evidence_root or get_evidence_root()
+        
+        # Initialize storage with GitHub client if available
+        from src.integrations.github.storage import get_github_storage_client
+        
+        github_client = get_github_storage_client()
+        storage = ParseStorage(evidence_root / "parsed", github_client=github_client)
+        
+        # Get the manifest entry
+        entry = storage.manifest().get(args.checksum)
+        if not entry:
+            print(f"Error: Document with checksum {args.checksum} not found in manifest.", file=sys.stderr)
+            return 1
+        
+        # Update metadata
+        entry.metadata["extraction_complete"] = True
+        
+        # Record the updated entry
+        storage.record_entry(entry)
+        
+        # Flush changes if using GitHub client
+        if github_client:
+            storage.flush_all()
+        
+        print(f"✓ Marked document {args.checksum[:8]}... as extraction complete")
+        
+        return 0
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
 def assign_cli(args: argparse.Namespace) -> int:
     """Execute the assign command to assign issue to Copilot."""
     try:
@@ -480,68 +604,7 @@ def assign_cli(args: argparse.Namespace) -> int:
             issue_number=issue_number,
         )
         
-        # Extract checksum from issue body
-        checksum = _parse_checksum_from_issue_body(issue.get("body"))
-        if not checksum:
-            print(f"Error: Could not find checksum in issue #{issue_number}", file=sys.stderr)
-            return 1
-        
-        # Post instructions comment
-        instructions = f"""## Extraction Instructions
-
-Hello @copilot! Please extract knowledge entities from this document.
-
-### Process
-
-1. **Assess Document Quality**
-   - Read the document content from the artifact path above
-   - Determine if it contains substantive, extractable content
-   - Skip if: navigation page, error page, boilerplate, or duplicate content
-   - If NOT substantive: Comment with clear reason, add `extraction-skipped` label, and close this issue
-
-2. **Extract Entities** (if substantive)
-   
-   Run the following commands in order:
-   ```bash
-   # Extract people
-   python main.py extract --checksum {checksum}
-   
-   # Extract organizations
-   python main.py extract --checksum {checksum} --orgs
-   
-   # Extract concepts
-   python main.py extract --checksum {checksum} --concepts
-   
-   # Extract associations between entities
-   python main.py extract --checksum {checksum} --associations
-   ```
-
-3. **Commit Changes**
-   - All extracted entities should be saved to `knowledge-graph/` directory
-   - Commit all changes with a descriptive message
-
-4. **Report Summary**
-   - Comment with extraction statistics (count of each entity type extracted)
-   - Add `extraction-complete` label
-   - Close this issue
-
-### Important Notes
-
-- Always assess document quality BEFORE extracting
-- Explain skip decisions clearly with specific reasons
-- Extract entities in the specified order (people → orgs → concepts → associations)
-- If extraction fails, add `extraction-error` label and leave issue open
-
-Thank you! 🧠
-"""
-        
-        post_comment(
-            token=token,
-            repository=repository,
-            issue_number=issue_number,
-            body=instructions,
-        )
-        print(f"✓ Posted instructions to issue #{issue_number}")
+        # No additional setup needed - just assign to Copilot
         
         # Assign to Copilot
         assign_issue_to_copilot(

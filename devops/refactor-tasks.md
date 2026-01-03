@@ -1,0 +1,6 @@
+- Search for methods that are poorly located. i.e. `assign_cli` in `extraction_queue.py`
+- Dead code
+- Out-dated docs
+- Unused missions
+- Out-dated copilot-instructions
+- In-line prompt strings
