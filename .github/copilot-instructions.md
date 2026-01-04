@@ -50,6 +50,13 @@ python main.py <command> [options]
 - `src/knowledge/` - Entity extraction, aggregation, storage
 - `src/parsing/` - Document parsing (PDF, DOCX, web, markdown)
 
+## GitHub Actions Workflows
+
+- Workflows use **dispatcher pattern**: `issue-dispatcher.yml` and `discussion-dispatcher.yml` route events to specific jobs
+- **Minimize workflow complexity**: Move business logic (error handling, label management, API calls) into Python CLI commands, not YAML
+- Workflows should primarily invoke `python main.py <command>` with minimal pre/post-processing
+- CLI commands handle their own error states, label swapping, and GitHub API interactions
+
 ## Testing Conventions
 
 - Test files mirror `src/` structure in `tests/`
