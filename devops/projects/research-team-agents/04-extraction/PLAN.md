@@ -132,7 +132,7 @@ Content Pipeline → PR merged → Queue Workflow → Issues created
 ```markdown
 ---
 title: "Extract: [Document Title or Source Name]"
-labels: ["extraction-queue", "copilot-queue"]
+labels: ["extraction-queue"]
 ---
 
 ## Document to Extract
@@ -265,7 +265,7 @@ def queue_documents_for_extraction(
     2. Search existing Issues with 'extraction-queue' label
     3. For each document not already queued:
        - Create Issue with document details
-       - Label with 'extraction-queue', 'copilot-queue'
+       - Label with 'extraction-queue'
     4. Return list of created Issues
     """
     ...
@@ -372,7 +372,7 @@ requires_approval: false
 name: Extraction Queue
 about: Queue a document for knowledge extraction (auto-generated)
 title: "Extract: {{ document_title }}"
-labels: ["extraction-queue", "copilot-queue"]
+labels: ["extraction-queue"]
 assignees: ''
 ---
 
@@ -675,7 +675,6 @@ python main.py extraction queue --checksum abc123 --force
 | Label | Purpose |
 |-------|---------|
 | `extraction-queue` | Document queued for extraction |
-| `copilot-queue` | Ready for Copilot pickup |
 | `extraction-complete` | Successfully extracted |
 | `extraction-skipped` | Filtered out (not substantive) |
 | `extraction-error` | Failed, needs investigation |
@@ -932,8 +931,7 @@ The Extraction Agent is **ready for production use**. Recommended next actions:
 **Root Cause**: GitHub's `labeled` webhook event only fires when a label is **added** to an existing issue. When an issue is created with labels already applied, the event doesn't trigger.
 
 **Solution**: Modified `_create_extraction_issue()` to use a two-step process:
-1. Create issue with `copilot-queue` label only
-2. Call `add_labels()` separately to add `extraction-queue` label
+1. Call `add_labels()` separately to add `extraction-queue` label
 3. Second API call triggers the `labeled` event, which activates `extraction-process.yml`
 
 **Files Modified**:
