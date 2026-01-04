@@ -13,7 +13,7 @@
 
 **Rate Limit Handling:**
 - GitHub Actions `concurrency` limits to 1 extraction at a time (natural queue)
-- `CopilotClient` has 5 retries with exponential backoff (up to 10 min wait)
+- `GitHubModelsClient` has 5 retries with exponential backoff (up to 10 min wait)
 - Scheduled workflow re-queues items that hit persistent rate limits
 - Failed extractions keep issue open with `extraction-rate-limited` label
 
@@ -330,7 +330,7 @@ If issues arise:
 ## Notes
 
 - The extraction tools we built are still used (no changes needed there)
-- `CopilotClient` is still used (for LLM calls), just not wrapped in Copilot agent
+- `GitHubModelsClient` is still used (for LLM calls), just not wrapped in Copilot agent
 - The mission file (`extract_document.yaml`) is no longer used but keep it for reference
 - GitHub Actions concurrency limits per repo, so this naturally queues all extractions
 - 30-minute retry interval is configurable in the cron schedule
@@ -341,5 +341,5 @@ If issues arise:
 
 - Extraction tools: `src/orchestration/toolkit/extraction.py` (already implemented)
 - GitHub issue utilities: `src/integrations/github/issues.py`
-- Copilot client: `src/integrations/copilot/client.py`
+- GitHub Models client: `src/integrations/github/models.py`
 - Current workflow: `.github/workflows/extraction-process.yml`
