@@ -38,7 +38,7 @@ jobs:
       
       - name: Run Direct Extraction
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           python main.py extraction-direct \
             --issue-number ${{ github.event.issue.number }} \
