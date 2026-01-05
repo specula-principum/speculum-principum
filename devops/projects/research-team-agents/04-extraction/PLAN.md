@@ -969,3 +969,81 @@ The Extraction Agent is **ready for production use**. Recommended next actions:
 - `docs/guides/extraction-pipeline.md` - Updated workflow descriptions and troubleshooting
 
 **Testing**: The workflow now correctly follows the source-implement.yml pattern, using GitHub's native Copilot for issue processing.
+
+### Fix #3: PR Creation Failures and Error Reporting (2026-01-04)
+
+**Problem**: Extraction jobs were completing successfully even when PR creation failed. The specific error was:
+```
+Failed to create PR: resolve_token() missing 1 required positional argument: 'explicit_token'
+```
+
+**Root Causes**:
+1. **Incorrect function calls**: `resolve_token()` and `resolve_repository()` were called without required arguments in `_create_pr()` method
+2. **Silent failures**: PR creation errors were logged as warnings but didn't cause job failure
+3. **Missing validation**: No exit code check for PR creation failures
+
+**Solution**:
+
+1. **Fixed function signatures** in `src/orchestration/toolkit/extraction.py`:
+   ```python
+   # Before (incorrect):
+   token = resolve_token()
+   repository = resolve_repository()
+   
+   # After (correct):
+   token = resolve_token(explicit_token=None)
+   repository = resolve_repository(explicit_repo=None)
+   ```
+
+2. **Added error handling** in `src/cli/commands/extraction_direct.py`:
+   - Check PR result status explicitly
+   - If status is "error": post error comment, add `extraction-error` label, and return exit code 1
+   - If status is "skip": log info and continue (local development mode)
+   - If status is "success": include PR link in completion comment
+
+3. **Created comprehensive tests** in `tests/cli/test_extraction_direct.py`:
+   - Test that PR creation errors cause job failure (exit code 1)
+   - Test that PR creation skip is treated as success (exit code 0)
+   - Test that PR creation success includes PR link in comment
+   - All tests use mocks to avoid requiring actual GitHub access
+
+**Files Modified**:
+- `src/orchestration/toolkit/extraction.py` - Fixed `resolve_token()` and `resolve_repository()` calls
+- `src/cli/commands/extraction_direct.py` - Added explicit error handling for PR creation failures
+- `tests/cli/test_extraction_direct.py` - Added 8 new tests for error handling
+
+**Impact**:
+- ✅ Extraction jobs now fail properly when PR creation fails in GitHub Actions
+- ✅ Clear error messages posted to issues when failures occur
+- ✅ Issues labeled correctly (`extraction-error` vs `extraction-complete`)
+- ✅ Local development mode still works (PR creation skipped)
+- ✅ All existing tests continue to pass
+
+**Testing Results**:
+```bash
+# All existing tests pass:
+tests/cli/test_extraction_queue.py: 17 passed
+
+# New tests pass:
+tests/cli/test_extraction_direct.py: 8 passed
+  - test_parse_checksum_with_marker
+  - test_parse_checksum_no_marker
+  - test_parse_checksum_none_body
+  - test_format_with_all_counts
+  - test_format_with_zero_counts
+  - test_pr_creation_error_fails_job ✅ (verifies exit code 1)
+  - test_pr_creation_skip_succeeds ✅ (verifies exit code 0)
+  - test_pr_creation_success ✅ (verifies exit code 0 + PR link)
+```
+
+**Example Behavior**:
+
+When PR creation fails in GitHub Actions:
+1. Extraction completes successfully (entities saved)
+2. PR creation fails with error
+3. Job posts comment: "❌ Failed to create pull request: [error details]"
+4. Job adds `extraction-error` label
+5. Job exits with code 1 → GitHub Actions shows red X
+6. Issue remains open for manual investigation
+
+This ensures visibility of failures while preserving successfully extracted data.
