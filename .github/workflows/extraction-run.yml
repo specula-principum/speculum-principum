@@ -66,13 +66,11 @@ jobs:
           echo "Remote branches:"
           git ls-remote --heads origin | grep extraction || echo "  (no extraction branches)"
           
-          # Fetch all branches
-          git fetch origin main
-          
           # Check if extraction/queue branch exists remotely
           if ! git ls-remote --heads origin extraction/queue | grep extraction/queue; then
             echo ""
             echo "=== Creating new extraction/queue branch from main ==="
+            git fetch origin main
             git checkout -b extraction/queue origin/main
             echo "Created local branch: extraction/queue from origin/main"
             git push origin extraction/queue
@@ -84,23 +82,6 @@ jobs:
             echo "Fetched latest from origin/extraction/queue"
             git checkout -b extraction/queue origin/extraction/queue
             echo "Checked out local branch tracking origin/extraction/queue"
-            
-            # Check if branch needs to be updated from main
-            echo ""
-            echo "Checking if branch needs update from main..."
-            git fetch origin main
-            
-            BEHIND=$(git rev-list --count extraction/queue..origin/main)
-            echo "Commits behind origin/main: $BEHIND"
-            
-            if [ "$BEHIND" -gt 0 ]; then
-              echo "Branch is behind main, merging latest changes..."
-              git merge origin/main --allow-unrelated-histories --no-edit -m "Merge latest changes from main"
-              git push origin extraction/queue
-              echo "Branch updated and pushed"
-            else
-              echo "Branch is up to date with main"
-            fi
           fi
           
           echo ""
@@ -245,7 +226,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          echo "All pending documents processed. Auto-merging PR."
+          echo "All pending documents processed. Checking if PR can auto-merge."
           
           # Get PR number for extraction/queue branch
           PR_NUMBER=$(gh pr list --head extraction/queue --json number -q '.[0].number')
@@ -253,10 +234,20 @@ jobs:
           if [ -n "$PR_NUMBER" ]; then
             echo "Found PR #$PR_NUMBER"
             
-            # Enable auto-merge with squash strategy
-            gh pr merge $PR_NUMBER --auto --squash
+            # Check if PR has merge conflicts
+            MERGEABLE=$(gh pr view $PR_NUMBER --json mergeable -q '.mergeable')
+            echo "PR mergeable status: $MERGEABLE"
             
-            echo "Auto-merge enabled for PR #$PR_NUMBER"
+            if [ "$MERGEABLE" = "MERGEABLE" ]; then
+              echo "No conflicts detected - enabling auto-merge"
+              gh pr merge $PR_NUMBER --auto --squash
+              echo "✓ Auto-merge enabled for PR #$PR_NUMBER"
+            elif [ "$MERGEABLE" = "CONFLICTING" ]; then
+              echo "⚠️  Merge conflicts detected - leaving PR open for human review"
+              gh pr comment $PR_NUMBER --body "⚠️ **Merge conflicts detected** - This PR requires human review and conflict resolution before merging."
+            else
+              echo "⧗ PR mergeable status unknown ($MERGEABLE) - leaving open for review"
+            fi
           else
             echo "No PR found for extraction/queue branch"
           fi
