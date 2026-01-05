@@ -165,6 +165,7 @@ def extract_batch(
     logger.info(f"Starting batch extraction (batch_size={batch_size})")
     logger.info(f"Repository: {repository}")
     logger.info(f"Running in GitHub Actions: {os.environ.get('GITHUB_ACTIONS') == 'true'}")
+    logger.info(f"GITHUB_REF_NAME from environment: {os.environ.get('GITHUB_REF_NAME', 'NOT SET')}")
     
     try:
         # Load parsing config and storage
