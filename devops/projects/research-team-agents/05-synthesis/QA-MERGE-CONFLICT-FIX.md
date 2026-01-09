@@ -2,18 +2,54 @@
 
 ## Problem Identified by QA
 
-Multiple synthesis Issues were created simultaneously, each creating a PR/branch from the same `main` commit. When these PRs tried to merge, they conflicted on shared files (`alias-map.json`, canonical entities).
+**Root Cause:** The CLI created multiple batch Issues in a single workflow run, all branching from the same commit.
+
+**Original Code:**
+```python
+# synthesis.py (BROKEN)
+for i in range(0, len(unresolved), batch_size):
+    batch = unresolved[i:i + batch_size]
+    create_issue(...)  # Creates Issue #1, #2, #3...
+```
+
+**Result:** All Issues created simultaneously → All PRs from same commit → Merge conflicts on shared files.
 
 **Example:**
 ```
-Issue #1 → PR #1 (from main@abc123) → Merges ✅
-Issue #2 → PR #2 (from main@abc123) → Merge conflict ❌
-Issue #3 → PR #3 (from main@abc123) → Merge conflict ❌
+synthesis-queue runs once:
+├── Creates Issue #1 (50 entities) → PR #1 from main@abc123
+├── Creates Issue #2 (50 entities) → PR #2 from main@abc123 ← CONFLICT!
+└── Creates Issue #3 (50 entities) → PR #3 from main@abc123 ← CONFLICT!
 ```
 
-## Solution: Sequential Processing with Auto-Continue
+## Solution: Two-Part Fix
 
-### How It Works
+### Part 1: CLI Creates Only One Issue Per Run
+
+**Changed:** `src/cli/commands/synthesis.py`
+
+```python
+# Before (BROKEN): Loop creates all batches
+for i in range(0, len(unresolved), args.batch_size):
+    batch = unresolved[i:i + args.batch_size]
+    create_issue(...)  # Multiple Issues!
+
+# After (FIXED): Create only first batch
+batch = unresolved[:args.batch_size]
+create_issue(...)  # Single Issue only
+if remaining > 0:
+    print(f"{remaining} entities remain (next batch)")
+```
+
+### Part 2: Auto-Continue After Merge
+
+**Added:** `.github/workflows/synthesis-continue.yml`
+
+- Triggers when synthesis PR merges
+- Dispatches `synthesis-queue.yml` to create next batch
+- Repeat until no work remains
+
+### Combined Flow
 
 **Before (Parallel - Broken):**
 ```
@@ -34,11 +70,11 @@ Trigger → Issue #1 created
 
 ### Three-Part Fix
 
-| Component | File | What It Does |
+| Component | File | What Changed |
 |-----------|------|--------------|
-| **Queue Gate** | `.github/workflows/synthesis-queue.yml` | Checks for open `synthesis-batch` Issues; skips creation if any exist |
-| **Auto-Merge** | `.github/workflows/pr-auto-approve-kb.yml` | Auto-approves/merges KB-only PRs (prevents bottleneck) |
-| **Auto-Continue** | `.github/workflows/synthesis-continue.yml` | ✨ **NEW** - Triggers next batch after PR merge |
+| **CLI Logic** | `src/cli/commands/synthesis.py` | **CHANGED:** Only creates first batch (removed loop) |
+| **Queue Gate** | `.github/workflows/synthesis-queue.yml` | **EXISTING:** Checks for open Issues before creating |
+| **Auto-Continue** | `.github/workflows/synthesis-continue.yml` | **NEW:** Triggers next batch after PR merge |
 
 ### The New Workflow
 
@@ -104,8 +140,9 @@ workflow_dispatch on synthesis-queue.yml
 
 ## Files Modified
 
-1. **Created:** `.github/workflows/synthesis-continue.yml` (67 lines)
-2. **Updated:** `devops/projects/research-team-agents/05-synthesis/PLAN.md` (added Sequential Processing section)
+1. **Modified:** `src/cli/commands/synthesis.py` - Removed batch loop, create one Issue only
+2. **Created:** `.github/workflows/synthesis-continue.yml` (67 lines) - Auto-trigger next batch
+3. **Updated:** `devops/projects/research-team-agents/05-synthesis/PLAN.md` (added Sequential Processing section)
 
 ---
 
