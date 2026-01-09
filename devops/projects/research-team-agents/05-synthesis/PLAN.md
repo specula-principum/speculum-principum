@@ -621,7 +621,9 @@ The Issue body contains all instructions. Copilot reads the Issue and works dire
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `.github/workflows/synthesis-objection.yml` | Create Issue from Discussion objection | ✅ Complete |
+| `discussion-dispatcher.yml` | Integrated objection handler into existing dispatcher | ✅ Complete |
+
+**Note:** Initially implemented as standalone workflow, then integrated into `discussion-dispatcher.yml` following the project's dispatcher pattern.
 
 **Workflow: Objection → Issue (No CLI)**
 
@@ -1010,9 +1012,14 @@ State is derived from existing artifacts:
 
 **CLI & Workflows:**
 - ✅ `src/cli/commands/synthesis.py` - Issue creation CLI
-- ✅ `.github/workflows/synthesis-queue.yml` - Automated batch processing
+- ✅ `.github/workflows/synthesis-queue.yml` - Automated batch processing (sequential)
 - ✅ `.github/workflows/synthesis-assign.yml` - Copilot assignment
-- ✅ `.github/workflows/synthesis-objection.yml` - Discussion objections
+- ✅ `.github/workflows/discussion-dispatcher.yml` - Objection handler integrated
+- ✅ `.github/workflows/pr-auto-approve-kb.yml` - Auto-approve knowledge-graph-only PRs
+
+**Production Enhancements:**
+- ✅ Sequential processing - Prevents merge conflicts from parallel batch Issues
+- ✅ Auto-approval workflow - Auto-merges KB-only PRs to unblock pipeline
 
 **Testing & Documentation:**
 - ✅ 35 tests for canonical storage
@@ -1025,13 +1032,14 @@ State is derived from existing artifacts:
 2. `tests/knowledge/test_canonical.py` (460 lines)
 3. `src/cli/commands/synthesis.py` (351 lines)
 4. `tests/cli/test_synthesis.py` (265 lines)
-5. `.github/workflows/synthesis-queue.yml` (58 lines)
+5. `.github/workflows/synthesis-queue.yml` (74 lines, with existence checks)
 6. `.github/workflows/synthesis-assign.yml` (42 lines)
-7. `.github/workflows/synthesis-objection.yml` (75 lines)
-8. `docs/guides/synthesis.md` (285 lines)
+7. `.github/workflows/pr-auto-approve-kb.yml` (196 lines)
+8. `.github/workflows/discussion-dispatcher.yml` (synthesis-objection job added)
+9. `docs/guides/synthesis.md` (295 lines)
 
-**Total:** 8 new files, ~2,000 lines of production code + tests + documentation
+**Total:** 8 new files + 1 modified, ~2,200 lines of production code + tests + documentation + workflows
 
 ---
 
-*Last Updated: 2026-01-07*
+*Last Updated: 2026-01-08*
