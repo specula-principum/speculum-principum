@@ -12,8 +12,8 @@ This project collection implements a rigorous research team for analyzing state 
 | 2 | [Monitor](./02-monitor/) | Queue sources for acquisition via change detection | ✅ Complete (merged into #9) |
 | 3 | ~~[Acquisition](./03-acquisition/)~~ | ~~Retrieve and preserve source documents~~ | ⏭️ Merged into #3 |
 | 3 | [Crawler](./03-crawler/) | Site-wide content acquisition within scope | ✅ Complete (merged into #9) |
-| 4 | [Extraction](./04-extraction/) | Extract structured entities and relationships | 📋 Planning Complete |
-| 5 | [Synthesis](./05-synthesis/) | Aggregate and organize knowledge structures | 🔲 Planning |
+| 4 | [Extraction](./04-extraction/) | Extract structured entities and relationships | ✅ Complete |
+| 5 | [Synthesis](./05-synthesis/) | Aggregate and organize knowledge structures | 📋 Planning Complete |
 | 6 | [Conflict Detection](./06-conflict-detection/) | Identify inconsistencies and contradictions | 🔲 Planning |
 | 7 | [Quality Assurance](./07-quality-assurance/) | Verify accuracy and completeness | 🔲 Planning |
 | 8 | [Report Generation](./08-report-generation/) | Produce structured deliverables | 🔲 Planning |
@@ -80,11 +80,11 @@ Each agent will be developed as an independent feature with:
 
 - [x] Phase 1: Source Curator + Monitor (foundation)
 - [x] Phase 2: Content Pipeline (unified monitor + acquire, LLM-free)
-- [ ] Phase 3: Extraction (knowledge pipeline) — *Planning Complete*
-- [ ] Phase 4: Synthesis + Conflict Detection (knowledge building)
+- [x] Phase 3: Extraction (knowledge pipeline) — *Complete*
+- [ ] Phase 4: Synthesis + Conflict Detection (knowledge building) — *Synthesis Planning Complete*
 - [ ] Phase 5: QA + Report Generation (output quality)
 
 ---
 
 *Created: 2025-12-24*
-*Updated: 2026-01-02*
+*Updated: 2026-01-07*
