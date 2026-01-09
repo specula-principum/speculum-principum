@@ -2,14 +2,22 @@
 
 ## Problem Identified by QA
 
-**Root Cause:** The CLI created multiple batch Issues in a single workflow run, all branching from the same commit.
+**Root Cause:** The CLI created multiple batch Issues in a single workflow run.
 
-**Original Code:**
+**Two Issues:**
+
+1. **Batch Loop:** Created multiple Issues per entity type
 ```python
-# synthesis.py (BROKEN)
+# BROKEN: Loop through batches
 for i in range(0, len(unresolved), batch_size):
-    batch = unresolved[i:i + batch_size]
-    create_issue(...)  # Creates Issue #1, #2, #3...
+    create_issue(...)  # Issue #1, #2, #3...
+```
+
+2. **Entity Type Loop:** Created one Issue per entity type
+```python
+# BROKEN: Loop through types
+for entity_type in ["Person", "Organization", "Concept"]:
+    create_issue(...)  # 3 Issues total!
 ```
 
 **Result:** All Issues created simultaneously → All PRs from same commit → Merge conflicts on shared files.
@@ -17,9 +25,9 @@ for i in range(0, len(unresolved), batch_size):
 **Example:**
 ```
 synthesis-queue runs once:
-├── Creates Issue #1 (50 entities) → PR #1 from main@abc123
-├── Creates Issue #2 (50 entities) → PR #2 from main@abc123 ← CONFLICT!
-└── Creates Issue #3 (50 entities) → PR #3 from main@abc123 ← CONFLICT!
+├── Creates Issue #1 (Person batch 1) → PR #1 from main@abc123
+├── Creates Issue #2 (Org batch 1) → PR #2 from main@abc123 ← CONFLICT!
+└── Creates Issue #3 (Concept batch 1) → PR #3 from main@abc123 ← CONFLICT!
 ```
 
 ## Solution: Two-Part Fix
@@ -29,17 +37,26 @@ synthesis-queue runs once:
 **Changed:** `src/cli/commands/synthesis.py`
 
 ```python
-# Before (BROKEN): Loop creates all batches
-for i in range(0, len(unresolved), args.batch_size):
-    batch = unresolved[i:i + args.batch_size]
-    create_issue(...)  # Multiple Issues!
+# Before (BROKEN): Loop creates all batches AND all types
+for entity_type in ["Person", "Organization", "Concept"]:
+    for i in range(0, len(unresolved), batch_size):
+        create_issue(...)  # Multiple Issues!
 
-# After (FIXED): Create only first batch
-batch = unresolved[:args.batch_size]
-create_issue(...)  # Single Issue only
-if remaining > 0:
-    print(f"{remaining} entities remain (next batch)")
+# After (FIXED): Process first type with work, first batch only
+for entity_type in ["Person", "Organization", "Concept"]:
+    unresolved = gather_entities(entity_type)
+    if not unresolved:
+        continue  # Skip empty types
+    
+    batch = unresolved[:batch_size]  # Only first batch
+    create_issue(...)
+    return  # Exit after creating ONE Issue
 ```
+
+**Key Changes:**
+- ✅ Removed batch loop (only first batch)
+- ✅ Exit after creating first Issue (only first entity type with work)
+- ✅ Show remaining work in output for visibility
 
 ### Part 2: Auto-Continue After Merge
 
@@ -60,19 +77,24 @@ Trigger → Issue #1, #2, #3 all created
 
 **After (Sequential - Fixed):**
 ```
-Trigger → Issue #1 created
-       → PR #1 merges
-       → Auto-trigger → Issue #2 created
-       → PR #2 merges
-       → Auto-trigger → Issue #3 created
-       → ...until no work remains
+Run 1: Person entities found
+       → Create Issue #1 (Person batch 1, 50 entities)
+       → PR #1 merges → Continue trigger
+
+Run 2: Person batch 2 OR Organization batch 1
+       → Create Issue #2
+       → PR #2 merges → Continue trigger
+
+Run 3: Next batch/type with work
+       → Create Issue #3
+       → ...continues until all types and batches complete
 ```
 
 ### Three-Part Fix
 
 | Component | File | What Changed |
 |-----------|------|--------------|
-| **CLI Logic** | `src/cli/commands/synthesis.py` | **CHANGED:** Only creates first batch (removed loop) |
+| **CLI Logic** | `src/cli/commands/synthesis.py` | **CHANGED:** Creates only ONE Issue per run (removed batch loop AND exits after first entity type with work) |
 | **Queue Gate** | `.github/workflows/synthesis-queue.yml` | **EXISTING:** Checks for open Issues before creating |
 | **Auto-Continue** | `.github/workflows/synthesis-continue.yml` | **NEW:** Triggers next batch after PR merge |
 
