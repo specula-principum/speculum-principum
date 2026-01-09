@@ -783,10 +783,18 @@ assignees: ["copilot"]
 ### Problem: Merge Conflicts from Parallel Processing
 
 **Original Issue:**
-- Multiple synthesis Issues created simultaneously
+- CLI created multiple synthesis Issues in a **single workflow run** (via loop)
 - Each creates a PR/branch from `main` immediately
 - All modify same files (`alias-map.json`, canonical entities)
 - **Result:** Merge conflicts when PRs try to merge
+
+**Root Cause Code:**
+```python
+# synthesis.py - BROKEN (before fix)
+for i in range(0, len(unresolved), args.batch_size):
+    batch = unresolved[i:i + args.batch_size]
+    create_issue(...)  # Creates Issue #1, #2, #3 all at once!
+```
 
 **Example Scenario:**
 ```
@@ -800,6 +808,22 @@ PR #3 tries to merge → ❌ CONFLICT
 ```
 
 ### Solution: Sequential Processing with Auto-Continue
+
+**Two-Part Fix:**
+
+**1. CLI Creates Only First Batch**
+```python
+# synthesis.py - FIXED
+batch = unresolved[:args.batch_size]  # Only first batch
+create_issue(...)  # Single Issue per run
+if remaining > 0:
+    print(f"{remaining} entities remain (next batch)")
+```
+
+**2. Auto-Continue Workflow**
+- `synthesis-continue.yml` triggers after PR merge
+- Dispatches `synthesis-queue.yml` to create next batch
+- Repeats until no work remains
 
 **Flow:**
 
@@ -842,9 +866,10 @@ Issue #2 → PR #2 → Merge → Trigger → Issue #3 → PR #3 → Merge → ..
 
 | Component | File | Purpose |
 |-----------|------|---------|
+| **CLI Single-Batch** | `src/cli/commands/synthesis.py` | Creates only first batch (removed loop) |
 | **Queue Gate** | `synthesis-queue.yml` | Checks for open Issues before creating new one |
 | **Auto-Merge** | `pr-auto-approve-kb.yml` | Merges KB-only PRs automatically |
-| **Continuation** | `synthesis-continue.yml` | Triggers next batch after PR merge |
+| **Continuation** | `synthesis-continue.yml` | **NEW** - Triggers next batch after PR merge |
 
 ### Guarantees
 
