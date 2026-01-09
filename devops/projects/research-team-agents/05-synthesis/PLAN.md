@@ -778,6 +778,92 @@ assignees: ["copilot"]
 
 ---
 
+## Sequential Processing Flow
+
+### Problem: Merge Conflicts from Parallel Processing
+
+**Original Issue:**
+- Multiple synthesis Issues created simultaneously
+- Each creates a PR/branch from `main` immediately
+- All modify same files (`alias-map.json`, canonical entities)
+- **Result:** Merge conflicts when PRs try to merge
+
+**Example Scenario:**
+```
+Issue #1 → PR #1 (branch from main@abc123)
+Issue #2 → PR #2 (branch from main@abc123)  ← Both from same commit!
+Issue #3 → PR #3 (branch from main@abc123)
+
+PR #1 merges → ✅ main@def456
+PR #2 tries to merge → ❌ CONFLICT (alias-map.json changed in def456)
+PR #3 tries to merge → ❌ CONFLICT
+```
+
+### Solution: Sequential Processing with Auto-Continue
+
+**Flow:**
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                    SEQUENTIAL SYNTHESIS FLOW                          │
+└──────────────────────────────────────────────────────────────────────┘
+
+STEP 1: Create First Batch
+┌─────────────────────────┐
+│ synthesis-queue.yml     │
+│ - Checks for open       │───▶ No open Issues?
+│   synthesis-batch       │      ├─ YES → Create Issue #1
+│   Issues                │      └─ NO  → Skip (queue busy)
+└─────────────────────────┘
+
+STEP 2: Process Batch
+┌─────────────────────────┐
+│ Issue #1                │
+│ - Copilot assigned      │───▶ Copilot creates PR #1
+│ - Processes 50 entities │      └─ Auto-approved & merged
+└─────────────────────────┘
+
+STEP 3: Trigger Next Batch
+┌─────────────────────────┐
+│ synthesis-continue.yml  │
+│ - Detects PR #1 merged  │───▶ Dispatches synthesis-queue.yml
+│ - Checks for open       │      └─ Process repeats with Issue #2
+│   Issues (none!)        │
+└─────────────────────────┘
+
+STEP 4: Repeat Until Complete
+Issue #2 → PR #2 → Merge → Trigger → Issue #3 → PR #3 → Merge → ...
+                                                                    │
+                                              No more work ────────┘
+                                              Pipeline complete ✅
+```
+
+### Implementation Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **Queue Gate** | `synthesis-queue.yml` | Checks for open Issues before creating new one |
+| **Auto-Merge** | `pr-auto-approve-kb.yml` | Merges KB-only PRs automatically |
+| **Continuation** | `synthesis-continue.yml` | Triggers next batch after PR merge |
+
+### Guarantees
+
+1. **One Issue at a time:** `synthesis-queue.yml` skips if any `synthesis-batch` Issue is open
+2. **No merge conflicts:** Each batch branches from latest `main` after previous merge
+3. **Automatic progression:** Merging PR triggers next batch (no manual intervention)
+4. **Graceful completion:** When no work remains, CLI creates no Issue and pipeline stops
+
+### Edge Cases Handled
+
+| Scenario | Behavior |
+|----------|----------|
+| Multiple triggers fire simultaneously | Only first creates Issue (race protected by GitHub API) |
+| Copilot rate-limited mid-batch | Issue stays open, no new Issue created until resolved |
+| Manual Issue closure | Next trigger creates new Issue normally |
+| Force flag used | Bypasses open Issue check (for emergencies) |
+
+---
+
 ## Rate Limiting Strategy
 
 ### How It Works
@@ -1013,6 +1099,7 @@ State is derived from existing artifacts:
 **CLI & Workflows:**
 - ✅ `src/cli/commands/synthesis.py` - Issue creation CLI
 - ✅ `.github/workflows/synthesis-queue.yml` - Automated batch processing (sequential)
+- ✅ `.github/workflows/synthesis-continue.yml` - Triggers next batch after PR merge
 - ✅ `.github/workflows/synthesis-assign.yml` - Copilot assignment
 - ✅ `.github/workflows/discussion-dispatcher.yml` - Objection handler integrated
 - ✅ `.github/workflows/pr-auto-approve-kb.yml` - Auto-approve knowledge-graph-only PRs
@@ -1020,6 +1107,7 @@ State is derived from existing artifacts:
 **Production Enhancements:**
 - ✅ Sequential processing - Prevents merge conflicts from parallel batch Issues
 - ✅ Auto-approval workflow - Auto-merges KB-only PRs to unblock pipeline
+- ✅ Continuation workflow - Triggers next batch after PR merge
 
 **Testing & Documentation:**
 - ✅ 35 tests for canonical storage
@@ -1033,12 +1121,13 @@ State is derived from existing artifacts:
 3. `src/cli/commands/synthesis.py` (351 lines)
 4. `tests/cli/test_synthesis.py` (265 lines)
 5. `.github/workflows/synthesis-queue.yml` (74 lines, with existence checks)
-6. `.github/workflows/synthesis-assign.yml` (42 lines)
-7. `.github/workflows/pr-auto-approve-kb.yml` (196 lines)
-8. `.github/workflows/discussion-dispatcher.yml` (synthesis-objection job added)
-9. `docs/guides/synthesis.md` (295 lines)
+6. `.github/workflows/synthesis-continue.yml` (67 lines, triggers next batch)
+7. `.github/workflows/synthesis-assign.yml` (42 lines)
+8. `.github/workflows/pr-auto-approve-kb.yml` (196 lines)
+9. `.github/workflows/discussion-dispatcher.yml` (synthesis-objection job added)
+10. `docs/guides/synthesis.md` (295 lines)
 
-**Total:** 8 new files + 1 modified, ~2,200 lines of production code + tests + documentation + workflows
+**Total:** 9 new files + 1 modified, ~2,300 lines of production code + tests + documentation + workflows
 
 ---
 
