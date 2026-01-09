@@ -141,7 +141,7 @@ jobs:
               console.log(`⏭️  PR #${pr.number} already approved`);
             }
 
-      - name: Enable auto-merge
+      - name: Merge PR directly
         if: steps.verify.outputs.auto_merge == 'true'
         uses: actions/github-script@v7
         with:
@@ -149,33 +149,60 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             
+            // Check if PR is a draft
+            if (pr.draft) {
+              core.setFailed(`❌ Cannot merge: PR #${pr.number} is a draft`);
+              return;
+            }
+            
+            // Check if PR is mergeable
+            const prDetails = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+            
+            if (prDetails.data.mergeable === false) {
+              core.setFailed(`❌ Cannot merge: PR #${pr.number} has conflicts or is not mergeable`);
+              return;
+            }
+            
+            if (prDetails.data.merged) {
+              console.log(`⏭️  PR #${pr.number} is already merged`);
+              return;
+            }
+            
             try {
-              // Enable auto-merge using GraphQL (required for auto-merge API)
-              const mutation = `
-                mutation EnableAutoMerge($pullRequestId: ID!) {
-                  enablePullRequestAutoMerge(input: {
-                    pullRequestId: $pullRequestId,
-                    mergeMethod: SQUASH
-                  }) {
-                    pullRequest {
-                      autoMergeRequest {
-                        enabledAt
-                      }
-                    }
-                  }
-                }
-              `;
-              
-              const result = await github.graphql(mutation, {
-                pullRequestId: pr.node_id
+              // Merge the PR directly using REST API
+              const result = await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                merge_method: 'squash',
+                commit_title: `${pr.title} (#${pr.number})`,
+                commit_message: '🤖 Auto-merged: Upstream sync passed all validation checks'
               });
               
-              console.log(`✅ Enabled auto-merge for PR #${pr.number}`);
-              console.log('PR will automatically merge once all required checks pass.');
+              if (result.data.merged) {
+                console.log(`✅ Successfully merged PR #${pr.number}`);
+                console.log(`   SHA: ${result.data.sha}`);
+              } else {
+                core.setFailed(`❌ Merge failed for PR #${pr.number}: ${result.data.message || 'Unknown error'}`);
+              }
             } catch (error) {
-              console.log(`⚠️  Could not enable auto-merge: ${error.message}`);
-              console.log('This may be expected if auto-merge is already enabled or branch protection requires reviews.');
-              // Don't fail the workflow - auto-merge might already be enabled
+              const errorMessage = error.message || String(error);
+              
+              if (errorMessage.includes('draft')) {
+                core.setFailed(`❌ Cannot merge: PR #${pr.number} is a draft`);
+              } else if (errorMessage.includes('required status check')) {
+                console.log(`⏸️  Waiting for required status checks to pass on PR #${pr.number}`);
+                console.log('PR will need to be merged manually or re-triggered after checks pass.');
+              } else if (errorMessage.includes('branch protection')) {
+                console.log(`⚠️  Branch protection may prevent auto-merge: ${errorMessage}`);
+                console.log('PR may need manual merge or branch protection rules adjustment.');
+              } else {
+                core.setFailed(`❌ Failed to merge PR #${pr.number}: ${errorMessage}`);
+              }
             }
 
       - name: Create job summary
@@ -194,7 +221,7 @@ jobs:
             
             if [ "${{ steps.verify.outputs.auto_merge }}" == "true" ]; then
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "🤖 Auto-merge enabled - PR will merge when checks pass" >> $GITHUB_STEP_SUMMARY
+              echo "🤖 PR merged automatically" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "### ❌ Validation Failed" >> $GITHUB_STEP_SUMMARY
