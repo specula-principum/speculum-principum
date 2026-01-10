@@ -185,43 +185,126 @@ Read existing entities from:
 
 For each entity above:
 
-1. **Check alias map** - If normalized name exists in alias map, it's already resolved
-2. **Search canonical entities** - Look for semantic match (abbreviation, nickname, variant)
-3. **Decide:**
-   - **MATCH** → Add as alias to existing canonical entity
+1. **Normalize the name** - Lowercase, strip whitespace, collapse multiple spaces
+2. **Check alias map** - Read `knowledge-graph/canonical/alias-map.json` and check if normalized name exists under `by_type["{entity_type}"]`
+   - If found → Entity already resolved, skip it
+3. **Search canonical entities** - Read files in `knowledge-graph/canonical/{type_dir}/` to find semantic matches
+   - Look for abbreviations (e.g., "Broncos" → "Denver Broncos")
+   - Look for variants (e.g., "The Denver Broncos" → "Denver Broncos")
+   - Look for nicknames or alternate spellings
+4. **Decide:**
+   - **MATCH** → Update existing canonical entity file (add alias, increment corroboration)
    - **NEW** → Create new canonical entity file
-   - **AMBIGUOUS** → Add `"needs_review": true` to metadata
+   - **AMBIGUOUS** → Create new entity with `"needs_review": true`, `"confidence": 0.5`
 
 ## Output Format
 
 ### For existing canonical entity (add alias):
 
-Edit `knowledge-graph/canonical/{type_dir}/[canonical-id].json`:
-- Add new name to `aliases` array
-- Add source checksum to `source_checksums`
-- Increment `corroboration_score`
-- Add entry to `resolution_history`
+**Steps:**
+1. Read the existing entity file: `knowledge-graph/canonical/{type_dir}/[canonical-id].json`
+2. Parse the JSON
+3. Add the new name to the `aliases` array (if not already present)
+4. Add the source checksum to `source_checksums` array (if not already present)
+5. Update `corroboration_score` to match the length of `source_checksums`
+6. Update `last_updated` to current ISO timestamp
+7. Add a new entry to `resolution_history` array:
+   ```json
+   {{
+     "action": "alias_added",
+     "timestamp": "[current ISO timestamp]",
+     "by": "copilot",
+     "issue_number": [this issue number],
+     "alias": "[the new name being added]",
+     "reasoning": "Matched to existing entity via [explain: abbreviation/variant/etc]"
+   }}
+   ```
+8. Write the updated JSON back to the same file
 
-### For new canonical entity:
-
-Create `knowledge-graph/canonical/{type_dir}/[slug].json`:
+**Example result after adding "Broncos" as alias to "Denver Broncos":**
 ```json
 {{
-  "canonical_id": "[slug]",
-  "canonical_name": "[Primary Name]",
-  "entity_type": "{entity_type}",
-  "aliases": ["[name]"],
-  "source_checksums": ["[checksum]"],
-  "corroboration_score": 1,
-  "first_seen": "[ISO timestamp]",
-  "last_updated": "[ISO timestamp]",
+  "canonical_id": "denver-broncos",
+  "canonical_name": "Denver Broncos",
+  "entity_type": "Organization",
+  "aliases": ["Denver Broncos", "Broncos"],
+  "source_checksums": ["abc123", "def456"],
+  "corroboration_score": 2,
+  "first_seen": "2026-01-08T10:00:00Z",
+  "last_updated": "2026-01-09T15:30:00Z",
   "resolution_history": [
     {{
       "action": "created",
-      "timestamp": "[ISO timestamp]",
+      "timestamp": "2026-01-08T10:00:00Z",
+      "by": "copilot",
+      "issue_number": 42,
+      "reasoning": "New entity extracted from source"
+    }},
+    {{
+      "action": "alias_added",
+      "timestamp": "2026-01-09T15:30:00Z",
+      "by": "copilot",
+      "issue_number": [this issue number],
+      "alias": "Broncos",
+      "reasoning": "Matched as abbreviation of canonical name"
+    }}
+  ],
+  "attributes": {{}},
+  "associations": [],
+  "metadata": {{"needs_review": false, "confidence": 0.95}}
+}}
+```
+
+### For new canonical entity:
+
+**Steps:**
+1. Create a slug from the name: lowercase, replace spaces with hyphens
+2. Create new file: `knowledge-graph/canonical/{type_dir}/[slug].json`
+3. Use this JSON structure:
+
+```json
+{{
+  "canonical_id": "[slug]",
+  "canonical_name": "[Primary Name - the most common/official form]",
+  "entity_type": "{entity_type}",
+  "aliases": ["[the extracted name]"],
+  "source_checksums": ["[the source checksum from table]"],
+  "corroboration_score": 1,
+  "first_seen": "[current ISO timestamp]",
+  "last_updated": "[current ISO timestamp]",
+  "resolution_history": [
+    {{
+      "action": "created",
+      "timestamp": "[current ISO timestamp]",
       "issue_number": [this issue number],
       "by": "copilot",
-      "reasoning": "[why this is a new entity]"
+      "reasoning": "New entity - no existing match found in canonical store"
+    }}
+  ],
+  "attributes": {{}},
+  "associations": [],
+  "metadata": {{"needs_review": false, "confidence": 0.95}}
+}}
+```
+
+**Example - creating new entity for "Kansas City Chiefs":**
+```json
+{{
+  "canonical_id": "kansas-city-chiefs",
+  "canonical_name": "Kansas City Chiefs",
+  "entity_type": "Organization",
+  "aliases": ["Kansas City Chiefs"],
+  "source_checksums": ["xyz789"],
+  "corroboration_score": 1,
+  "first_seen": "2026-01-09T15:30:00Z",
+  "last_updated": "2026-01-09T15:30:00Z",
+  "resolution_history": [
+    {{
+      "action": "created",
+      "timestamp": "2026-01-09T15:30:00Z",
+      "issue_number": [this issue number],
+      "by": "copilot",
+      "reasoning": "New entity - no existing match found in canonical store"
     }}
   ],
   "attributes": {{}},
@@ -232,27 +315,64 @@ Create `knowledge-graph/canonical/{type_dir}/[slug].json`:
 
 ### Update alias map:
 
-Edit `knowledge-graph/canonical/alias-map.json`:
-- Add normalized name → canonical_id mapping in `by_type["{entity_type}"]`
+**CRITICAL:** For EVERY entity you process (both matched and new), update the alias map:
 
-## Completion
+1. Read `knowledge-graph/canonical/alias-map.json`
+2. Normalize the entity name (lowercase, strip, collapse spaces)
+3. Add mapping: `by_type["{entity_type}"][normalized_name] = canonical_id`
+4. Update `last_updated` timestamp
+5. Write the file back
+
+**Normalization example:**
+- "Denver Broncos" → "denver broncos"
+- "  AFC West  " → "afc west"
+- "The    Chiefs" → "the chiefs"
+
+**Example alias-map.json after processing:**
+```json
+{{
+  "version": 1,
+  "last_updated": "2026-01-09T15:30:00Z",
+  "by_type": {{
+    "Person": {{
+      "sean payton": "sean-payton",
+      "john doe": "john-doe"
+    }},
+    "Organization": {{
+      "denver broncos": "denver-broncos",
+      "broncos": "denver-broncos",
+      "kansas city chiefs": "kansas-city-chiefs"
+    }},
+    "Concept": {{
+      "afc west": "afc-west"
+    }}
+  }}
+}}
+```
+
+## Completion Checklist
 
 When you have finished processing all entities:
 
-1. **Create a Pull Request** (NOT a draft - mark it ready for review immediately)
-   - Include all new/updated canonical entity files
-   - Include updated alias-map.json
-   - In the PR description, reference this issue: "Fixes #{{issue_number}}"
-   - **IMPORTANT:** Create the PR as "ready for review" from the start (do NOT create as draft)
+1. **Verify all entities processed:**
+   - [ ] Every entity in the table above has been either matched or created
+   - [ ] Alias map updated for every entity
+   - [ ] All changes committed via `CanonicalStorage` methods
 
-2. **Add a summary comment** to this issue:
-   - How many entities matched to existing canonical entities
-   - How many new canonical entities created
-   - Any entities flagged for review (ambiguous)
+2. **Create a Pull Request**:
+   - Title: "Synthesis: Resolved {entity_type} entities (Batch {batch_number})"
+   - Description: "Fixes #{{issue_number}}"
 
-3. **The PR will be auto-approved and merged** by workflows (no manual review needed)
-
-**Note:** If you create a fork to work on this, that's fine - the workflows are configured to handle fork PRs automatically.
+3. **Add a summary comment** to this issue:
+   ```
+   ## Synthesis Complete
+   
+   - **Matched to existing:** X entities
+   - **Created new:** Y entities  
+   - **Flagged for review:** Z entities (ambiguous)
+   
+   See PR #{{pr_number}} for details.
+   ```
 
 ---
 <!-- copilot:synthesis-batch -->
