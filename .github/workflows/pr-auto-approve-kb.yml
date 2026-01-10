@@ -77,11 +77,11 @@ jobs:
             
             const comment = `👋 Hi @${author}! 
             
-This PR modifies knowledge base files, but auto-approval is only available for:
-- Repository collaborators with write access
-- Automated bots (like @copilot)
-
-Your PR will require manual review from a maintainer. Thank you for your contribution!`;
+            This PR modifies knowledge base files, but auto-approval is only available for:
+            - Repository collaborators with write access
+            - Automated bots (like @copilot)
+            
+            Your PR will require manual review from a maintainer. Thank you for your contribution!`;
             
             await github.rest.issues.createComment({
               owner: context.repo.owner,

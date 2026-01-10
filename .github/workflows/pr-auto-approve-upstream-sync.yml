@@ -60,8 +60,7 @@ jobs:
             core.setFailed('Unauthorized author for upstream sync PR');
       
       - name: Block forks
-        if: steps.verify_author.outputs.is_authorized == 'true'
-        if: github.event.repository.fork == true
+        if: steps.verify_author.outputs.is_authorized == 'true' && github.event.repository.fork == true
         run: |
           echo "::error::Auto-merge is disabled for forked repositories"
           exit 1
