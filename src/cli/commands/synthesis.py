@@ -804,8 +804,25 @@ def run_batch_cli(args: argparse.Namespace) -> int:
         print(f"   Partial progress has been saved")
         print(f"   Workflow will retry automatically")
         return EXIT_RATE_LIMITED
-        
+    
     except Exception as e:
+        # Check if this is a retryable API/network error
+        error_str = str(e).lower()
+        is_retryable = any(keyword in error_str for keyword in [
+            'incompleteread',
+            'connection broken',
+            'connection reset',
+            'timeout',
+            'network',
+            'api request failed',
+        ])
+        
+        if is_retryable:
+            print(f"\n⏸️  Retryable API/network error: {e}", file=sys.stderr)
+            print(f"   Partial progress has been saved")
+            print(f"   Workflow will retry automatically")
+            return EXIT_RATE_LIMITED
+        
         print(f"\n❌ Unexpected error: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
