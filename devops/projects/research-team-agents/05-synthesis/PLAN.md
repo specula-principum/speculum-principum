@@ -1110,11 +1110,13 @@ State is derived from existing artifacts:
 
 ---
 
-*Last Updated: 2026-01-08 (Implementation Complete)*
+*Last Updated: 2026-01-10 (Copilot-Independent Implementation Added)*
 
 ## Implementation Summary
 
-### Completed Components
+### Phase 1: Copilot-Based Approach ✅ COMPLETE (January 8, 2026)
+
+**Completed Components:**
 
 **Core Storage:**
 - ✅ `src/knowledge/canonical.py` - Canonical entity storage with dataclasses
@@ -1139,21 +1141,96 @@ State is derived from existing artifacts:
 - ✅ 15 tests for CLI commands
 - ✅ Comprehensive user guide at `docs/guides/synthesis.md`
 
-### Files Created
-
-1. `src/knowledge/canonical.py` (456 lines)
-2. `tests/knowledge/test_canonical.py` (460 lines)
-3. `src/cli/commands/synthesis.py` (351 lines)
-4. `tests/cli/test_synthesis.py` (265 lines)
-5. `.github/workflows/synthesis-queue.yml` (74 lines, with existence checks)
-6. `.github/workflows/synthesis-continue.yml` (67 lines, triggers next batch)
-7. `.github/workflows/synthesis-assign.yml` (42 lines)
-8. `.github/workflows/pr-auto-approve-kb.yml` (196 lines)
-9. `.github/workflows/discussion-dispatcher.yml` (synthesis-objection job added)
-10. `docs/guides/synthesis.md` (295 lines)
-
-**Total:** 9 new files + 1 modified, ~2,300 lines of production code + tests + documentation + workflows
+**Status:** ⚠️ **DEPRECATED** - Copilot approach has critical issues:
+1. Copilot creates PRs from forks requiring approval (blocks automation)
+2. Draft PRs block completion detection (workflow can't determine when done)
 
 ---
 
-*Last Updated: 2026-01-08*
+### Phase 2: LLM-Driven Approach ✅ COMPLETE (January 10, 2026)
+
+**Decision:** Replace Copilot with LLM planner + agent runtime using existing orchestration infrastructure.
+
+**Completed Components:**
+
+**GitHub File Tools** - Added to agent toolkit:
+- ✅ `read_file_content` - Read file content with SHA for commits
+- ✅ `create_branch` - Create feature branches from main
+- ✅ `commit_files_batch` - Atomic multi-file commits
+- ✅ Location: `src/orchestration/toolkit/github.py`
+
+**Synthesis Toolkit** - High-level entity resolution tools:
+- ✅ `list_pending_entities` - Find unresolved entities (not in alias map)
+- ✅ `get_canonical_entity` - Read canonical entity by ID
+- ✅ `get_alias_map` - Read entire alias map for matching
+- ✅ `resolve_entity` - Record entity resolution (batch state)
+- ✅ `save_synthesis_batch` - Apply all resolutions, save files, return modified paths
+- ✅ Location: `src/orchestration/toolkit/synthesis.py` (400 lines)
+
+**CLI Command** - Rate-limit-aware batch processing:
+- ✅ `python main.py synthesis run-batch` - Run LLM-driven resolution
+- ✅ Exit codes: 0=success, 1=error, 42=rate-limited
+- ✅ RateLimitError handling → partial save → exit 42 → retry
+- ✅ Location: `src/cli/commands/synthesis.py::run_batch_cli()` (120 lines)
+
+**Mission Configuration:**
+- ✅ `config/missions/synthesize_batch.yaml` - Detailed mission definition
+- ✅ Process: list entities → match via alias map → resolve → save → branch → commit → PR
+- ✅ Resolution rules: abbreviations, nicknames, ambiguous cases, cross-type leakage
+- ✅ Constraints: entity_type filtering, batch_size limit, feature branch requirement
+- ✅ Success criteria: all entities resolved, batch saved, PR created
+- ✅ Model: gpt-4o (configurable), max_steps: 100
+
+**Workflows:**
+- ✅ `.github/workflows/synthesis-queue.yml` - Rewritten for LLM planner (replaces Issue creation)
+- ✅ `.github/workflows/synthesis-retry.yml` - Rate limit recovery (60s delay → retry)
+- ✅ Triggers: post-extraction, daily schedule, manual dispatch
+- ✅ Inputs: entity_type, batch_size, model (workflow_dispatch)
+
+**Testing:**
+- ✅ `tests/orchestration/toolkit/test_synthesis.py` - 7 tests for synthesis toolkit
+- ✅ Test coverage: tool registration, pending entity listing, canonical CRUD, alias map, batch resolution
+
+**Architecture:**
+```
+Workflow Trigger (extraction complete / schedule / manual)
+    ↓
+synthesis-queue.yml
+    ↓
+python main.py synthesis run-batch --entity-type Organization
+    ↓
+LLMPlanner (gpt-4o) + AgentRuntime (plan → execute → evaluate loop)
+    ↓
+Synthesis Tools (list_pending_entities, resolve_entity, save_synthesis_batch)
+    ↓
+GitHub Tools (create_branch, commit_files_batch, create_pull_request)
+    ↓
+Exit Code:
+  - 0: Success → Create success comment
+  - 1: Error → Create error comment
+  - 42: Rate limited → Dispatch retry (60s delay)
+```
+
+**Rate Limit Recovery:**
+- Agent catches `RateLimitError` during execution
+- Calls `save_synthesis_batch` with current progress
+- Returns exit code 42
+- Workflow detects 42 → dispatches `synthesis-retry` event
+- Retry workflow waits 60s → triggers `synthesis-queue` again
+- Agent resumes from partial state (already-resolved entities skipped)
+
+**Files Created/Modified:**
+
+1. `src/orchestration/toolkit/github.py` - Extended with 3 new tools (read_file_content, create_branch, commit_files_batch)
+2. `src/orchestration/toolkit/synthesis.py` - NEW (400 lines) - 5 synthesis tools with batch state management
+3. `src/cli/commands/synthesis.py` - Extended with `run_batch_cli()` function (120 lines)
+4. `config/missions/synthesize_batch.yaml` - NEW mission configuration
+5. `.github/workflows/synthesis-queue.yml` - Completely rewritten for LLM planner
+6. `.github/workflows/synthesis-retry.yml` - NEW rate limit recovery workflow
+7. `tests/orchestration/toolkit/test_synthesis.py` - NEW (220 lines) - 7 tests
+
+**Total:** 3 new files + 4 modified, ~900 lines of production code + tests + configuration
+
+---
+
+*Last Updated: 2026-01-10*
