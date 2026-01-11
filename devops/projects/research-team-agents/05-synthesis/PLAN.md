@@ -1252,6 +1252,7 @@ Exit Code:
     - Failed action details when errors occur
   - Added visual separators and emojis for better readability
 - **Impact:** Operators can now see exactly what entities are being processed and what the agent is doing
+- **Bug fix:** Corrected Mission attribute references (changed `mission.name` → `mission.id`, `mission.constraints.get('max_steps')` → `mission.max_steps`)
 - **Example output:**
   ```
   📊 Discovering pending Organization entities...
@@ -1266,7 +1267,7 @@ Exit Code:
      Processing batch of 8 entities
   
   🤖 Running synthesis agent...
-     Mission: Entity Resolution Batch
+     Mission: synthesize_batch
      Max steps: 100
   
   ✅ Synthesis batch completed successfully
