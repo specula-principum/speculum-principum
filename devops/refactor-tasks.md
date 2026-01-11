@@ -4,3 +4,6 @@
 - Unused missions
 - Out-dated copilot-instructions
 - In-line prompt strings
+- Unused imports
+- Linting errors
+- Order / naming of workflows
