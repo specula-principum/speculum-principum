@@ -1248,11 +1248,14 @@ Exit Code:
     - Entity discovery progress and counts
     - Sample of entities to be processed
     - Agent mission details (name, max steps)
+    - Step-by-step execution details
     - Detailed action breakdown (tool names and counts)
     - Failed action details when errors occur
   - Added visual separators and emojis for better readability
 - **Impact:** Operators can now see exactly what entities are being processed and what the agent is doing
-- **Bug fix:** Corrected Mission attribute references (changed `mission.name` → `mission.id`, `mission.constraints.get('max_steps')` → `mission.max_steps`)
+- **Bug fixes:**
+  - Corrected Mission attribute references (`mission.name` → `mission.id`, `mission.constraints.get('max_steps')` → `mission.max_steps`)
+  - Fixed tool name extraction from AgentStep (`step.result.tool_name` → `step.thought.tool_call.name`)
 - **Example output:**
   ```
   📊 Discovering pending Organization entities...
@@ -1260,15 +1263,21 @@ Exit Code:
      Sample entities to process:
        • Denver Broncos (from source001...)
        • AFC West (from source001...)
-       • Kansas City Chiefs (from source001...)
-       • Broncos (from source002...)
-       • Seattle Seahawks (from source002...)
-     ... and 3 more
+       ... and 6 more
      Processing batch of 8 entities
   
   🤖 Running synthesis agent...
      Mission: synthesize_batch
      Max steps: 100
+  
+  📋 Execution details:
+     Step 1: list_pending_entities (success=True)
+        Thought: First, I need to list the pending entities...
+     Step 2: get_alias_map (success=True)
+        Thought: Now I'll get the current alias map...
+     Step 3: resolve_entity (success=True)
+        Thought: Resolving 'Denver Broncos'...
+     ...
   
   ✅ Synthesis batch completed successfully
      Total steps: 12
@@ -1279,6 +1288,14 @@ Exit Code:
        • save_synthesis_batch: 1
        • create_pull_request: 1
   ```
+
+**January 10, 2026 - Mission Evaluator Fix**
+- **Issue:** `SimpleEvaluator` was marking mission complete after just 1 successful action, preventing the agent from processing all entities
+- **Root cause:** Evaluator returned `complete=True` as soon as any successful step was executed
+- **Fix:** Changed evaluator to let the agent decide when it's done (via finish action), only stopping on excessive failures (>5)
+- **Impact:** Agent now processes all entities in the batch instead of stopping after the first action
+- **Before:** Agent executed 1 step and stopped
+- **After:** Agent executes all necessary steps (list entities, get alias map, resolve each entity, save batch, create PR)
 
 ---
 
