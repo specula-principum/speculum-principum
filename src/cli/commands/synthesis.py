@@ -707,8 +707,8 @@ def run_batch_cli(args: argparse.Namespace) -> int:
         )
         
         print(f"\n🤖 Running synthesis agent...")
-        print(f"   Mission: {mission.name}")
-        print(f"   Max steps: {mission.constraints.get('max_steps', 'unlimited')}")
+        print(f"   Mission: {mission.id}")
+        print(f"   Max steps: {mission.max_steps}")
         print(f"")
         
         # Execute the mission with the context we created earlier
