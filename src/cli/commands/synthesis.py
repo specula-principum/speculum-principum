@@ -77,6 +77,48 @@ def register_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         help="Entity type to check (default: all).",
     )
     pending_parser.set_defaults(func=pending_cli)
+    
+    # Run-batch command - LLM-driven entity resolution
+    batch_parser = sub.add_parser(
+        "run-batch",
+        description="Run LLM-driven entity resolution batch.",
+        help="Run LLM-driven entity resolution batch.",
+    )
+    batch_parser.add_argument(
+        "--entity-type",
+        type=str,
+        choices=["Person", "Organization", "Concept"],
+        default="Organization",
+        help="Entity type to process (default: Organization).",
+    )
+    batch_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=50,
+        help="Maximum entities per batch (default: 50).",
+    )
+    batch_parser.add_argument(
+        "--branch-name",
+        type=str,
+        help="Branch name for commits. If not provided, will be generated as 'synthesis/ENTITY_TYPE-TIMESTAMP'.",
+    )
+    batch_parser.add_argument(
+        "--model",
+        type=str,
+        default="gpt-4o",
+        help="Model to use for synthesis (default: gpt-4o).",
+    )
+    batch_parser.add_argument(
+        "--repository",
+        type=str,
+        help="GitHub repository in owner/repo format. Defaults to GITHUB_REPOSITORY env var or git remote.",
+    )
+    batch_parser.add_argument(
+        "--token",
+        type=str,
+        help="GitHub token. Defaults to GH_TOKEN or GITHUB_TOKEN env var.",
+    )
+    batch_parser.set_defaults(func=run_batch_cli)
 
 
 def _gather_unresolved_entities(
@@ -511,6 +553,123 @@ def _gather_all_entities(
                     all_entities.append((name, checksum))
     
     return all_entities
+
+
+def run_batch_cli(args: argparse.Namespace) -> int:
+    """Run LLM-driven entity resolution batch.
+    
+    Exit codes:
+        0 - Success (all entities processed)
+        1 - Error (unexpected failure)
+        42 - Rate limited (partial progress saved)
+    """
+    from datetime import datetime, timezone
+    
+    from pathlib import Path
+    
+    from src.integrations.github.models import GitHubModelsClient, RateLimitError
+    from src.integrations.github.pull_requests import create_pull_request
+    from src.integrations.github.storage import GitHubStorageClient
+    from src.orchestration.agent import AgentRuntime
+    from src.orchestration.llm import LLMPlanner
+    from src.orchestration.missions import load_mission
+    from src.orchestration.tools import ToolRegistry
+    from src.orchestration.toolkit.github import register_github_mutation_tools, register_github_read_only_tools, register_github_pr_tools
+    from src.orchestration.toolkit.synthesis import register_synthesis_tools
+    
+    EXIT_SUCCESS = 0
+    EXIT_ERROR = 1
+    EXIT_RATE_LIMITED = 42
+    
+    entity_type = args.entity_type
+    batch_size = args.batch_size
+    model_name = args.model
+    
+    try:
+        repository = resolve_repository(args.repository)
+        token = resolve_token(args.token)
+    except Exception as e:
+        print(f"Error resolving repository or token: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    
+    # Generate branch name if not provided
+    if args.branch_name:
+        branch_name = args.branch_name
+    else:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        branch_name = f"synthesis/{entity_type.lower()}-{timestamp}"
+    
+    print(f"🔄 Starting synthesis batch for {entity_type}")
+    print(f"   Model: {model_name}")
+    print(f"   Batch size: {batch_size}")
+    print(f"   Branch: {branch_name}")
+    
+    try:
+        # Initialize components
+        models_client = GitHubModelsClient(token=token, model=model_name)
+        
+        # Load mission configuration
+        mission_path = Path("config/missions/synthesize_batch.yaml")
+        mission = load_mission(mission_path)
+        
+        # Override model if specified
+        if model_name != "gpt-4o":
+            mission.model = model_name
+        
+        # Set mission inputs
+        mission.inputs = {
+            "entity_type": entity_type,
+            "batch_size": batch_size,
+            "branch_name": branch_name,
+            "repository": repository,
+        }
+        
+        # Register tools
+        registry = ToolRegistry()
+        register_github_read_only_tools(registry)
+        register_github_mutation_tools(registry)
+        register_github_pr_tools(registry)
+        register_synthesis_tools(registry)
+        
+        # Create planner and agent
+        planner = LLMPlanner(
+            models_client=models_client,
+            tool_registry=registry,
+            max_tokens=4000,
+            temperature=0.7,
+        )
+        
+        agent = AgentRuntime(mission=mission, planner=planner)
+        
+        print(f"\n🤖 Running synthesis agent...")
+        
+        # Run the agent
+        result = agent.run()
+        
+        if result.success:
+            print(f"\n✅ Synthesis batch completed successfully")
+            print(f"   Total steps: {len(result.steps)}")
+            
+            # Extract PR info from final thought if available
+            if result.final_thought and result.final_thought.finish_reason:
+                print(f"\n{result.final_thought.finish_reason}")
+            
+            return EXIT_SUCCESS
+        else:
+            print(f"\n❌ Synthesis batch failed: {result.error}")
+            return EXIT_ERROR
+            
+    except RateLimitError as e:
+        print(f"\n⏸️  Rate limit hit: {e}", file=sys.stderr)
+        print(f"   Partial progress has been saved")
+        print(f"   Workflow will retry automatically")
+        return EXIT_RATE_LIMITED
+        
+    except Exception as e:
+        print(f"\n❌ Unexpected error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return EXIT_ERROR
 
 
 def pending_cli(args: argparse.Namespace) -> int:
