@@ -1231,6 +1231,54 @@ Exit Code:
 
 **Total:** 3 new files + 4 modified, ~900 lines of production code + tests + configuration
 
+**Bug Fixes:**
+
+**January 10, 2026 - Entity Type Filtering Bug**
+- **Issue:** `_list_all_checksums()` was collecting checksums from ALL entity type directories, causing `_gather_unresolved_entities()` to try reading non-existent files when processing a specific entity type
+- **Example:** When processing Organizations, it would find checksum "abc123" from `people/abc123.json` and then fail to find `organizations/abc123.json`
+- **Fix:** Added `entity_type` parameter to `_list_all_checksums()` to filter checksums by specific entity type directory
+- **Impact:** Synthesis now correctly finds entities for each type (Person, Organization, Concept)
+- **Tests:** Added 4 new tests for entity type filtering, all passing (25 total synthesis tests)
+
+**January 10, 2026 - Enhanced Logging**
+- **Issue:** Workflow logs provided minimal visibility into entity discovery and processing
+- **Changes:**
+  - Added pre-scan step in workflow to show pending entities before processing
+  - Enhanced CLI logging to show:
+    - Entity discovery progress and counts
+    - Sample of entities to be processed
+    - Agent mission details (name, max steps)
+    - Detailed action breakdown (tool names and counts)
+    - Failed action details when errors occur
+  - Added visual separators and emojis for better readability
+- **Impact:** Operators can now see exactly what entities are being processed and what the agent is doing
+- **Example output:**
+  ```
+  📊 Discovering pending Organization entities...
+     Found 8 unresolved Organization entities
+     Sample entities to process:
+       • Denver Broncos (from source001...)
+       • AFC West (from source001...)
+       • Kansas City Chiefs (from source001...)
+       • Broncos (from source002...)
+       • Seattle Seahawks (from source002...)
+     ... and 3 more
+     Processing batch of 8 entities
+  
+  🤖 Running synthesis agent...
+     Mission: Entity Resolution Batch
+     Max steps: 100
+  
+  ✅ Synthesis batch completed successfully
+     Total steps: 12
+     Actions executed:
+       • list_pending_entities: 1
+       • get_alias_map: 1
+       • resolve_entity: 8
+       • save_synthesis_batch: 1
+       • create_pull_request: 1
+  ```
+
 ---
 
 *Last Updated: 2026-01-10*

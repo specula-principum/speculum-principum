@@ -57,6 +57,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
+      - name: Check pending entities
+        run: |
+          echo "📊 Scanning knowledge graph for pending entities..."
+          ENTITY_TYPE="${{ inputs.entity_type || 'Organization' }}"
+          python main.py synthesis pending --entity-type "$ENTITY_TYPE"
+      
       - name: Run synthesis batch
         id: synthesis
         env:
@@ -67,6 +73,15 @@ jobs:
           ENTITY_TYPE="${{ inputs.entity_type || 'Organization' }}"
           BATCH_SIZE="${{ inputs.batch_size || 50 }}"
           MODEL="${{ inputs.model || 'gpt-4o' }}"
+          
+          echo "🔄 Starting synthesis batch"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Entity Type: $ENTITY_TYPE"
+          echo "Batch Size:  $BATCH_SIZE"
+          echo "Model:       $MODEL"
+          echo "Repository:  ${{ github.repository }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
           
           # Run synthesis batch
           python main.py synthesis run-batch \
