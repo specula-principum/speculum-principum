@@ -570,12 +570,25 @@ def run_batch_cli(args: argparse.Namespace) -> int:
     from src.integrations.github.models import GitHubModelsClient, RateLimitError
     from src.integrations.github.pull_requests import create_pull_request
     from src.integrations.github.storage import GitHubStorageClient
-    from src.orchestration.agent import AgentRuntime
+    from src.orchestration.agent import AgentRuntime, MissionEvaluator, EvaluationResult
     from src.orchestration.llm import LLMPlanner
-    from src.orchestration.missions import load_mission
+    from src.orchestration.missions import load_mission, Mission
+    from src.orchestration.safety import SafetyValidator
     from src.orchestration.tools import ToolRegistry
     from src.orchestration.toolkit.github import register_github_mutation_tools, register_github_read_only_tools, register_github_pr_tools
     from src.orchestration.toolkit.synthesis import register_synthesis_tools
+    from src.orchestration.types import ExecutionContext, MissionStatus, AgentStep
+    
+    class SimpleEvaluator(MissionEvaluator):
+        """Simple evaluator for synthesis missions."""
+        
+        def evaluate(self, mission: Mission, steps: Sequence[AgentStep], context: ExecutionContext) -> EvaluationResult:
+            """Validate mission success based on successful tool executions."""
+            successful_steps = [s for s in steps if s.result and s.result.success]
+            if successful_steps:
+                summary = f"Successfully executed {len(successful_steps)} action(s)"
+                return EvaluationResult(complete=True, reason=summary)
+            return EvaluationResult(complete=False, reason="No successful actions completed")
     
     EXIT_SUCCESS = 0
     EXIT_ERROR = 1
@@ -606,7 +619,7 @@ def run_batch_cli(args: argparse.Namespace) -> int:
     
     try:
         # Initialize components
-        models_client = GitHubModelsClient(token=token, model=model_name)
+        models_client = GitHubModelsClient(api_key=token, model=model_name)
         
         # Load mission configuration
         mission_path = Path("config/missions/synthesize_batch.yaml")
@@ -639,24 +652,35 @@ def run_batch_cli(args: argparse.Namespace) -> int:
             temperature=0.7,
         )
         
-        agent = AgentRuntime(mission=mission, planner=planner)
+        validator = SafetyValidator()
+        evaluator = SimpleEvaluator()
+        
+        runtime = AgentRuntime(
+            planner=planner,
+            tools=registry,
+            safety=validator,
+            evaluator=evaluator,
+        )
         
         print(f"\n🤖 Running synthesis agent...")
         
-        # Run the agent
-        result = agent.run()
+        # Execute the mission
+        context = ExecutionContext(inputs=mission.inputs)
+        outcome = runtime.execute_mission(mission, context)
         
-        if result.success:
+        if outcome.status == MissionStatus.SUCCEEDED:
             print(f"\n✅ Synthesis batch completed successfully")
-            print(f"   Total steps: {len(result.steps)}")
+            print(f"   Total steps: {len(outcome.steps)}")
             
-            # Extract PR info from final thought if available
-            if result.final_thought and result.final_thought.finish_reason:
-                print(f"\n{result.final_thought.finish_reason}")
+            # Show summary if available
+            if outcome.summary:
+                print(f"   {outcome.summary}")
             
             return EXIT_SUCCESS
         else:
-            print(f"\n❌ Synthesis batch failed: {result.error}")
+            print(f"\n❌ Synthesis batch failed: {outcome.status.value}")
+            if outcome.summary:
+                print(f"   {outcome.summary}")
             return EXIT_ERROR
             
     except RateLimitError as e:
