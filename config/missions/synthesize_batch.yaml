@@ -53,8 +53,8 @@ constraints:
   - Maximum batch_size entities per run (from mission inputs).
   - Create feature branch from main before committing.
   - Use commit_files_batch for atomic multi-file commits (canonical entities + alias map).
-  - **NEVER manually create JSON files - use resolve_entity and save_synthesis_batch tools.**
-  - **NEVER use commit_file to write individual entity files - save_synthesis_batch does this.**
+  - "NEVER manually create JSON files - use resolve_entity and save_synthesis_batch tools."
+  - "NEVER use commit_file to write individual entity files - save_synthesis_batch does this."
   - The synthesis tools (resolve_entity, save_synthesis_batch) handle all file I/O automatically.
 
 success_criteria:
@@ -62,7 +62,7 @@ success_criteria:
   - Batch is saved via save_synthesis_batch tool (this writes files to disk).
   - Feature branch is created with branch_name from mission inputs.
   - All modified files are committed to the branch in a single atomic commit via commit_files_batch.
-  - Pull request is created with title 'Synthesis: Resolve {entity_type} entities (batch {timestamp})'.
+  - "Pull request is created with title 'Synthesis: Resolve {entity_type} entities (batch {timestamp})'."
   - Pull request body lists how many entities were created vs updated (from save_synthesis_batch output).
 
 max_steps: 100
