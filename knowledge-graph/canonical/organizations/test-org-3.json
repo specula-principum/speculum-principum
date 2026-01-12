@@ -1,0 +1,30 @@
+{
+  "canonical_id": "test-org-3",
+  "canonical_name": "Test Org 3",
+  "entity_type": "Organization",
+  "aliases": [
+    "Test Org 3"
+  ],
+  "source_checksums": [
+    "test789"
+  ],
+  "corroboration_score": 1,
+  "first_seen": "2026-01-12T07:19:54.702745+00:00",
+  "last_updated": "2026-01-12T07:19:54.702745+00:00",
+  "resolution_history": [
+    {
+      "action": "created",
+      "timestamp": "2026-01-12T07:19:54.702745+00:00",
+      "by": "synthesis-agent",
+      "reasoning": "The entity 'Test Org 3' does not match any existing canonical entries and needs to be created as a new canonical entity."
+    }
+  ],
+  "attributes": {},
+  "associations": [],
+  "metadata": {
+    "synthesis_complete": true,
+    "synthesis_batch_id": "20260112-071929",
+    "confidence": 0.95,
+    "needs_review": false
+  }
+}
