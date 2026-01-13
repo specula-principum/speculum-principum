@@ -47,7 +47,38 @@ elif isinstance(data, dict):
 
 ## Enhanced Logging
 
-When synthesis runs now, you'll see detailed output like this:
+When synthesis runs now, you'll see detailed output in **two places**:
+
+### 1. CLI Pre-Scan (Before synthesis starts)
+
+This happens when you run `synthesis check` or `synthesis run-batch`:
+
+```
+🔍 DEBUG: _list_all_checksums for Person
+   Directory people: 15 files
+      Files: ['abc123def456...', '789ghi012jkl...', ...]
+   Total unique checksums: 15
+
+🔍 DEBUG: _gather_unresolved_entities for Person
+   Found 15 checksum files
+   Alias map has 0 existing Person aliases
+   File abc123def456...: 5 entities, 5 unresolved
+   File 789ghi012jkl...: 3 entities, 3 unresolved
+   File mno345pqr678...: EMPTY (no entities extracted)
+   File stu901vwx234...: 2 entities, 2 unresolved
+   TOTAL unresolved: 10
+```
+
+**What to look for in pre-scan logs:**
+- ✅ `Directory people: N files` - Shows JSON files are present
+- ✅ `Found N checksum files` - Confirms files are being scanned
+- ⚠️ `EMPTY (no entities extracted)` - File exists but has no people
+- ✅ `X entities, Y unresolved` - Shows entities found and which are new
+- ❌ `Directory people: 0 files` - **NO FILES FOUND - extraction hasn't run**
+
+### 2. Synthesis Toolkit Scan (During synthesis)
+
+This happens inside the agent when it calls `list_pending_entities`:
 
 ```
 🔍 Scanning Person directory: /path/to/knowledge-graph/people
@@ -156,9 +187,137 @@ Look for the `🔍 Scanning` section in the output. This will show:
 
 ## Common Issues
 
-### Issue: "Total pending entities: 0" but files exist
+## Diagnosing "Person: All entities resolved ✓" with Zero Files
+
+**Your exact error:**
+```
+Person: All entities resolved ✓
+Total pending: 0
+
+Found 0 unresolved Person entities
+```
+
+This means the CLI scan found **0 JSON files** in `knowledge-graph/people/`.
+
+### Step-by-Step Diagnosis
+
+**1. Verify files exist in the repo:**
+
+```bash
+# In your test repo (mirror-denver-broncos)
+ls -lh knowledge-graph/people/ | head -20
+
+# Count files
+ls -1 knowledge-graph/people/*.json 2>/dev/null | wc -l
+```
+
+**Expected:** Should show multiple `.json` files  
+**If 0:** Files don't exist - extraction hasn't run or failed
+
+**2. Check if files are in a different location:**
+
+```bash
+# Search entire repo for extraction files
+find . -type f -name "*.json" | grep -E "(people|organizations|concepts)" | head -20
+
+# Check if evidence was parsed
+ls -lh evidence/parsed/ | head -10
+```
+
+**3. Check extraction workflow status:**
+
+Go to GitHub Actions → Check latest "Extraction: Process Document" workflow
+- Did it complete successfully?
+- Check logs for any errors
+- Verify it committed files to `knowledge-graph/people/`
+
+**4. Manually inspect a sample file (if files exist):**
+
+```bash
+# Pick first file
+FILE=$(ls knowledge-graph/people/*.json | head -1)
+echo "File: $FILE"
+
+# Show file content
+cat "$FILE" | jq .
+
+# Expected format:
+# {
+#   "source_checksum": "abc123...",
+#   "people": ["Person 1", "Person 2"],
+#   "extracted_at": "...",
+#   "metadata": {}
+# }
+```
+
+### Most Likely Cause
+
+Based on your logs showing **0 files found**, the issue is:
+
+**❌ Extraction has not run on this repo yet**
+
+OR
+
+**❌ Extraction ran but failed silently without creating files**
+
+### Solution
+
+1. **Run extraction on source documents:**
+   - Trigger extraction workflow manually, OR
+   - Upload/commit source documents that trigger auto-extraction
+
+2. **Verify extraction creates files:**
+   ```bash
+   # After extraction runs, check:
+   ls -lh knowledge-graph/people/
+   # Should show: abc123.json, def456.json, etc.
+   ```
+
+3. **Once files exist, re-run synthesis:**
+   ```bash
+   python main.py synthesis run-batch --entity-type Person
+   ```
+
+---
+
+## Common Issues
+
+### Scenario: "Directory people: 0 files"
+
+**Diagnosis:** The `knowledge-graph/people/` directory has no JSON files.
 
 **Possible Causes:**
+
+1. **Extraction hasn't run yet**
+   ```bash
+   # Check if extraction has run
+   ls -lh knowledge-graph/people/
+   # Should show *.json files
+   ```
+
+2. **Wrong repository - extraction ran in different repo/fork**
+   ```bash
+   # Verify you're in correct directory
+   pwd
+   # Should show path to the test repo
+   ```
+
+3. **Files in different location - extraction wrote to different path**
+   ```bash
+   # Search for extraction files
+   find . -name "*.json" -path "*/people/*" 2>/dev/null
+   ```
+
+**Solution:**
+- Run extraction workflow on source documents first
+- Verify extraction completed successfully (check workflow logs)
+- Ensure you're in the correct repository
+
+---
+
+### Scenario: "N files found but all EMPTY"
+
+**Diagnosis:** JSON files exist but all have empty entity arrays.
 
 1. **All entities already in canonical store**
    - Check `knowledge-graph/canonical/alias-map.json`
