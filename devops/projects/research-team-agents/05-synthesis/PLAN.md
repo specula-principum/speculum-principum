@@ -1110,7 +1110,7 @@ State is derived from existing artifacts:
 
 ---
 
-*Last Updated: 2026-01-10 (Copilot-Independent Implementation Added)*
+*Last Updated: 2026-01-12 (Bug Fix: Association target_id Resolution)*
 
 ## Implementation Summary
 
@@ -1297,6 +1297,24 @@ Exit Code:
 - **Before:** Agent executed 1 step and stopped
 - **After:** Agent executes all necessary steps (list entities, get alias map, resolve each entity, save batch, create PR)
 
+**January 12, 2026 - Association target_id Resolution Bug**
+- **Issue:** All canonical associations had blank `target_id` fields - associations were not being properly linked to canonical entities
+- **Root cause:** Extracted associations contain raw entity names (`source`, `target`) but canonical associations need canonical IDs (`target_id`). The agent was passing raw associations without converting target names to canonical IDs via the alias map.
+- **Fix:** Added `resolve_association_targets` tool that:
+  - Takes raw associations with entity names from extraction
+  - Normalizes target names and looks them up in the alias map
+  - Returns associations with `target_id` set to canonical ID (or empty if not yet resolved)
+  - Preserves `target_type` and `relationship` fields
+- **Changes:**
+  - New tool: `resolve_association_targets` in `src/orchestration/toolkit/synthesis.py`
+  - Updated mission: `config/missions/synthesize_batch.yaml` - instructs agent to call this tool before passing associations to `resolve_entity`
+  - Tests: Added 2 new tests in `tests/orchestration/toolkit/test_synthesis_toolkit.py` (9 total tests passing)
+- **Impact:** Associations now properly link to canonical entities via `target_id`, enabling downstream agents to traverse relationships
+- **Example workflow:**
+  1. Agent calls `get_source_associations` → gets `[{source: "AFC West", target: "Denver Broncos", ...}]`
+  2. Agent calls `resolve_association_targets` → converts to `[{target_id: "denver-broncos", target_type: "Organization", relationship: "includes"}]`
+  3. Agent passes resolved associations to `resolve_entity` → stored in canonical entity
+
 ---
 
-*Last Updated: 2026-01-10*
+*Last Updated: 2026-01-12*

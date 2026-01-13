@@ -280,6 +280,85 @@ OR
 
 ---
 
+### Scenario: "N files found, many entities, but 0 unresolved"
+
+**Your exact logs:**
+```
+Found 41 checksum files
+Alias map has 50 existing Person aliases
+File 360d4a657651...: 21 entities, 0 unresolved
+File 8b21d1d86d7f...: 7 entities, 0 unresolved
+TOTAL unresolved: 0
+```
+
+**Diagnosis:** ✅ **Synthesis already completed successfully!**
+
+All extracted people are already in the canonical store. Nothing to do.
+
+**Why this happens:**
+- Extraction found people in 41 source files
+- Previous synthesis run already resolved all of them
+- They're now in `knowledge-graph/canonical/alias-map.json`
+- Synthesis is idempotent - won't re-process already-resolved entities
+
+**To verify synthesis worked:**
+
+```bash
+# Check canonical people entities
+ls -lh knowledge-graph/canonical/people/
+# Should show .json files for each resolved person
+
+# Check alias map
+cat knowledge-graph/canonical/alias-map.json | jq '.by_type.Person | length'
+# Should show 50 (matches "Alias map has 50 existing Person aliases")
+
+# View a sample canonical person
+cat knowledge-graph/canonical/people/sean-payton.json | jq .
+```
+
+**Expected output:**
+```json
+{
+  "canonical_id": "sean-payton",
+  "canonical_name": "Sean Payton",
+  "entity_type": "Person",
+  "aliases": ["Sean Payton", "Head Coach Sean Payton"],
+  "source_checksums": ["abc123...", "def456..."],
+  "corroboration_score": 2,
+  "attributes": {},
+  "associations": [...],
+  "metadata": {
+    "synthesis_complete": true,
+    "confidence": 0.95
+  }
+}
+```
+
+**If you want to re-run synthesis (force reprocessing):**
+
+1. **Option A: Clear canonical store (nuclear option)**
+   ```bash
+   # ⚠️ WARNING: This deletes all synthesis work!
+   rm -rf knowledge-graph/canonical/people/
+   rm knowledge-graph/canonical/alias-map.json
+   
+   # Re-run synthesis
+   python main.py synthesis run-batch --entity-type Person
+   ```
+
+2. **Option B: Remove specific entities from alias map**
+   ```bash
+   # Edit alias-map.json manually to remove specific people
+   # Then re-run synthesis - those entities will be re-processed
+   ```
+
+3. **Option C: Process only new extractions**
+   - Just run extraction on new documents
+   - Synthesis will automatically pick up only the new entities
+   - Already-resolved entities are skipped
+
+---
+
 ## Common Issues
 
 ### Scenario: "Directory people: 0 files"
