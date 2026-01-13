@@ -32,6 +32,8 @@ goal: |
      - **FOR CONCEPTS:** Use get_source_associations tool to retrieve associations for this source_checksum
        * Extract any associations where this concept is the source or target
        * These will be used to populate the associations field in the canonical entity
+       * **IMPORTANT:** Call resolve_association_targets with the raw associations to convert target names to canonical IDs
+       * Pass the resolved_associations from resolve_association_targets to the resolve_entity tool
      - **FOR CONCEPTS:** Call enrich_concept_attributes to get a description/definition for the concept
        * Pass raw_name and source_checksum
        * The tool will read the source document and extract concept meaning
@@ -91,6 +93,7 @@ allowed_tools:
   - get_canonical_entity
   - get_alias_map
   - get_source_associations
+  - resolve_association_targets
   - enrich_concept_attributes
   - resolve_entity
   - save_synthesis_batch

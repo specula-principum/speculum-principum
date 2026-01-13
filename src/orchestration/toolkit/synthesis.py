@@ -131,6 +131,27 @@ def register_synthesis_tools(registry: ToolRegistry) -> None:
 
     registry.register_tool(
         ToolDefinition(
+            name="resolve_association_targets",
+            description="Convert raw association target names to canonical IDs. Takes associations with 'target' (entity name) and returns associations with 'target_id' (canonical ID). For targets not yet in canonical store, uses empty string.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "associations": {
+                        "type": "array",
+                        "description": "List of association objects with fields: source, target, source_type, target_type, relationship, evidence, confidence",
+                        "items": {"type": "object"},
+                    },
+                },
+                "required": ["associations"],
+                "additionalProperties": False,
+            },
+            handler=_resolve_association_targets_handler,
+            risk_level=ActionRisk.SAFE,
+        )
+    )
+
+    registry.register_tool(
+        ToolDefinition(
             name="resolve_entity",
             description="Resolve a raw entity name to a canonical entity (create or update).",
             parameters={
@@ -745,3 +766,70 @@ def _extract_concept_description(concept_name: str, content: str, max_length: in
         preview = preview.split("\\n\\n")[0]
     
     return f"{concept_name}: {preview}..."
+
+def _resolve_association_targets_handler(args: Mapping[str, Any]) -> ToolResult:
+    """Convert raw association target names to canonical IDs using alias map."""
+    associations = args.get("associations", [])
+
+    if not associations:
+        return ToolResult(
+            success=True,
+            output={
+                "resolved_associations": [],
+                "count": 0,
+                "unresolved_count": 0,
+            },
+            error=None,
+        )
+
+    try:
+        canonical_store = _get_or_create_canonical_store()
+        alias_map = canonical_store.load_alias_map()
+        
+        from src.knowledge.canonical import normalize_name
+        
+        resolved_associations = []
+        unresolved_count = 0
+        
+        for assoc in associations:
+            # Extract fields from raw association
+            target_name = assoc.get("target", "")
+            target_type = assoc.get("target_type", "Unknown")
+            relationship = assoc.get("relationship", "related")
+            
+            if not target_name:
+                # Skip associations without target
+                unresolved_count += 1
+                continue
+            
+            # Normalize target name and look up in alias map
+            normalized_target = normalize_name(target_name)
+            target_id = ""
+            
+            # Look up canonical ID in alias map by type
+            if target_type in alias_map.by_type:
+                target_id = alias_map.by_type[target_type].get(normalized_target, "")
+            
+            if not target_id:
+                # Target not yet in canonical store - leave target_id empty
+                # (this is expected for entities that haven't been synthesized yet)
+                unresolved_count += 1
+            
+            # Create resolved association with canonical target_id
+            resolved_associations.append({
+                "target_id": target_id,
+                "target_type": target_type,
+                "relationship": relationship,
+            })
+        
+        return ToolResult(
+            success=True,
+            output={
+                "resolved_associations": resolved_associations,
+                "count": len(resolved_associations),
+                "unresolved_count": unresolved_count,
+            },
+            error=None,
+        )
+    except Exception as exc:
+        return ToolResult(success=False, output=None, error=str(exc))
