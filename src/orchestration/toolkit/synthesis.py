@@ -257,6 +257,9 @@ def _list_pending_entities_handler(args: Mapping[str, Any]) -> ToolResult:
             return ToolResult(success=False, output=None, error=f"Unknown entity_type: {entity_type}")
         
         if directory.exists():
+            import sys
+            print(f"\n🔍 Scanning {entity_type} directory: {directory}", file=sys.stderr)
+            
             for entity_file in directory.glob("*.json"):
                 source_checksum = entity_file.stem
                 entity_list = []
@@ -272,15 +275,36 @@ def _list_pending_entities_handler(args: Mapping[str, Any]) -> ToolResult:
                     elif entity_type == "Concept":
                         extracted = kb_storage.get_extracted_concepts(source_checksum)
                         entity_list = extracted.concepts if extracted else []
-                except Exception:
-                    # Fallback: Try reading as simple JSON list (for backward compatibility / tests)
+                    
+                    print(f"  ✓ Loaded {source_checksum[:12]}... via KnowledgeGraphStorage: {len(entity_list)} entities", file=sys.stderr)
+                except Exception as e:
+                    # Fallback: Try reading JSON directly and extract entity list
+                    print(f"  ⚠ KnowledgeGraphStorage failed for {source_checksum[:12]}...: {type(e).__name__}", file=sys.stderr)
                     try:
                         with entity_file.open("r", encoding="utf-8") as f:
                             data = json.load(f)
+                        
+                        # Handle different JSON formats
                         if isinstance(data, list):
+                            # Simple list format (backward compatibility)
                             entity_list = data
-                    except Exception:
+                            print(f"  ✓ Loaded {source_checksum[:12]}... as JSON list: {len(entity_list)} entities", file=sys.stderr)
+                        elif isinstance(data, dict):
+                            # ExtractedPeople/Organizations/Concepts format
+                            if entity_type == "Person" and "people" in data:
+                                entity_list = data["people"]
+                                print(f"  ✓ Loaded {source_checksum[:12]}... from dict['people']: {len(entity_list)} entities", file=sys.stderr)
+                            elif entity_type == "Organization" and "organizations" in data:
+                                entity_list = data["organizations"]
+                                print(f"  ✓ Loaded {source_checksum[:12]}... from dict['organizations']: {len(entity_list)} entities", file=sys.stderr)
+                            elif entity_type == "Concept" and "concepts" in data:
+                                entity_list = data["concepts"]
+                                print(f"  ✓ Loaded {source_checksum[:12]}... from dict['concepts']: {len(entity_list)} entities", file=sys.stderr)
+                            else:
+                                print(f"  ✗ Unrecognized dict format for {source_checksum[:12]}...: keys={list(data.keys())}", file=sys.stderr)
+                    except Exception as fallback_error:
                         # Skip files that can't be loaded
+                        print(f"  ✗ Fallback failed for {source_checksum[:12]}...: {type(fallback_error).__name__}: {fallback_error}", file=sys.stderr)
                         continue
                 
                 for entity_name in entity_list:
@@ -298,6 +322,15 @@ def _list_pending_entities_handler(args: Mapping[str, Any]) -> ToolResult:
                 
                 if len(pending) >= limit:
                     break
+
+        import sys
+        print(f"\n📊 Summary for {entity_type}:", file=sys.stderr)
+        print(f"   Total pending entities: {len(pending)}", file=sys.stderr)
+        print(f"   Existing aliases in canonical store: {len(existing_aliases)}", file=sys.stderr)
+        if pending:
+            print(f"   Sample pending entities:", file=sys.stderr)
+            for entity in pending[:3]:
+                print(f"     • {entity['raw_name']} (from {entity['source_checksum'][:12]}...)", file=sys.stderr)
 
         return ToolResult(
             success=True,
