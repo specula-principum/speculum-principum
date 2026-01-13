@@ -88,6 +88,8 @@ def test_register_synthesis_tools():
         "get_canonical_entity",
         "get_alias_map",
         "resolve_association_targets",
+        "enrich_entity_attributes",
+        "enrich_concept_attributes",  # Deprecated but kept for compatibility
         "resolve_entity",
         "save_synthesis_batch",
     ]

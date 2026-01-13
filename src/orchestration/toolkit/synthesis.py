@@ -107,8 +107,38 @@ def register_synthesis_tools(registry: ToolRegistry) -> None:
 
     registry.register_tool(
         ToolDefinition(
+            name="enrich_entity_attributes",
+            description="Extract description/definition for any entity (Person, Organization, or Concept) from its source document using LLM. Returns attributes dict with 'description' field containing a concise, factual summary.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "raw_name": {
+                        "type": "string",
+                        "description": "The entity name to enrich.",
+                    },
+                    "entity_type": {
+                        "type": "string",
+                        "enum": ["Person", "Organization", "Concept"],
+                        "description": "Type of entity.",
+                    },
+                    "source_checksum": {
+                        "type": "string",
+                        "description": "Checksum of the source document where entity was found.",
+                    },
+                },
+                "required": ["raw_name", "entity_type", "source_checksum"],
+                "additionalProperties": False,
+            },
+            handler=_enrich_entity_attributes_handler,
+            risk_level=ActionRisk.SAFE,
+        )
+    )
+
+    # Keep old tool name for backward compatibility
+    registry.register_tool(
+        ToolDefinition(
             name="enrich_concept_attributes",
-            description="Extract description/definition for a concept from its source document. Returns attributes dict with 'description' field.",
+            description="DEPRECATED: Use enrich_entity_attributes instead. Extract description/definition for a concept from its source document.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -124,7 +154,7 @@ def register_synthesis_tools(registry: ToolRegistry) -> None:
                 "required": ["raw_name", "source_checksum"],
                 "additionalProperties": False,
             },
-            handler=_enrich_concept_attributes_handler,
+            handler=lambda args: _enrich_entity_attributes_handler({**args, "entity_type": "Concept"}),
             risk_level=ActionRisk.SAFE,
         )
     )
@@ -669,9 +699,10 @@ def _get_source_associations_handler(args: Mapping[str, Any]) -> ToolResult:
         return ToolResult(success=False, output=None, error=str(exc))
 
 
-def _enrich_concept_attributes_handler(args: Mapping[str, Any]) -> ToolResult:
-    """Extract description/definition for a concept from its source document."""
+def _enrich_entity_attributes_handler(args: Mapping[str, Any]) -> ToolResult:
+    """Extract description/definition for any entity from its source document using LLM."""
     raw_name = args["raw_name"]
+    entity_type = args.get("entity_type", "Concept")  # Default to Concept for backward compatibility
     source_checksum = args["source_checksum"]
 
     try:
@@ -688,7 +719,7 @@ def _enrich_concept_attributes_handler(args: Mapping[str, Any]) -> ToolResult:
                 success=True,
                 output={
                     "attributes": {
-                        "description": f"Concept: {raw_name}",
+                        "description": f"{entity_type}: {raw_name}",
                         "enrichment_status": "no_source_content",
                     },
                 },
@@ -698,9 +729,12 @@ def _enrich_concept_attributes_handler(args: Mapping[str, Any]) -> ToolResult:
         # Read the source content
         content = parsed_file.read_text(encoding="utf-8")
         
-        # Extract a description using simple heuristics
-        # (In production, this could call an LLM for better extraction)
-        description = _extract_concept_description(raw_name, content)
+        # Use LLM to extract a high-quality description
+        description = _extract_entity_description_llm(raw_name, entity_type, content)
+        
+        # Fallback to heuristics if LLM fails
+        if not description or description.startswith(f"{entity_type}:"):
+            description = _extract_entity_description_heuristic(raw_name, entity_type, content)
 
         return ToolResult(
             success=True,
@@ -718,7 +752,7 @@ def _enrich_concept_attributes_handler(args: Mapping[str, Any]) -> ToolResult:
             success=True,
             output={
                 "attributes": {
-                    "description": f"Concept: {raw_name}",
+                    "description": f"{entity_type}: {raw_name}",
                     "enrichment_status": "error",
                     "error_message": str(exc),
                 },
@@ -727,18 +761,82 @@ def _enrich_concept_attributes_handler(args: Mapping[str, Any]) -> ToolResult:
         )
 
 
-def _extract_concept_description(concept_name: str, content: str, max_length: int = 500) -> str:
-    """Extract a description for a concept from document content using heuristics."""
-    # Simple heuristic: find sentences containing the concept
+def _extract_entity_description_llm(entity_name: str, entity_type: str, content: str, max_length: int = 300) -> str:
+    """Extract a description for any entity from document content using LLM."""
+    try:
+        from src.integrations.github.models import GitHubModelsClient
+        
+        # Truncate content to avoid token limits (keep first ~8000 chars = ~2000 tokens)
+        truncated_content = content[:8000] if len(content) > 8000 else content
+        
+        # Create LLM client with mini model for efficiency
+        client = GitHubModelsClient(model="gpt-4o-mini")
+        
+        # Customize prompt based on entity type
+        entity_guidance = {
+            "Person": "who they are, their role, title, or significance in the context",
+            "Organization": "what the organization is, its purpose, or its role in the context",
+            "Concept": "what the concept is, its meaning, or its significance in the context",
+        }
+        
+        guidance = entity_guidance.get(entity_type, "what it is or represents")
+        
+        system_prompt = (
+            f"You are an expert at extracting concise, informative descriptions of {entity_type.lower()}s from documents. "
+            "Your task is to read the provided text and extract a clear, factual description. "
+            "The description should be 1-3 sentences, focusing on key information. "
+            f"Do NOT just say '{entity_type}: [name]' - provide actual information about it. "
+            "If not clearly defined in the text, provide context about how it's mentioned or used."
+        )
+        
+        user_prompt = f"""Extract a description for the {entity_type.lower()} "{entity_name}" from this text:
+
+{truncated_content}
+
+Provide a clear, concise description (1-3 sentences) focusing on {guidance}."""
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        
+        response = client.chat_completion(
+            messages=messages,
+            temperature=0.3,  # Low temperature for factual extraction
+            max_tokens=150,    # Limit response length
+        )
+        
+        description = response.content.strip()
+        
+        # Truncate if too long
+        if len(description) > max_length:
+            # Try to cut at sentence boundary
+            sentences = description.split(". ")
+            description = ". ".join(sentences[:2])
+            if len(description) > max_length:
+                description = description[:max_length] + "..."
+        
+        return description
+        
+    except Exception as e:
+        # Log error and return empty string to trigger fallback
+        import sys
+        print(f"⚠ LLM description extraction failed for {entity_type} '{entity_name}': {type(e).__name__}: {e}", file=sys.stderr)
+        return ""
+
+
+def _extract_entity_description_heuristic(entity_name: str, entity_type: str, content: str, max_length: int = 500) -> str:
+    """Extract a description for any entity from document content using heuristics (fallback)."""
+    # Simple heuristic: find sentences containing the entity
     # Split into sentences (rough approximation)
     sentences = content.replace("\\n", " ").split(". ")
     
-    # Find sentences mentioning the concept (case-insensitive)
-    concept_lower = concept_name.lower()
+    # Find sentences mentioning the entity (case-insensitive)
+    entity_lower = entity_name.lower()
     relevant_sentences = []
     
     for sentence in sentences:
-        if concept_lower in sentence.lower():
+        if entity_lower in sentence.lower():
             # Clean up the sentence
             clean_sentence = sentence.strip()
             if clean_sentence and len(clean_sentence) > 20:  # Ignore very short sentences
@@ -765,7 +863,7 @@ def _extract_concept_description(concept_name: str, content: str, max_length: in
         # Get first paragraph
         preview = preview.split("\\n\\n")[0]
     
-    return f"{concept_name}: {preview}..."
+    return f"{entity_type}: {entity_name} - {preview}..."
 
 def _resolve_association_targets_handler(args: Mapping[str, Any]) -> ToolResult:
     """Convert raw association target names to canonical IDs using alias map."""
